@@ -5,6 +5,7 @@ import { Badge } from '../../primitives/Badge'
 import { Button } from '../../primitives/Button'
 import { Card } from '../../primitives/Card'
 import { Modal } from '../../primitives/Modal'
+import { GitBranch, GitMerge, Repeat2 } from 'lucide-react'
 
 export function BranchesPanel({ project }: { project: Project }) {
   const { currentUser, createBranch, switchBranch, mergeBranch, addToast } = useAppState()
@@ -31,9 +32,11 @@ export function BranchesPanel({ project }: { project: Project }) {
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="secondary" onClick={() => setCreateOpen(true)}>
+            <GitBranch className="size-4" />
             Create new branch
           </Button>
           <Button variant="secondary" onClick={() => setMergeOpen(true)} disabled={!canMerge}>
+            <GitMerge className="size-4" />
             Merge branch
           </Button>
         </div>
@@ -73,6 +76,7 @@ export function BranchesPanel({ project }: { project: Project }) {
                     addToast({ title: 'Switched branch (simulated)', message: b })
                   }}
                 >
+                  <Repeat2 className="size-4" />
                   Switch
                 </Button>
               </div>
@@ -202,4 +206,3 @@ function mockGraph(activeBranch: string) {
     '*   c0 (main) "Synced flute phrasing with conductor notes"',
   ].join('\n')
 }
-

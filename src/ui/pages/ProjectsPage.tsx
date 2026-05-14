@@ -6,6 +6,7 @@ import { Button } from '../primitives/Button'
 import { Card } from '../primitives/Card'
 import { Modal } from '../primitives/Modal'
 import { CreateProjectModal } from './modals/CreateProjectModal'
+import { Copy, FolderPlus, LogIn, Music2 } from 'lucide-react'
 
 export function ProjectsPage() {
   const { currentUser, projects, getUser, addToast } = useAppState()
@@ -20,18 +21,22 @@ export function ProjectsPage() {
   }, [projects, currentUser])
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <div className="text-xl font-semibold text-slate-900">Project list (1.a)</div>
+    <div className="space-y-5">
+      <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
+          <div className="text-xl font-semibold text-slate-950">Projects</div>
           <div className="mt-1 text-sm text-slate-600">
             Showing projects you participate in{currentUser.role === 'admin' ? ' (admin sees all).' : '.'}
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button onClick={() => setCreateOpen(true)}>Create new project</Button>
+          <Button onClick={() => setCreateOpen(true)}>
+            <FolderPlus className="size-4" />
+            Create project
+          </Button>
           <Button variant="secondary" onClick={() => setJoinOpen(true)}>
-            Join by invitation code
+            <LogIn className="size-4" />
+            Join by code
           </Button>
         </div>
       </div>
@@ -45,10 +50,18 @@ export function ProjectsPage() {
           const lastAuthor = lastCommit ? getUser(lastCommit.authorUserId)?.name : undefined
 
           return (
-            <Card key={p.id} className="p-4">
+            <Card key={p.id} className="p-4 transition hover:border-slate-300 hover:shadow-md">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="truncate text-sm font-semibold text-slate-900">{p.name}</div>
+                  <div className="flex min-w-0 items-center gap-2">
+                    <div className="grid size-8 shrink-0 place-items-center rounded-md border border-slate-200 bg-slate-50 text-slate-700">
+                      <Music2 className="size-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-semibold text-slate-950">{p.name}</div>
+                      <div className="text-xs text-slate-500">{p.ensembleType}</div>
+                    </div>
+                  </div>
                   <div className="mt-1 line-clamp-2 text-sm text-slate-600">{p.description}</div>
                 </div>
                 <Badge>Members: {p.members.length}</Badge>
@@ -89,6 +102,7 @@ export function ProjectsPage() {
                   variant="ghost"
                   onClick={() => addToast({ title: 'Invitation copied (simulated)', message: 'Code: YDAY-2026' })}
                 >
+                  <Copy className="size-4" />
                   Copy invite
                 </Button>
               </div>
@@ -133,4 +147,3 @@ export function ProjectsPage() {
     </div>
   )
 }
-

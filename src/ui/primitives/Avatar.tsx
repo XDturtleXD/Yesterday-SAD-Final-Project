@@ -29,7 +29,7 @@ export function Avatar({
   return (
     <div
       className={cn(
-        'shrink-0 overflow-hidden rounded-full bg-slate-900 text-white',
+        'shrink-0 overflow-hidden rounded-full bg-slate-900 text-white ring-1 ring-white/70',
         className,
       )}
       style={{ width: size, height: size }}
@@ -51,4 +51,3 @@ export function Avatar({
     </div>
   )
 }
-

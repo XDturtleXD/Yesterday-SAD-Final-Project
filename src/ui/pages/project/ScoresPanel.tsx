@@ -6,6 +6,18 @@ import { Badge } from '../../primitives/Badge'
 import { Button } from '../../primitives/Button'
 import { Card } from '../../primitives/Card'
 import { Modal } from '../../primitives/Modal'
+import {
+  ArrowLeft,
+  CheckCircle2,
+  Edit3,
+  ExternalLink,
+  History,
+  Music2,
+  Pin,
+  PinOff,
+  Trash2,
+  Upload,
+} from 'lucide-react'
 
 export function ScoresPanel({ project }: { project: Project }) {
   const { currentUser, addToast, deleteScore, toggleSongPin } = useAppState()
@@ -55,7 +67,8 @@ export function ScoresPanel({ project }: { project: Project }) {
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="secondary" onClick={() => setUploadOpen(true)}>
-            Upload score (simulated)
+            <Upload className="size-4" />
+            Upload score
           </Button>
         </div>
       </div>
@@ -78,7 +91,7 @@ export function ScoresPanel({ project }: { project: Project }) {
                   <select
                     value={sortMode}
                     onChange={(e) => setSortMode(e.target.value as typeof sortMode)}
-                    className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm"
+                    className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm shadow-sm outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
                   >
                     <option value="recent">Recently practiced</option>
                     <option value="pinned">Pinned first</option>
@@ -188,17 +201,23 @@ function SongCard({
   const my = song.assignments.find((a) => a.userId === currentUserId)
 
   return (
-    <Card className="p-4">
+    <Card className="p-4 transition hover:border-slate-300 hover:shadow-[0_8px_24px_rgba(15,23,42,0.06)]">
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="truncate text-base font-semibold text-slate-900">{song.title}</div>
-          <div className="mt-1 text-sm text-slate-600">Composer: {song.composer}</div>
+        <div className="flex min-w-0 items-start gap-3">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-slate-50 text-slate-700">
+            <Music2 className="size-5" />
+          </div>
+          <div className="min-w-0">
+            <div className="truncate text-base font-semibold text-slate-950">{song.title}</div>
+            <div className="mt-1 text-sm text-slate-600">Composer: {song.composer}</div>
+          </div>
         </div>
         <button
           onClick={onTogglePin}
-          className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"
+          className="inline-flex h-8 items-center gap-1 rounded-md border border-slate-200 bg-white px-2 text-xs font-medium text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
           title={song.pinned ? 'Unpin' : 'Pin'}
         >
+          {song.pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}
           {song.pinned ? 'Pinned' : 'Pin'}
         </button>
       </div>
@@ -219,9 +238,10 @@ function SongCard({
           {song.pinned && <Badge tone="warn">Pinned</Badge>}
           <Badge>Last practiced: {song.lastPracticedAt}</Badge>
         </div>
-        <Button size="sm" onClick={onOpen}>
-          Open song
-        </Button>
+          <Button size="sm" onClick={onOpen}>
+            <ExternalLink className="size-4" />
+            Open song
+          </Button>
       </div>
     </Card>
   )
@@ -270,9 +290,11 @@ function SongDetail({
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="secondary" onClick={onBack}>
+            <ArrowLeft className="size-4" />
             Back to song list
           </Button>
           <Button variant="ghost" onClick={() => addToast({ title: 'Marked as practiced (simulated)', message: song.title })}>
+            <CheckCircle2 className="size-4" />
             Mark practiced
           </Button>
         </div>
@@ -302,6 +324,7 @@ function SongDetail({
                     : navigate(`/projects/${project.id}/scores/${primary.id}/editor`)
                 }
               >
+                <Edit3 className="size-4" />
                 Edit
               </Button>
               <Button
@@ -312,12 +335,14 @@ function SongDetail({
                     : addToast({ title: 'Opened score (simulated)', message: primary.name })
                 }
               >
+                <ExternalLink className="size-4" />
                 Open
               </Button>
               <Button
                 variant="ghost"
                 onClick={() => navigate(`/projects/${project.id}?tab=versions`)}
               >
+                <History className="size-4" />
                 View version history
               </Button>
             </div>
@@ -383,6 +408,7 @@ function SongDetail({
                       : navigate(`/projects/${project.id}/scores/${s.id}/editor`)
                   }
                 >
+                  <Edit3 className="size-4" />
                   Edit
                 </Button>
                 <Button
@@ -394,6 +420,7 @@ function SongDetail({
                       : addToast({ title: 'Opened score (simulated)', message: s.name })
                   }
                 >
+                  <ExternalLink className="size-4" />
                   Open
                 </Button>
                 <Button
@@ -401,6 +428,7 @@ function SongDetail({
                   variant="ghost"
                   onClick={() => navigate(`/projects/${project.id}?tab=versions`)}
                 >
+                  <History className="size-4" />
                   View history
                 </Button>
                 <Button
@@ -409,6 +437,7 @@ function SongDetail({
                   disabled={!canDelete}
                   onClick={() => onDeleteScore(s)}
                 >
+                  <Trash2 className="size-4" />
                   Delete
                 </Button>
               </div>

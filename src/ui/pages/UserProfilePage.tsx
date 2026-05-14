@@ -6,6 +6,7 @@ import { Avatar } from '../primitives/Avatar'
 import { Button } from '../primitives/Button'
 import { Card } from '../primitives/Card'
 import { Modal } from '../primitives/Modal'
+import { Camera, Edit3, FolderKanban, Trash2, UserRound } from 'lucide-react'
 
 export function UserProfilePage() {
   const { userId } = useParams()
@@ -40,24 +41,33 @@ export function UserProfilePage() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div className="min-w-0">
-          <div className="text-xl font-semibold text-slate-900">User profile (3.0)</div>
-          <div className="mt-1 text-sm text-slate-600">
-            {isSelf ? 'Viewing your own profile.' : 'Viewing another user’s basic information and shared projects.'}
+      <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-start gap-3">
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-slate-950 text-white">
+              <UserRound className="size-5" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-xl font-semibold text-slate-950">User profile</div>
+              <div className="mt-1 text-sm text-slate-600">
+                {isSelf ? 'Viewing your own profile.' : 'Viewing another user’s shared projects and account role.'}
+              </div>
+            </div>
           </div>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {isSelf && (
-            <Button variant="secondary" onClick={() => setEditOpen(true)}>
-              Edit profile
-            </Button>
-          )}
-          {isAdmin && !isSelf && (
-            <Button variant="danger" onClick={() => setDeleteOpen(true)}>
-              Delete user
-            </Button>
-          )}
+          <div className="flex flex-wrap gap-2">
+            {isSelf && (
+              <Button variant="secondary" onClick={() => setEditOpen(true)}>
+                <Edit3 className="size-4" />
+                Edit profile
+              </Button>
+            )}
+            {isAdmin && !isSelf && (
+              <Button variant="danger" onClick={() => setDeleteOpen(true)}>
+                <Trash2 className="size-4" />
+                Delete user
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -79,6 +89,7 @@ export function UserProfilePage() {
                 variant="secondary"
                 onClick={() => addToast({ title: 'Avatar uploaded (simulated)' })}
               >
+                <Camera className="size-4" />
                 Upload avatar
               </Button>
             </div>
@@ -92,7 +103,10 @@ export function UserProfilePage() {
       </Card>
 
       <Card className="p-5">
-        <div className="text-sm font-semibold text-slate-900">Participating projects</div>
+        <div className="flex items-center gap-2 text-sm font-semibold text-slate-950">
+          <FolderKanban className="size-4 text-slate-500" />
+          Participating projects
+        </div>
         <div className="mt-3 space-y-3">
           {participating.length === 0 ? (
             <div className="text-sm text-slate-500">No projects.</div>
@@ -197,4 +211,3 @@ export function UserProfilePage() {
     </div>
   )
 }
-

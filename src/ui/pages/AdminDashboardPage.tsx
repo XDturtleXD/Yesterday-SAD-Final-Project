@@ -6,6 +6,7 @@ import { Button } from '../primitives/Button'
 import { Card } from '../primitives/Card'
 import { Modal } from '../primitives/Modal'
 import { cn } from '../utils/cn'
+import { FolderKanban, ShieldPlus, Trash2, UserRoundCog, UsersRound } from 'lucide-react'
 
 type AdminTab = 'projects' | 'users'
 
@@ -48,37 +49,47 @@ export function AdminDashboardPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <div className="text-xl font-semibold text-slate-900">Admin dashboard</div>
-          <div className="mt-1 text-sm text-slate-600">
-            Manage projects and users (simulated deletes/creation).
+      <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-slate-950 text-white">
+              <UserRoundCog className="size-5" />
+            </div>
+            <div>
+              <div className="text-xl font-semibold text-slate-950">Admin dashboard</div>
+              <div className="mt-1 text-sm text-slate-600">
+                Manage projects and users in the prototype workspace.
+              </div>
+            </div>
           </div>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" onClick={() => setNewAdminOpen(true)}>
-            Add admin account
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" onClick={() => setNewAdminOpen(true)}>
+              <ShieldPlus className="size-4" />
+              Add admin
+            </Button>
+          </div>
         </div>
       </div>
 
       <div className="flex flex-wrap gap-1 rounded-lg border border-slate-200 bg-white p-1">
         <button
           className={cn(
-            'rounded-md px-3 py-2 text-sm transition',
+            'inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm transition',
             tab === 'projects' ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100',
           )}
           onClick={() => setTab('projects')}
         >
+          <FolderKanban className="size-4" />
           Project management
         </button>
         <button
           className={cn(
-            'rounded-md px-3 py-2 text-sm transition',
+            'inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm transition',
             tab === 'users' ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100',
           )}
           onClick={() => setTab('users')}
         >
+          <UsersRound className="size-4" />
           User management
         </button>
       </div>
@@ -114,6 +125,7 @@ export function AdminDashboardPage() {
                           Open
                         </Button>
                         <Button size="sm" variant="danger" onClick={() => setConfirmProjectId(p.id)}>
+                          <Trash2 className="size-4" />
                           Delete
                         </Button>
                       </div>
@@ -160,6 +172,7 @@ export function AdminDashboardPage() {
                           disabled={u.id === currentUser.id}
                           onClick={() => setConfirmUserId(u.id)}
                         >
+                          <Trash2 className="size-4" />
                           Delete
                         </Button>
                       </div>
@@ -268,4 +281,3 @@ export function AdminDashboardPage() {
     </div>
   )
 }
-

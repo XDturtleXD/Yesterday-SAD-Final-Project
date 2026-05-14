@@ -7,6 +7,7 @@ import { Avatar } from '../../primitives/Avatar'
 import { Button } from '../../primitives/Button'
 import { Card } from '../../primitives/Card'
 import { Modal } from '../../primitives/Modal'
+import { MailPlus, SlidersHorizontal, UserPlus } from 'lucide-react'
 
 const allRoles: ProjectRole[] = ['owner', 'conductor', 'section leader', 'performer', 'editor']
 const allInstruments: Instrument[] = ['violin', 'viola', 'cello', 'flute', 'clarinet', 'trumpet', 'piano']
@@ -37,6 +38,7 @@ export function MembersPanel({ project }: { project: Project }) {
             disabled={!isOwner}
             onClick={() => addToast({ title: 'Invite sent (simulated)', message: 'Invite notification would be triggered here.' })}
           >
+            <MailPlus className="size-4" />
             Invite member
           </Button>
         </div>
@@ -102,6 +104,7 @@ export function MembersPanel({ project }: { project: Project }) {
                             setSelection(m.roles)
                           }}
                         >
+                          <UserPlus className="size-4" />
                           Assign role
                         </Button>
                         <Button
@@ -113,6 +116,7 @@ export function MembersPanel({ project }: { project: Project }) {
                             setSelection(m.instruments)
                           }}
                         >
+                          <SlidersHorizontal className="size-4" />
                           Assign instrument
                         </Button>
                       </div>
@@ -185,4 +189,3 @@ export function MembersPanel({ project }: { project: Project }) {
     </div>
   )
 }
-

@@ -3,6 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useAppState } from '../../state/AppState'
 import { Button } from '../primitives/Button'
 import { Card } from '../primitives/Card'
+import { ArrowLeft, ExternalLink, FileText } from 'lucide-react'
 
 const SCORE_PDF_MAP: Record<string, { title: string; pdfUrl: string }> = {
   's-canon-v1': {
@@ -52,14 +53,22 @@ export function ScorePdfViewPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-2">
-        <div>
-          <div className="text-xl font-semibold text-slate-900">{pdfEntry.title}</div>
-          <div className="mt-1 text-sm text-slate-600">Composer: Dvořák, Antonín</div>
+      <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 items-start gap-3">
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-slate-950 text-white">
+              <FileText className="size-5" />
+            </div>
+            <div className="min-w-0">
+              <div className="truncate text-xl font-semibold text-slate-950">{pdfEntry.title}</div>
+              <div className="mt-1 text-sm text-slate-600">Composer: Dvořák, Antonín</div>
+            </div>
+          </div>
+          <Button variant="secondary" onClick={() => navigate(`/projects/${project.id}?tab=scores`)}>
+            <ArrowLeft className="size-4" />
+            Scores
+          </Button>
         </div>
-        <Button variant="secondary" onClick={() => navigate(`/projects/${project.id}?tab=scores`)}>
-          Back to scores
-        </Button>
       </div>
 
       <Card className="overflow-hidden p-0">
@@ -77,6 +86,7 @@ export function ScorePdfViewPage() {
           </div>
           <div className="mt-2">
             <Button onClick={() => window.open(pdfUrl, '_blank', 'noopener,noreferrer')}>
+              <ExternalLink className="size-4" />
               Open in new tab
             </Button>
           </div>

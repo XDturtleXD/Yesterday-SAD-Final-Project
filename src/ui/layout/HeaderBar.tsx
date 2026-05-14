@@ -4,6 +4,7 @@ import { Avatar } from '../primitives/Avatar'
 import { Button } from '../primitives/Button'
 import { Badge } from '../primitives/Badge'
 import type { UserRole } from '../../types'
+import { FolderKanban, User } from 'lucide-react'
 
 export function HeaderBar() {
   const { currentUser, switchUser } = useAppState()
@@ -11,16 +12,17 @@ export function HeaderBar() {
 
   return (
     <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/90 backdrop-blur">
-      <div className="flex items-center justify-between px-6 py-3">
+      <div className="flex items-center justify-between gap-4 px-6 py-3">
         <div className="min-w-0">
-          <div className="truncate text-sm font-medium text-slate-900">
-            Yesterday
+          <div className="truncate text-sm font-semibold text-slate-900">Yesterday</div>
+          <div className="hidden text-xs text-slate-500 sm:block">
+            Collaborative score editing and rehearsal parts
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <div className="hidden items-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-2 sm:flex">
-            <div className="text-xs font-medium text-slate-600">Prototype mode</div>
+        <div className="flex items-center gap-2 sm:gap-3">
+          <div className="hidden items-center gap-2 rounded-md border border-dashed border-slate-300 bg-slate-50 px-3 py-1.5 sm:flex">
+            <div className="text-xs font-medium text-slate-600">Mode</div>
             <select
               value={currentUser.role}
               onChange={(e) => {
@@ -41,6 +43,7 @@ export function HeaderBar() {
           </div>
 
           <Button variant="ghost" onClick={() => navigate('/projects')}>
+            <FolderKanban className="size-4" />
             Projects
           </Button>
 
@@ -52,7 +55,10 @@ export function HeaderBar() {
             </div>
           </div>
 
-          <Button onClick={() => navigate(`/users/${currentUser.id}`)}>Profile</Button>
+          <Button onClick={() => navigate(`/users/${currentUser.id}`)}>
+            <User className="size-4" />
+            Profile
+          </Button>
         </div>
       </div>
     </header>

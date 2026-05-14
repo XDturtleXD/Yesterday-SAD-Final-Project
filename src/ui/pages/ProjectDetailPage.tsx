@@ -11,6 +11,7 @@ import { FullScorePanel } from './project/FullScorePanel'
 import { MembersPanel } from './project/MembersPanel'
 import { ScoresPanel } from './project/ScoresPanel'
 import { VersionsPanel } from './project/VersionsPanel'
+import { ArrowLeft, GitBranch, MailPlus } from 'lucide-react'
 
 type TabKey = 'overview' | 'scores' | 'members' | 'branches' | 'versions' | 'fullscore'
 
@@ -48,13 +49,16 @@ export function ProjectDetailPage() {
   const isAdmin = currentUser.role === 'admin'
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+    <div className="space-y-5">
+      <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] lg:flex-row lg:items-end lg:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <div className="truncate text-xl font-semibold text-slate-900">{project.name}</div>
+            <div className="truncate text-xl font-semibold text-slate-950">{project.name}</div>
             <Badge>Ensemble: {project.ensembleType}</Badge>
-            <Badge tone="info">Branch: {project.currentBranch}</Badge>
+            <Badge tone="info">
+              <GitBranch className="mr-1 size-3" />
+              {project.currentBranch}
+            </Badge>
           </div>
           <div className="mt-1 text-sm text-slate-600">{project.description}</div>
           <div className="mt-2 flex flex-wrap gap-2">
@@ -73,10 +77,12 @@ export function ProjectDetailPage() {
 
         <div className="flex flex-wrap gap-2">
           <Button variant="secondary" onClick={() => setInviteOpen(true)} disabled={!isOwner && !isAdmin}>
+            <MailPlus className="size-4" />
             Invite member
           </Button>
           <Button variant="ghost" onClick={() => navigate('/projects')}>
-            Back to projects
+            <ArrowLeft className="size-4" />
+            Projects
           </Button>
         </div>
       </div>
@@ -86,9 +92,9 @@ export function ProjectDetailPage() {
       {tab === 'overview' && (
         <div className="grid gap-4 lg:grid-cols-3">
           <Card className="p-4 lg:col-span-2">
-            <div className="text-sm font-semibold text-slate-900">Overview</div>
+            <div className="text-sm font-semibold text-slate-950">Overview</div>
             <div className="mt-1 text-sm text-slate-600">
-              This dashboard matches the UI Flow: project name/info, members, scores, current branch, and commit history.
+              Project workspace for parts, members, branches, and MusicXML revisions.
             </div>
 
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -116,11 +122,11 @@ export function ProjectDetailPage() {
           </Card>
 
           <Card className="p-4">
-            <div className="text-sm font-semibold text-slate-900">Recent commits</div>
+            <div className="text-sm font-semibold text-slate-950">Recent commits</div>
             <div className="mt-3 space-y-2">
               {project.commits.slice(0, 5).map((c) => (
                 <div key={c.id} className="rounded-md border border-slate-200 bg-slate-50 p-3">
-                  <div className="text-sm font-medium text-slate-900">{c.message}</div>
+                  <div className="text-sm font-medium text-slate-950">{c.message}</div>
                   <div className="mt-1 text-xs text-slate-500">
                     {getUser(c.authorUserId)?.name ?? c.authorUserId} · {c.timestamp} · {c.branch}
                   </div>
@@ -186,14 +192,14 @@ function Tabs({ tab, projectId }: { tab: TabKey; projectId: string }) {
   ]
 
   return (
-    <div className="flex flex-wrap gap-1 rounded-lg border border-slate-200 bg-white p-1">
+    <div className="flex flex-wrap gap-1 rounded-lg border border-slate-200 bg-white p-1 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       {items.map((it) => (
         <Link
           key={it.key}
           to={`/projects/${projectId}?tab=${it.key}`}
           className={cn(
             'rounded-md px-3 py-2 text-sm transition',
-            tab === it.key ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100',
+            tab === it.key ? 'bg-slate-950 text-white shadow-sm' : 'text-slate-700 hover:bg-slate-100',
           )}
         >
           {it.label}
@@ -205,10 +211,9 @@ function Tabs({ tab, projectId }: { tab: TabKey; projectId: string }) {
 
 function QuickLink({ title, desc, to }: { title: string; desc: string; to: string }) {
   return (
-    <Link to={to} className="group block rounded-lg border border-slate-200 bg-white p-4 hover:bg-slate-50">
-      <div className="text-sm font-semibold text-slate-900 group-hover:underline">{title}</div>
+    <Link to={to} className="group block rounded-lg border border-slate-200 bg-white p-4 transition hover:border-slate-300 hover:bg-slate-50">
+      <div className="text-sm font-semibold text-slate-950 group-hover:underline">{title}</div>
       <div className="mt-1 text-sm text-slate-600">{desc}</div>
     </Link>
   )
 }
-
