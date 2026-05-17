@@ -29,8 +29,29 @@ const getProjectById = async (req, res, next) => {
   }
 };
 
+const createInviteCode = async (req, res, next) => {
+  try {
+    const { projectId } = req.params;
+    const result = await projectService.createProjectInviteCode(projectId, req.user);
+    return sendSuccess(res, result, "Invite code created successfully");
+  } catch (error) {
+    return next(error);
+  }
+};
+
+const joinByInviteCode = async (req, res, next) => {
+  try {
+    const result = await projectService.joinProjectByInviteCode(req.body, req.user);
+    return sendSuccess(res, result, "Joined project successfully", 201);
+  } catch (error) {
+    return next(error);
+  }
+};
+
 module.exports = {
   createProject,
   getProjects,
   getProjectById,
+  createInviteCode,
+  joinByInviteCode,
 };

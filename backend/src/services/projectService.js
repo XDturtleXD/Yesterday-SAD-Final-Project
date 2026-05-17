@@ -1,5 +1,6 @@
 const supabase = require("../config/supabase");
 const AppError = require("../utils/appError");
+const { signInviteToken, verifyInviteToken } = require("../utils/inviteToken");
 
 const PROJECT_COLUMNS = "id, name, description, created_by, created_at, updated_at";
 
@@ -165,10 +166,112 @@ const getProjectByIdForMember = async (projectId, requestUser) => {
   return project;
 };
 
+const createProjectInviteCode = async (projectId, requestUser) => {
+  ensureSupabaseReady();
+
+  const { data: project, error: projectError } = await supabase
+    .from("projects")
+    .select("id")
+    .eq("id", projectId)
+    .maybeSingle();
+
+  if (projectError) {
+    throw new AppError("Failed to fetch project", 500, projectError);
+  }
+  if (!project) {
+    throw new AppError("Project not found", 404);
+  }
+
+  if (!isPlatformAdmin(requestUser)) {
+    const membership = await checkProjectMembership(projectId, requestUser.id);
+    if (!membership) {
+      throw new AppError("Forbidden: you are not a member of this project", 403);
+    }
+
+    const allowedRoles = ["concertmaster", "principal"];
+    if (!allowedRoles.includes(membership.role)) {
+      throw new AppError("Forbidden: only concertmaster or principal can create invite code", 403);
+    }
+  }
+
+  const inviteCode = signInviteToken({
+    type: "project_invite",
+    projectId,
+    createdBy: requestUser.id,
+  });
+
+  return {
+    inviteCode,
+  };
+};
+
+const joinProjectByInviteCode = async ({ inviteCode, sectionId }, requestUser) => {
+  ensureSupabaseReady();
+
+  if (!inviteCode || typeof inviteCode !== "string") {
+    throw new AppError("inviteCode is required", 400);
+  }
+  if (!sectionId) {
+    throw new AppError("sectionId is required", 400);
+  }
+
+  const payload = verifyInviteToken(inviteCode);
+  if (!payload || payload.type !== "project_invite" || !payload.projectId) {
+    throw new AppError("Invalid invite code", 400);
+  }
+
+  const { data: section, error: sectionError } = await supabase
+    .from("sections")
+    .select("id")
+    .eq("id", sectionId)
+    .maybeSingle();
+
+  if (sectionError) {
+    throw new AppError("Failed to validate sectionId", 500, sectionError);
+  }
+  if (!section) {
+    throw new AppError("Invalid sectionId: section does not exist", 400);
+  }
+
+  const projectId = payload.projectId;
+  const { data: existingMember, error: existingMemberError } = await supabase
+    .from("project_members")
+    .select("id")
+    .eq("project_id", projectId)
+    .eq("user_id", requestUser.id)
+    .maybeSingle();
+
+  if (existingMemberError) {
+    throw new AppError("Failed to validate project membership", 500, existingMemberError);
+  }
+  if (existingMember) {
+    throw new AppError("You are already a member of this project", 409);
+  }
+
+  const { data: createdMember, error: insertError } = await supabase
+    .from("project_members")
+    .insert({
+      project_id: projectId,
+      user_id: requestUser.id,
+      section_id: sectionId,
+      role: "member",
+    })
+    .select("id, project_id, user_id, section_id, role, created_at, updated_at")
+    .single();
+
+  if (insertError) {
+    throw new AppError("Failed to join project", 500, insertError);
+  }
+
+  return createdMember;
+};
+
 module.exports = {
   createProject,
   listUserProjects,
   getProjectByIdForMember,
   checkProjectMembership,
   isPlatformAdmin,
+  createProjectInviteCode,
+  joinProjectByInviteCode,
 };

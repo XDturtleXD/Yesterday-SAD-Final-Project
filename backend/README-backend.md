@@ -2,6 +2,22 @@
 
 本文件說明目前 MVP 階段前端需要對接的後端 API 契約與使用注意事項。
 
+## 技術架構（Backend）
+
+- Runtime：Node.js（CommonJS）
+- Web Framework：Express.js
+- Database：Supabase PostgreSQL（`@supabase/supabase-js`）
+- Auth：
+  - 帳密登入：bcrypt + JWT
+  - Google 登入：Google ID Token 驗證 + JWT
+- Middleware：
+  - `authMiddleware`：Bearer Token 驗證
+  - `projectPermissionMiddleware`：專案成員權限檢查
+  - `canEditScoreMiddleware`：未來編輯權限預留（目前尚未掛載編輯 API）
+- Error Handling：
+  - 全域 `notFound` + `errorHandler`
+  - 統一 response 格式（`sendSuccess` / `sendError`）
+
 ## 基本資訊
 
 - 本機 API Base URL：`http://localhost:3001/api`
@@ -161,6 +177,64 @@ Request body：
 - `platform_admin`：可查看
 - 其他使用者：必須為該專案成員，否則 `403`
 
+### 4) `POST /projects/:projectId/invite-code`（建立邀請碼）
+
+用途：為指定專案產生可分享的邀請碼（JWT token 字串）。
+
+Header：
+
+```http
+Authorization: Bearer <token>
+```
+
+權限規則：
+
+- `platform_admin`：可建立
+- 專案內 `concertmaster`、`principal`：可建立
+- 其他角色：`403`
+
+Response `data`：
+
+```json
+{
+  "inviteCode": "eyJhbGciOiJIUzI1NiIsInR5cCI..."
+}
+```
+
+注意：
+
+- 邀請碼沿用 `JWT_SECRET` 進行簽發與驗證（MVP 簡化方案）。
+- 邀請碼有效時間沿用 `JWT_EXPIRES_IN`（預設 `7d`）。
+
+### 5) `POST /projects/join-by-code`（用邀請碼加入專案）
+
+用途：登入使用者透過邀請碼加入專案，加入後預設角色為 `member`。
+
+Header：
+
+```http
+Authorization: Bearer <token>
+```
+
+Request body：
+
+```json
+{
+  "inviteCode": "eyJhbGciOiJIUzI1NiIsInR5cCI...",
+  "sectionId": "11111111-1111-1111-1111-111111111102"
+}
+```
+
+必填參數：
+
+- `inviteCode`：由建立邀請碼 API 取得
+- `sectionId`：使用者加入時選擇的聲部（必須是有效 `sections.id`）
+
+可能錯誤：
+
+- `400`：邀請碼無效/過期，或 `sectionId` 不存在
+- `409`：該使用者已經是專案成員
+
 ---
 
 ## 三、樂譜 API
@@ -228,3 +302,14 @@ Request body：
 - `concertmaster`：可編輯
 - `principal`：可編輯自己聲部
 - `member`：不可編輯
+
+---
+
+## 七、建議前端邀請流程
+
+1. 專案頁面按「產生邀請碼」呼叫 `POST /projects/:projectId/invite-code`
+2. 前端拿到 `inviteCode` 後可做：
+   - 顯示給使用者複製
+   - 組成分享連結（例如帶在 query string）
+3. 被邀請者登入後，在加入頁面選擇 `sectionId` 並呼叫 `POST /projects/join-by-code`
+4. 成功後重新呼叫 `GET /projects` 更新清單
