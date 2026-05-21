@@ -1,10 +1,14 @@
-import { NavLink } from 'react-router-dom'
+import { NavLink, useNavigate } from 'react-router-dom'
+import { useAuth } from '../../auth/AuthContext'
 import { useAppState } from '../../state/AppState'
 import { cn } from '../utils/cn'
-import { Shield, User, FolderKanban, Home, LogIn, Music2 } from 'lucide-react'
+import { Shield, User, FolderKanban, Home, LogOut, Music2 } from 'lucide-react'
+import { Button } from '../primitives/Button'
 
 export function Sidebar() {
   const { currentUser } = useAppState()
+  const { isAdmin, logout } = useAuth()
+  const navigate = useNavigate()
 
   return (
     <aside className="hidden w-72 shrink-0 border-r border-slate-200 bg-white md:block">
@@ -25,13 +29,12 @@ export function Sidebar() {
           <div className="mb-1 px-3 text-[11px] font-semibold uppercase text-slate-400">
             Workspace
           </div>
-          <SideLink to="/" icon={<Home className="size-4" />} label="Home" />
+          <SideLink to="/dashboard" icon={<Home className="size-4" />} label="Home" />
           <SideLink
             to="/projects"
             icon={<FolderKanban className="size-4" />}
             label="Projects"
           />
-          <SideLink to="/login" icon={<LogIn className="size-4" />} label="Login" />
           <SideLink
             to={`/users/${currentUser.id}`}
             icon={<User className="size-4" />}
@@ -41,13 +44,26 @@ export function Sidebar() {
             to="/admin"
             icon={<Shield className="size-4" />}
             label="Admin"
-            disabled={currentUser.role !== 'admin'}
+            disabled={!isAdmin}
           />
         </nav>
 
-        <div className="mt-auto rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
-          <div className="truncate text-sm font-medium">{currentUser.name}</div>
-          <div className="text-xs text-slate-500">{currentUser.role}</div>
+        <div className="mt-auto space-y-2">
+          <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+            <div className="truncate text-sm font-medium">{currentUser.name}</div>
+            <div className="text-xs text-slate-500">{currentUser.role}</div>
+          </div>
+          <Button
+            variant="secondary"
+            className="w-full"
+            onClick={() => {
+              logout()
+              navigate('/login')
+            }}
+          >
+            <LogOut className="size-4" />
+            Logout
+          </Button>
         </div>
       </div>
     </aside>
@@ -85,7 +101,6 @@ function SideLink({
             : 'text-slate-700 hover:bg-slate-100 hover:text-slate-950',
         )
       }
-      end={to === '/'}
     >
       {icon}
       {label}

@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useMemo, useState } from 'react'
+import type { ApiUser } from '../api/types'
 import { mockProjects, mockUsers } from '../mock/mockData'
 import type { Commit, Project, Score, User, UserRole } from '../types'
 
@@ -11,6 +12,8 @@ type AppState = {
   toasts: Toast[]
 
   switchUser: (role: UserRole) => void
+  applyAuthUser: (apiUser: ApiUser) => void
+  clearAuthUser: () => void
   getUser: (id: string) => User | undefined
   getProject: (id: string) => Project | undefined
   getScore: (projectId: string, scoreId: string) => Score | undefined
@@ -49,6 +52,17 @@ function roleToUserId(role: UserRole) {
   return 'u-admin'
 }
 
+function mapApiUserToUser(apiUser: ApiUser): User {
+  const role: UserRole =
+    apiUser.system_role === 'platform_admin' ? 'admin' : 'regular'
+  return {
+    id: apiUser.id,
+    name: apiUser.name,
+    role,
+    intro: apiUser.email,
+  }
+}
+
 export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [currentUserId, setCurrentUserId] = useState<string>('u-owner')
   const [users, setUsers] = useState<User[]>(mockUsers)
@@ -68,6 +82,20 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       toasts,
 
       switchUser: (role) => setCurrentUserId(roleToUserId(role)),
+
+      applyAuthUser: (apiUser) => {
+        const mapped = mapApiUserToUser(apiUser)
+        setUsers((prev) => {
+          const exists = prev.some((u) => u.id === mapped.id)
+          if (exists) {
+            return prev.map((u) => (u.id === mapped.id ? { ...u, ...mapped } : u))
+          }
+          return [...prev, mapped]
+        })
+        setCurrentUserId(mapped.id)
+      },
+
+      clearAuthUser: () => setCurrentUserId('u-owner'),
 
       getUser: (userId) => users.find((u) => u.id === userId),
       getProject: (projectId) => projects.find((p) => p.id === projectId),

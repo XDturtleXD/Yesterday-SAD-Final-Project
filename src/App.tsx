@@ -1,8 +1,13 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { AuthProvider } from './auth/AuthContext'
+import { GuestRoute } from './auth/GuestRoute'
+import { ProtectedRoute } from './auth/ProtectedRoute'
 import { AppStateProvider } from './state/AppState'
 import { AppLayout } from './ui/layout/AppLayout'
+import { PublicLayout } from './ui/layout/PublicLayout'
 import { AdminDashboardPage } from './ui/pages/AdminDashboardPage'
 import { HomePage } from './ui/pages/HomePage'
+import { LandingPage } from './ui/pages/LandingPage'
 import { LoginPage } from './ui/pages/LoginPage'
 import { ProjectDetailPage } from './ui/pages/ProjectDetailPage'
 import { ProjectsPage } from './ui/pages/ProjectsPage'
@@ -13,32 +18,42 @@ import { UserProfilePage } from './ui/pages/UserProfilePage'
 export default function App() {
   return (
     <AppStateProvider>
-      <BrowserRouter>
-        <Routes>
-          <Route element={<AppLayout />}>
-            <Route index element={<HomePage />} />
-            <Route path="login" element={<LoginPage />} />
-            <Route path="projects" element={<ProjectsPage />} />
-            <Route path="projects/:projectId" element={<ProjectDetailPage />} />
-            <Route
-              path="projects/:projectId/scores/:scoreId/editor"
-              element={<ScoreEditorPage />}
-            />
-            <Route
-              path="projects/:projectId/songs/:songId/musicxml"
-              element={<ScoreMusicXmlPage />}
-            />
-            <Route
-              path="projects/:projectId/songs/:songId/pdf"
-              element={<ScoreMusicXmlPage />}
-            />
-            <Route path="users/:userId" element={<UserProfilePage />} />
-            <Route path="admin" element={<AdminDashboardPage />} />
-          </Route>
+      <AuthProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route element={<PublicLayout />}>
+              <Route index element={<LandingPage />} />
+              <Route element={<GuestRoute />}>
+                <Route path="login" element={<LoginPage />} />
+              </Route>
+            </Route>
 
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </BrowserRouter>
+            <Route element={<ProtectedRoute />}>
+              <Route element={<AppLayout />}>
+                <Route path="dashboard" element={<HomePage />} />
+                <Route path="projects" element={<ProjectsPage />} />
+                <Route path="projects/:projectId" element={<ProjectDetailPage />} />
+                <Route
+                  path="projects/:projectId/scores/:scoreId/editor"
+                  element={<ScoreEditorPage />}
+                />
+                <Route
+                  path="projects/:projectId/songs/:songId/musicxml"
+                  element={<ScoreMusicXmlPage />}
+                />
+                <Route
+                  path="projects/:projectId/songs/:songId/pdf"
+                  element={<ScoreMusicXmlPage />}
+                />
+                <Route path="users/:userId" element={<UserProfilePage />} />
+                <Route path="admin" element={<AdminDashboardPage />} />
+              </Route>
+            </Route>
+
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </BrowserRouter>
+      </AuthProvider>
     </AppStateProvider>
   )
 }

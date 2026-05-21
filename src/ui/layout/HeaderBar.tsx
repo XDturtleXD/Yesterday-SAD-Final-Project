@@ -1,12 +1,13 @@
 import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../../auth/AuthContext'
 import { useAppState } from '../../state/AppState'
 import { Avatar } from '../primitives/Avatar'
 import { Button } from '../primitives/Button'
-import type { UserRole } from '../../types'
-import { FolderKanban, User } from 'lucide-react'
+import { FolderKanban, LogOut, User } from 'lucide-react'
 
 export function HeaderBar() {
-  const { currentUser, switchUser } = useAppState()
+  const { currentUser } = useAppState()
+  const { logout } = useAuth()
   const navigate = useNavigate()
 
   return (
@@ -17,23 +18,6 @@ export function HeaderBar() {
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3">
-          <div className="hidden items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5 sm:flex">
-            <select
-              value={currentUser.role}
-              onChange={(e) => {
-                switchUser(e.target.value as UserRole)
-                navigate('/')
-              }}
-              className="h-8 rounded-md border border-slate-200 bg-white px-2 text-sm"
-              aria-label="Prototype mode (demo scenario)"
-              title="Demo-only control: changes visible permissions for the prototype"
-            >
-              <option value="regular">Member</option>
-              <option value="owner">Project Owner</option>
-              <option value="admin">Admin</option>
-            </select>
-          </div>
-
           <Button variant="ghost" onClick={() => navigate('/projects')}>
             <FolderKanban className="size-4" />
             Projects
@@ -49,6 +33,17 @@ export function HeaderBar() {
           <Button variant="secondary" onClick={() => navigate(`/users/${currentUser.id}`)}>
             <User className="size-4" />
             Profile
+          </Button>
+
+          <Button
+            variant="ghost"
+            onClick={() => {
+              logout()
+              navigate('/login')
+            }}
+          >
+            <LogOut className="size-4" />
+            Logout
           </Button>
         </div>
       </div>

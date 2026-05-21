@@ -38,10 +38,9 @@ export function AdminDashboardPage() {
           Permission denied. Switch to the admin mock account to access this page.
         </div>
         <div className="mt-4 flex gap-2">
-          <Button variant="secondary" onClick={() => navigate('/login')}>
-            Go to Login
+          <Button variant="secondary" onClick={() => navigate('/dashboard')}>
+            Back to dashboard
           </Button>
-          <Button onClick={() => navigate('/')}>Back home</Button>
         </div>
       </Card>
     )
