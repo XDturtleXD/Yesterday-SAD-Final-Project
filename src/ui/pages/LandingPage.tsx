@@ -1,4 +1,4 @@
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../../auth/AuthContext'
 import { Button } from '../primitives/Button'
 import { Card } from '../primitives/Card'
@@ -42,10 +42,24 @@ const steps = [
 
 export function LandingPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { isAuthenticated } = useAuth()
+
+  const redirect = searchParams.get('redirect')
+  const loginPath = redirect
+    ? `/login?redirect=${encodeURIComponent(redirect)}`
+    : '/login'
 
   return (
     <div className="min-h-dvh">
+      {redirect && !isAuthenticated && (
+        <div className="border-b border-sky-200 bg-sky-50 px-4 py-2 text-center text-sm text-sky-900">
+          請先登入以繼續前往工作區。{' '}
+          <Link to={loginPath} className="font-medium underline">
+            前往登入
+          </Link>
+        </div>
+      )}
       <header className="border-b border-slate-200 bg-white/90 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
           <div className="flex items-center gap-2">
@@ -61,7 +75,9 @@ export function LandingPage() {
                 <ArrowRight className="size-4" />
               </Button>
             ) : (
-              <Button onClick={() => navigate('/login')}>登入</Button>
+              <Button onClick={() => navigate(isAuthenticated ? '/dashboard' : loginPath)}>
+                登入
+              </Button>
             )}
           </div>
         </div>
@@ -80,7 +96,7 @@ export function LandingPage() {
             Yesterday 是專為合奏團設計的樂譜協作平台。集中管理分譜、追蹤版本、協調成員，讓每次排練都更有效率。
           </p>
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-            <Button onClick={() => navigate(isAuthenticated ? '/dashboard' : '/login')}>
+            <Button onClick={() => navigate(isAuthenticated ? '/dashboard' : loginPath)}>
               開始使用
               <ArrowRight className="size-4" />
             </Button>
@@ -147,7 +163,7 @@ export function LandingPage() {
                 <ArrowRight className="size-4" />
               </Button>
             ) : (
-              <Link to="/login">
+              <Link to={loginPath}>
                 <Button variant="secondary">免費註冊 / 登入</Button>
               </Link>
             )}

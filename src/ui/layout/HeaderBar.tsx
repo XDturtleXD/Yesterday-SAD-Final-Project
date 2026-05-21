@@ -39,7 +39,7 @@ export function HeaderBar() {
             variant="ghost"
             onClick={() => {
               logout()
-              navigate('/login')
+              navigate('/')
             }}
           >
             <LogOut className="size-4" />

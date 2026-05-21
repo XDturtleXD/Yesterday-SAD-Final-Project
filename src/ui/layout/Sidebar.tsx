@@ -58,7 +58,7 @@ export function Sidebar() {
             className="w-full"
             onClick={() => {
               logout()
-              navigate('/login')
+              navigate('/')
             }}
           >
             <LogOut className="size-4" />
