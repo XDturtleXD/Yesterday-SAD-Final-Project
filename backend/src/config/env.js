@@ -1,6 +1,9 @@
+const path = require("path");
 const dotenv = require("dotenv");
 
-dotenv.config();
+// Prefer backend/.env; fall back to repo root .env (for `npm run dev` at project root).
+dotenv.config({ path: path.resolve(__dirname, "../../.env") });
+dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
 
 const env = {
   nodeEnv: process.env.NODE_ENV || "development",
