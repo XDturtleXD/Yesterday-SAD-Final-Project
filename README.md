@@ -1,5 +1,7 @@
 # Yesterday — 同步總譜管理與註記系統
 
+[![tests](https://github.com/Phanatic34/Yesterday-SAD-Final-Project/actions/workflows/test.yml/badge.svg)](https://github.com/Phanatic34/Yesterday-SAD-Final-Project/actions/workflows/test.yml)
+
 Yesterday 是一套為樂團（特別是弦樂團）設計的線上總譜協作平台。樂團上傳整份總譜後，系統會解析並產生各聲部的分譜，協助首席線上完成弓法、力度、音色等註記，並在偵測到不同聲部應有一致演奏方式的段落時自動同步、衝突時自動提示，最終一鍵匯出包含所有註記的分譜與總譜。
 
 > 課程：SAD（Systems Analysis and Design）期末專案
@@ -158,6 +160,13 @@ Yesterday-SAD-Final-Project/
 │   ├── package.json
 │   ├── .env.example
 │   ├── README-backend.md          # 後端 API 詳細契約
+│   ├── tests/                     # node:test 測試
+│   │   ├── helpers/
+│   │   │   ├── testEnv.js         # 測試前設定 env vars
+│   │   │   └── fakeSupabase.js    # 記憶體版 supabase client（給 integration test 用）
+│   │   ├── utils/                 # response / appError / jwt / inviteToken
+│   │   ├── middlewares/           # errorHandler
+│   │   └── services/              # scoreService / projectService / historyService（含 integration）
 │   └── src/
 │       ├── server.js              # 啟動 Express server
 │       ├── app.js                 # 組裝 Express middleware 與路由
@@ -230,6 +239,7 @@ npm install
 | `npm run build` | 執行 `tsc -b && vite build` 建置前端 |
 | `npm run preview` | 預覽前端 production build |
 | `npm run lint` | 執行 ESLint |
+| `npm test --prefix backend` | 跑後端測試（Node 內建 `node:test`，零額外依賴） |
 | `npm start --prefix backend` | 以 `node` 直接啟動後端（production 用） |
 
 啟動成功後：
@@ -357,6 +367,39 @@ Authorization: Bearer <jwt>
 
 - 每個專案僅一名 `concertmaster`。
 - 每個專案的每個聲部僅一名 `principal`。
+
+---
+
+## 測試
+
+後端目前已建立測試套件，前端則尚未導入測試框架。
+
+### 後端
+
+- **執行方式**：`npm test --prefix backend`（或在 `backend/` 內 `npm test`）。
+- **執行器**：Node 內建的 `node:test`（不需額外安裝任何套件，要求 Node 18+）。
+- **測試目錄結構**（`backend/tests/`）：
+  - `helpers/testEnv.js`：每個測試的第一行 `require("../helpers/testEnv")` 會先把 `JWT_SECRET`、`SUPABASE_URL` 等測試環境變數塞進 `process.env`，再 require 任何 production module。
+  - `helpers/fakeSupabase.js`：給 `historyService.integration.test.js` 用的記憶體版 supabase client，模擬 `.from().select().eq().in().order().single()` 等鏈式 API；測試前透過 `require.cache` 注入。
+  - `utils/`：`response`、`appError`、`jwt`、`inviteToken` 等純函式單元測試。
+  - `middlewares/`：`errorHandler` 邏輯（含 `NODE_ENV` 對 stack 揭露的影響）。
+  - `services/`：
+    - `scoreService.test.js` — `canViewScore` / `assertCanViewScore` 對四種角色 × section 的可見性矩陣。
+    - `projectService.test.js` — `isPlatformAdmin` 判斷。
+    - `historyService.helpers.test.js` — `normalizeSnapshot`、`buildVersionMap`、`filterVisibleVersions`、`assertConcertmaster` 等純 helper（在 `historyService` 中以 `_helpers` 命名空間導出，僅供測試）。
+    - `historyService.integration.test.js` — 用 fake supabase 端到端測試 createBranch（首條分支變 default）、createCommit（父 commit 繼承 + override、principal 跨聲部 commit 被擋、branch head 推進）、compareCommits（added / removed / modified / unchanged 分類 + section 過濾）、mergeBranches（concertmaster gate、theirs-wins 策略、branch head 推進）、updateBranch、deleteBranch。
+
+  目前共 **59 個測試**，全部通過。
+
+- **CI**：GitHub Actions workflow 設定在 `.github/workflows/test.yml`。每次 `push`（任何分支）與 PR 進 `main` 時會自動在 Ubuntu + Node 22 上 `npm ci` 並執行 `npm test --prefix backend`。
+
+### 前端
+
+Vite 專案天然搭配 Vitest，但目前 `package.json` 還沒安裝 `vitest`／`@testing-library/react`／`jsdom` 等套件，也尚未撰寫測試。若要補上，可優先針對：
+
+- `src/api/client.ts` 的 token 儲存與 401 處理
+- `src/auth/AuthContext.tsx` 的登入／登出流程
+- `src/state/AppState.tsx` 的 reducer 行為
 
 ---
 

@@ -656,4 +656,14 @@ module.exports = {
   // compare / merge
   compareCommits,
   mergeBranches,
+  // pure helpers exported for unit-tests (no Supabase dependency)
+  _helpers: {
+    isAdminRole,
+    canCommit,
+    assertCanCommit,
+    assertConcertmaster,
+    normalizeSnapshot,
+    buildVersionMap,
+    filterVisibleVersions,
+  },
 };
