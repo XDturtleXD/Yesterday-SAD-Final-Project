@@ -265,6 +265,268 @@ Request body：
 
 ---
 
+## 三之二、歷史紀錄 API（git-like history）
+
+對應 `functional map.mmd` 的「歷史紀錄_用git_」分支。所有路由都掛在
+`/api/projects/:projectId/...` 底下，並要求：
+
+- 必須登入（`Authorization: Bearer <token>`）。
+- 必須是該專案成員，否則回 `403`；`platform_admin` 例外。
+
+權限規則速查：
+
+| 動作 | 允許的角色 |
+| --- | --- |
+| 列出 / 查詢 branches、commits、compare | 所有專案成員（含 `platform_admin`） |
+| 建立 branch (`POST /branches`) | 所有專案成員 |
+| 改 branch head 或改名 (`PATCH /branches/:branchId`) | `concertmaster`、`platform_admin` |
+| 刪除 branch (`DELETE /branches/:branchId`) | `concertmaster`、`platform_admin`；不可刪 `is_default` |
+| 建立 commit (`POST /branches/:branchId/commits`) | `concertmaster`、`principal`、`platform_admin`；`principal` 只能 commit 自己聲部的 score |
+| 合併 branch (`POST /merges`) | `concertmaster`、`platform_admin`（對應「群主才可以合併」） |
+
+可視範圍補充：`principal` / `member` 呼叫 `GET /commits/:commitId` 與
+`GET /commits/compare` 時，回傳的 `score_versions` 會自動只保留**自己聲部**的
+紀錄；commit metadata（message、author、時間）仍可看到。
+
+### 1) `GET /projects/:projectId/branches`（列出分支）
+
+用途：列出該專案所有分支。回傳會把 `is_default = true` 的分支排在最前面。
+
+Response `data`（陣列）：
+
+```json
+[
+  {
+    "id": "uuid",
+    "project_id": "uuid",
+    "name": "main",
+    "head_commit_id": "uuid | null",
+    "is_default": true,
+    "created_by": "uuid",
+    "created_at": "iso-timestamp",
+    "updated_at": "iso-timestamp"
+  }
+]
+```
+
+### 2) `POST /projects/:projectId/branches`（建立分支）
+
+用途：建立新分支。專案第一條分支會自動成為 `is_default = true`。
+
+Request body：
+
+```json
+{
+  "name": "feature/bowing-fix",
+  "fromCommitId": "uuid"
+}
+```
+
+必填參數：
+
+- `name`：分支名稱；同一專案內不可重複，否則回 `409`。
+
+可選參數：
+
+- `fromCommitId`：自哪個 commit 分出來；若提供必須屬於同一專案，否則回 `404`。未提供時 `head_commit_id` 為 `null`（空分支）。
+
+### 3) `GET /projects/:projectId/branches/:branchId`
+
+用途：取得單一分支詳細資料。分支不存在回 `404`。
+
+### 4) `PATCH /projects/:projectId/branches/:branchId`（版本切換 / 改名）
+
+用途：對應「版本切換」。把 `head_commit_id` 移到任一 commit，或重新命名分支。
+僅 `concertmaster`、`platform_admin` 可操作，否則回 `403`。
+
+Request body（兩個欄位至少要有一個）：
+
+```json
+{
+  "headCommitId": "uuid | null",
+  "name": "new-name"
+}
+```
+
+注意：
+
+- `headCommitId` 必須是同專案的 commit，否則回 `404`。
+- `headCommitId: null` 可清空（回到尚未 commit 的狀態）。
+- 沒有任何可更新欄位回 `400`。
+
+### 5) `DELETE /projects/:projectId/branches/:branchId`（刪除分支）
+
+權限：`concertmaster`、`platform_admin`。
+
+注意：
+
+- 不能刪除 `is_default = true` 的分支，會回 `400`。
+- 連動：相關 commits（`on delete cascade`）與其 `score_versions` 會一併移除。
+
+### 6) `GET /projects/:projectId/branches/:branchId/commits`（歷代版本）
+
+用途：對應「歷代版本」。列出指定分支上所有 commits（依 `created_at` 倒序）。
+
+Response `data`（陣列）：
+
+```json
+[
+  {
+    "id": "uuid",
+    "project_id": "uuid",
+    "branch_id": "uuid",
+    "parent_commit_id": "uuid | null",
+    "merge_parent_commit_id": "uuid | null",
+    "message": "string",
+    "author_user_id": "uuid",
+    "created_at": "iso-timestamp"
+  }
+]
+```
+
+### 7) `POST /projects/:projectId/branches/:branchId/commits`（建立 commit）
+
+用途：在指定分支上新增一個 commit，並把指定的 score 變更打成 snapshot。
+
+權限：`concertmaster`、`principal`、`platform_admin`。`principal` 不能對非自己
+聲部的 score 建立 commit，否則回 `403`。
+
+Request body：
+
+```json
+{
+  "message": "Update violin1 bowing in m. 10-15",
+  "scoreSnapshots": [
+    {
+      "scoreId": "uuid",
+      "storageBucket": "scores",
+      "storagePath": "projects/<id>/violin1/...musicxml",
+      "fileType": "musicxml",
+      "originalFilename": "violin1-r3.musicxml",
+      "mimeType": "application/vnd.recordare.musicxml+xml",
+      "fileSizeBytes": 182044
+    }
+  ]
+}
+```
+
+必填參數：
+
+- `message`：commit 訊息。
+- `scoreSnapshots`：非空陣列。每筆必須含 `scoreId`、`storagePath`、`fileType`（`musicxml` / `xml` / `mxl`）。`storageBucket` 預設 `scores`。
+
+可選參數（每筆 snapshot）：
+
+- `originalFilename`、`mimeType`、`fileSizeBytes`：metadata，未提供視為 `null`。
+
+行為：
+
+- 新 commit 的 `parent_commit_id` = 該分支當下的 `head_commit_id`。
+- score_versions 內容 = 父 commit 的 score_versions ∪ 本次 `scoreSnapshots`（同 `scoreId` 時以本次為準），確保每個 commit 都包含所有 scores 的完整快照。
+- 成功後該分支的 `head_commit_id` 會更新為新 commit。
+
+Response `data`：
+
+```json
+{
+  "id": "uuid",
+  "project_id": "uuid",
+  "branch_id": "uuid",
+  "parent_commit_id": "uuid | null",
+  "merge_parent_commit_id": null,
+  "message": "string",
+  "author_user_id": "uuid",
+  "created_at": "iso-timestamp",
+  "score_versions": [
+    {
+      "id": "uuid",
+      "commit_id": "uuid",
+      "score_id": "uuid",
+      "storage_bucket": "scores",
+      "storage_path": "string",
+      "file_type": "musicxml",
+      "original_filename": "string | null",
+      "mime_type": "string | null",
+      "file_size_bytes": 123,
+      "created_at": "iso-timestamp"
+    }
+  ]
+}
+```
+
+### 8) `GET /projects/:projectId/commits/:commitId`（單一 commit）
+
+用途：取得 commit 詳細資料（含 score_versions）。`principal` / `member`
+僅看得到自己聲部的 score_versions。
+
+Response 同 `POST /commits` 的回傳格式。
+
+### 9) `GET /projects/:projectId/commits/compare`（比較版本）
+
+用途：對應「比較版本」。比對兩個 commits 的 score_versions 差異。
+
+Query string：
+
+- `from`（必填）：起點 commitId（必須屬於同專案）。
+- `to`（必填）：終點 commitId（必須屬於同專案）。
+
+Response `data`：
+
+```json
+{
+  "from": { "id": "uuid", "...": "..." },
+  "to": { "id": "uuid", "...": "..." },
+  "added":     [{ "scoreId": "uuid", "from": null, "to": { "...": "..." } }],
+  "removed":   [{ "scoreId": "uuid", "from": { "...": "..." }, "to": null }],
+  "modified":  [{ "scoreId": "uuid", "from": { "...": "..." }, "to": { "...": "..." } }],
+  "unchanged": [{ "scoreId": "uuid", "from": { "...": "..." }, "to": { "...": "..." } }]
+}
+```
+
+分類規則：以 `(storage_bucket, storage_path)` 是否相等判斷 `modified` 與
+`unchanged`。`principal` / `member` 只會看到自己聲部的 scoreId。
+
+### 10) `POST /projects/:projectId/merges`（合併分支）
+
+用途：對應「分支合併」。把 `fromBranchId` 合進 `intoBranchId`，在後者上產生
+一個 merge commit。
+
+權限：僅 `concertmaster`、`platform_admin`（對應 functional map 中的
+「群主才可以合併」）。
+
+Request body：
+
+```json
+{
+  "fromBranchId": "uuid",
+  "intoBranchId": "uuid",
+  "message": "Merge feature/bowing-fix into main"
+}
+```
+
+必填參數：
+
+- `fromBranchId`、`intoBranchId`：兩個分支必須屬於同一個 `projectId` 且不可相同。
+- `fromBranch` 必須已有至少一個 commit（`head_commit_id != null`），否則回 `400`。
+
+可選參數：
+
+- `message`：merge commit 訊息；未提供時自動產生
+  `"Merge branch '<from.name>' into '<into.name>'"`。
+
+行為：
+
+- 新 merge commit 寫到 `intoBranchId`，`parent_commit_id` = `intoBranch.head`、
+  `merge_parent_commit_id` = `fromBranch.head`。
+- score_versions 合併策略：以 `intoBranch.head` 為底，被 `fromBranch.head` 的
+  版本覆蓋（即同 `scoreId` 時 `fromBranch` 勝出）。MVP 階段不在 merge API 內
+  做 conflict detection；如需偵測請在合併前自行呼叫 `GET /commits/compare`。
+- 成功後 `intoBranch.head_commit_id` 更新為這個 merge commit。
+
+Response 同 `POST /commits` 的回傳格式。
+
+---
+
 ## 四、目前 scores 欄位（前端常用）
 
 前端展示或開啟檔案時，請使用以下欄位：
