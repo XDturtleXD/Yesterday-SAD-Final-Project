@@ -168,9 +168,10 @@ Yesterday-SAD-Final-Project/
 │       │   ├── index.js           # /api 入口；掛載 /auth /projects /scores /health
 │       │   ├── authRoutes.js
 │       │   ├── projectRoutes.js
-│       │   └── scoreRoutes.js
-│       ├── controllers/           # auth / project / score / health
-│       ├── services/              # 商業邏輯（auth / project / score / health）
+│       │   ├── scoreRoutes.js
+│       │   └── historyRoutes.js   # branches / commits / merges（git-like 歷史）
+│       ├── controllers/           # auth / project / score / history / health
+│       ├── services/              # 商業邏輯（auth / project / score / history / health）
 │       ├── middlewares/
 │       │   ├── authMiddleware.js              # Bearer JWT 驗證
 │       │   ├── projectPermissionMiddleware.js # 專案成員權限
@@ -302,7 +303,7 @@ GOOGLE_CLIENT_ID=your-google-oauth-client-id.apps.googleusercontent.com
 5. **版本與分支**：可建立分支、比較版本、切換版本；分支合併權限保留給群主。
 6. **總譜合成與輸出**：在 Full Score 面板選擇要套用的各聲部版本，預覽後匯出 MusicXML 或 PDF。
 
-> 詳細的編輯器互動、衝突偵測 UI 仍在開發中，後端目前已完成認證、專案、邀請、樂譜列表/讀取等 MVP API；編輯類 API 預留 `canEditScoreMiddleware` 但尚未掛上路由。
+> 詳細的編輯器互動、衝突偵測 UI 仍在開發中。後端目前已完成認證、專案、邀請、樂譜列表/讀取，以及對應 functional map「歷史紀錄_用git_」的分支／commit／比較／合併 API（合併權限限定 concertmaster）。實際的 score 編輯類 API 仍然只預留 `canEditScoreMiddleware`，尚未掛上路由 —— 註記內容會以 commit + score_versions 的方式被快照保存。
 
 ---
 
@@ -324,6 +325,16 @@ GOOGLE_CLIENT_ID=your-google-oauth-client-id.apps.googleusercontent.com
 | `POST` | `/api/projects/join-by-code` | 用邀請碼加入專案 |
 | `GET` | `/api/projects/:projectId/scores` | 列出專案中可見的樂譜 |
 | `GET` | `/api/scores/:scoreId` | 取得單一樂譜 metadata |
+| `GET` | `/api/projects/:projectId/branches` | 列出分支 |
+| `POST` | `/api/projects/:projectId/branches` | 建立分支（body `{ name, fromCommitId? }`） |
+| `GET` | `/api/projects/:projectId/branches/:branchId` | 取得分支 |
+| `PATCH` | `/api/projects/:projectId/branches/:branchId` | 版本切換 / 改名（concertmaster） |
+| `DELETE` | `/api/projects/:projectId/branches/:branchId` | 刪除分支（concertmaster；不可刪 default） |
+| `GET` | `/api/projects/:projectId/branches/:branchId/commits` | 列出該分支的歷代版本 |
+| `POST` | `/api/projects/:projectId/branches/:branchId/commits` | 新增 commit（concertmaster / principal） |
+| `GET` | `/api/projects/:projectId/commits/:commitId` | 取得 commit 詳情與 score_versions |
+| `GET` | `/api/projects/:projectId/commits/compare?from=&to=` | 比較兩個 commits |
+| `POST` | `/api/projects/:projectId/merges` | 合併分支（**僅 concertmaster**） |
 
 回應一律包含 `success` / `message` / `data` / `error` 四個欄位。需要登入的 API 必須帶：
 

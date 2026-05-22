@@ -253,3 +253,91 @@ from public.scores sc
 join public.projects p on p.id = sc.project_id
 join public.sections s on s.id = sc.section_id
 join public.users u on u.id = sc.created_by;
+
+-- ================================================================
+-- Version control (git-like history)
+-- ================================================================
+-- Tables:
+--   branches        : per-project named pointers to a head commit
+--   commits         : append-only history; one parent (or two on merge)
+--   score_versions  : snapshot of every score's Storage metadata at a commit
+--
+-- Application-enforced rules (in Node service layer):
+--   - Only concertmaster or platform_admin can merge branches.
+--   - Only concertmaster, principal, or platform_admin can create commits.
+--   - principal can only commit changes for scores in their own section_id.
+--   - Default branch (is_default = true) cannot be deleted; one per project.
+
+create table if not exists public.branches (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references public.projects(id) on delete cascade,
+  name text not null,
+  head_commit_id uuid,
+  is_default boolean not null default false,
+  created_by uuid not null references public.users(id) on delete restrict,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint branches_project_name_key unique (project_id, name)
+);
+
+create table if not exists public.commits (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references public.projects(id) on delete cascade,
+  branch_id uuid not null references public.branches(id) on delete cascade,
+  parent_commit_id uuid references public.commits(id) on delete set null,
+  merge_parent_commit_id uuid references public.commits(id) on delete set null,
+  message text not null,
+  author_user_id uuid not null references public.users(id) on delete restrict,
+  created_at timestamptz not null default now()
+);
+
+-- branches.head_commit_id references commits.id; add the FK after both tables
+-- exist to avoid circular-create issues.
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'branches_head_commit_id_fkey'
+      and conrelid = 'public.branches'::regclass
+  ) then
+    alter table public.branches
+      add constraint branches_head_commit_id_fkey
+      foreign key (head_commit_id) references public.commits(id) on delete set null;
+  end if;
+end $$;
+
+create table if not exists public.score_versions (
+  id uuid primary key default gen_random_uuid(),
+  commit_id uuid not null references public.commits(id) on delete cascade,
+  score_id uuid not null references public.scores(id) on delete cascade,
+  storage_bucket text not null default 'scores',
+  storage_path text not null,
+  file_type text not null check (file_type in ('musicxml', 'xml', 'mxl')),
+  original_filename text,
+  mime_type text,
+  file_size_bytes bigint check (file_size_bytes is null or file_size_bytes >= 0),
+  created_at timestamptz not null default now(),
+  constraint score_versions_commit_score_key unique (commit_id, score_id)
+);
+
+-- At most one default branch per project.
+create unique index if not exists branches_one_default_per_project_idx
+  on public.branches(project_id)
+  where is_default = true;
+
+create index if not exists idx_branches_project_id on public.branches(project_id);
+create index if not exists idx_branches_head_commit_id on public.branches(head_commit_id);
+
+create index if not exists idx_commits_project_id on public.commits(project_id);
+create index if not exists idx_commits_branch_id on public.commits(branch_id);
+create index if not exists idx_commits_parent_commit_id on public.commits(parent_commit_id);
+create index if not exists idx_commits_merge_parent_commit_id on public.commits(merge_parent_commit_id);
+create index if not exists idx_commits_created_at on public.commits(created_at);
+
+create index if not exists idx_score_versions_commit_id on public.score_versions(commit_id);
+create index if not exists idx_score_versions_score_id on public.score_versions(score_id);
+
+drop trigger if exists trg_branches_set_updated_at on public.branches;
+create trigger trg_branches_set_updated_at
+before update on public.branches
+for each row execute function public.set_updated_at();
