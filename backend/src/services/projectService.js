@@ -266,10 +266,32 @@ const joinProjectByInviteCode = async ({ inviteCode, sectionId }, requestUser) =
   return createdMember;
 };
 
+const listProjectMembers = async (projectId, requestUser) => {
+  ensureSupabaseReady();
+
+  await getProjectByIdForMember(projectId, requestUser);
+
+  const { data, error } = await supabase
+    .from("project_member_details")
+    .select(
+      "project_member_id, project_id, user_id, user_name, user_email, section_id, section_code, section_name, role, created_at, updated_at",
+    )
+    .eq("project_id", projectId)
+    .order("section_code", { ascending: true })
+    .order("role", { ascending: true });
+
+  if (error) {
+    throw new AppError("Failed to fetch project members", 500, error);
+  }
+
+  return data || [];
+};
+
 module.exports = {
   createProject,
   listUserProjects,
   getProjectByIdForMember,
+  listProjectMembers,
   checkProjectMembership,
   isPlatformAdmin,
   createProjectInviteCode,

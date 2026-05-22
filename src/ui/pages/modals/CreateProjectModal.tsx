@@ -1,70 +1,77 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { ApiError } from '../../../api/client'
 import { useAppState } from '../../../state/AppState'
 import { Button } from '../../primitives/Button'
 import { Modal } from '../../primitives/Modal'
 
-const defaultInstruments = ['violin', 'viola', 'cello', 'flute', 'clarinet', 'trumpet', 'piano']
-
 export function CreateProjectModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { createProject } = useAppState()
+  const { createProject, loadSections, sections, sectionsLoading } = useAppState()
   const navigate = useNavigate()
+  const [name, setName] = useState('')
+  const [description, setDescription] = useState('')
+  const [sectionId, setSectionId] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
 
-  const [name, setName] = useState('New Ensemble Project')
-  const [description, setDescription] = useState('Prototype project created locally (no backend).')
-  const [ensembleType, setEnsembleType] = useState('orchestra')
-  const [instruments, setInstruments] = useState<string[]>(defaultInstruments.slice(0, 4))
-  const [inviteMembers, setInviteMembers] = useState('mia@example.com, ava@example.com')
-
-  const inviteEmails = useMemo(
-    () =>
-      inviteMembers
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean),
-    [inviteMembers],
-  )
+  useEffect(() => {
+    if (open) {
+      loadSections().then((rows) => {
+        if (rows.length > 0) {
+          setSectionId((prev) => prev || rows[0].id)
+        }
+      })
+    }
+  }, [open, loadSections])
 
   return (
     <Modal
-      title="Create project (simulated)"
+      title="建立專案"
       open={open}
       onClose={onClose}
       footer={
         <div className="flex justify-end gap-2">
-          <Button variant="secondary" onClick={onClose}>
+          <Button variant="secondary" onClick={onClose} disabled={loading}>
             Cancel
           </Button>
           <Button
-            onClick={() => {
-              const p = createProject({
-                name,
-                description,
-                ensembleType,
-                initialInstruments: instruments,
-                inviteEmails,
-              })
-              onClose()
-              navigate(`/projects/${p.id}`)
+            disabled={loading || !name.trim() || !sectionId}
+            onClick={async () => {
+              setError('')
+              setLoading(true)
+              try {
+                const p = await createProject({
+                  name: name.trim(),
+                  description: description.trim(),
+                  sectionId,
+                })
+                onClose()
+                navigate(`/projects/${p.id}`)
+              } catch (err) {
+                setError(err instanceof ApiError ? err.message : '建立專案失敗')
+              } finally {
+                setLoading(false)
+              }
             }}
           >
-            Create
+            {loading ? '建立中…' : 'Create'}
           </Button>
         </div>
       }
     >
       <div className="grid gap-4">
         <div>
-          <div className="text-sm font-medium text-slate-800">Project name</div>
+          <div className="text-sm font-medium text-slate-800">專案名稱</div>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
+            placeholder="弦樂團期末音樂會"
             className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
           />
         </div>
 
         <div>
-          <div className="text-sm font-medium text-slate-800">Description</div>
+          <div className="text-sm font-medium text-slate-800">描述</div>
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
@@ -73,52 +80,31 @@ export function CreateProjectModal({ open, onClose }: { open: boolean; onClose: 
           />
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <div className="text-sm font-medium text-slate-800">Ensemble type</div>
-            <select
-              value={ensembleType}
-              onChange={(e) => setEnsembleType(e.target.value)}
-              className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
-            >
-              <option value="orchestra">orchestra</option>
-              <option value="band">band</option>
-              <option value="chamber group">chamber group</option>
-            </select>
-          </div>
-          <div>
-            <div className="text-sm font-medium text-slate-800">Initial instruments</div>
-            <select
-              multiple
-              value={instruments}
-              onChange={(e) =>
-                setInstruments(Array.from(e.target.selectedOptions).map((o) => o.value))
-              }
-              className="mt-1 h-28 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm"
-            >
-              {defaultInstruments.map((i) => (
-                <option key={i} value={i}>
-                  {i}
-                </option>
-              ))}
-            </select>
-            <div className="mt-1 text-xs text-slate-500">Hold ⌘/Ctrl to multi-select.</div>
+        <div>
+          <div className="text-sm font-medium text-slate-800">你的聲部</div>
+          <select
+            value={sectionId}
+            onChange={(e) => setSectionId(e.target.value)}
+            disabled={sectionsLoading || sections.length === 0}
+            className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+          >
+            {sections.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+          <div className="mt-1 text-xs text-slate-500">
+            建立者將自動成為此聲部的 concertmaster。
           </div>
         </div>
 
-        <div>
-          <div className="text-sm font-medium text-slate-800">Invite members (emails)</div>
-          <input
-            value={inviteMembers}
-            onChange={(e) => setInviteMembers(e.target.value)}
-            className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
-          />
-          <div className="mt-1 text-xs text-slate-500">
-            Simulation only. Invitations show as a toast; no real emails are sent.
+        {error && (
+          <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {error}
           </div>
-        </div>
+        )}
       </div>
     </Modal>
   )
 }
-

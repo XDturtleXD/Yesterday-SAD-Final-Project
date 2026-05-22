@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useAppState } from '../../state/AppState'
+import { useAppState, useRequiredUser } from '../../state/AppState'
 import { Card } from '../primitives/Card'
 import { Button } from '../primitives/Button'
 import { Badge } from '../primitives/Badge'
@@ -8,7 +8,8 @@ import { CreateProjectModal } from './modals/CreateProjectModal'
 import { FolderKanban, Plus, Music2 } from 'lucide-react'
 
 export function HomePage() {
-  const { currentUser, projects } = useAppState()
+  const { projects, projectsLoading } = useAppState()
+  const currentUser = useRequiredUser()
   const navigate = useNavigate()
   const [createOpen, setCreateOpen] = useState(false)
 
@@ -24,12 +25,8 @@ export function HomePage() {
                 <Music2 className="size-4" />
               </div>
               <div>
-                <div className="text-2xl font-semibold text-slate-950">
-                  Yesterday
-                </div>
-                <div className="text-sm text-slate-600">
-                  Ensemble score workspace.
-                </div>
+                <div className="text-2xl font-semibold text-slate-950">Yesterday</div>
+                <div className="text-sm text-slate-600">Ensemble score workspace.</div>
               </div>
             </div>
           </div>
@@ -46,39 +43,52 @@ export function HomePage() {
         </div>
 
         <div className="mt-4 flex flex-wrap gap-2 text-sm text-slate-600">
-          <Badge>{projects.length} projects</Badge>
+          <Badge>{projectsLoading ? '…' : projects.length} projects</Badge>
           <Badge tone="info">{currentUser.role}</Badge>
         </div>
       </section>
 
       <section className="space-y-3">
         <div className="flex items-center justify-between">
-          <div>
-            <div className="text-sm font-semibold text-slate-900">Recent projects</div>
-          </div>
+          <div className="text-sm font-semibold text-slate-900">Recent projects</div>
           <Button size="sm" variant="ghost" onClick={() => navigate('/projects')}>
             All projects
           </Button>
         </div>
 
-        <div className="grid gap-3 md:grid-cols-3">
-          {preview.map((p) => (
-            <Card key={p.id} className="p-4 transition hover:border-slate-300 hover:shadow-md">
-              <div className="min-w-0">
-                <div className="truncate text-sm font-semibold text-slate-950">{p.name}</div>
-                <div className="mt-1 line-clamp-2 text-sm text-slate-600">{p.description}</div>
-              </div>
-              <div className="mt-3 text-xs text-slate-500">
-                {p.ensembleType} · {p.scores.length} scores · {p.currentBranch}
-              </div>
-              <div className="mt-4">
-                <Button size="sm" onClick={() => navigate(`/projects/${p.id}`)}>
-                  Open
-                </Button>
-              </div>
-            </Card>
-          ))}
-        </div>
+        {projects.length === 0 && !projectsLoading ? (
+          <Card className="p-6">
+            <div className="text-sm font-semibold text-slate-900">尚無專案</div>
+            <div className="mt-1 text-sm text-slate-600">
+              建立新專案，或使用邀請碼加入既有樂團。
+            </div>
+            <div className="mt-4">
+              <Button onClick={() => setCreateOpen(true)}>
+                <Plus className="size-4" />
+                Create project
+              </Button>
+            </div>
+          </Card>
+        ) : (
+          <div className="grid gap-3 md:grid-cols-3">
+            {preview.map((p) => (
+              <Card key={p.id} className="p-4 transition hover:border-slate-300 hover:shadow-md">
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-semibold text-slate-950">{p.name}</div>
+                  <div className="mt-1 line-clamp-2 text-sm text-slate-600">{p.description}</div>
+                </div>
+                <div className="mt-3 text-xs text-slate-500">
+                  Updated {p.updatedAt.slice(0, 10)}
+                </div>
+                <div className="mt-4">
+                  <Button size="sm" onClick={() => navigate(`/projects/${p.id}`)}>
+                    Open
+                  </Button>
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
       </section>
 
       <CreateProjectModal open={createOpen} onClose={() => setCreateOpen(false)} />

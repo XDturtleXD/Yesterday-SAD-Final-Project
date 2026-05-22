@@ -11,10 +11,10 @@ export function FullScorePanel({ project }: { project: Project }) {
   const [generated, setGenerated] = useState(false)
   const [exportOpen, setExportOpen] = useState<null | 'musescore' | 'pdf'>(null)
 
-  const instruments = useMemo(() => {
-    const set = new Set(project.scores.map((s) => s.instrument).filter((i) => i !== 'full'))
+  const sections = useMemo(() => {
+    const set = new Set(project.members.map((m) => m.sectionName))
     return Array.from(set)
-  }, [project.scores])
+  }, [project.members])
 
   return (
     <div className="space-y-4">
@@ -33,10 +33,10 @@ export function FullScorePanel({ project }: { project: Project }) {
           </div>
 
           <div className="mt-4 space-y-2">
-            {instruments.length === 0 ? (
-              <div className="text-sm text-slate-500">No instrument parts yet.</div>
+            {sections.length === 0 ? (
+              <div className="text-sm text-slate-500">No sections with scores yet.</div>
             ) : (
-              instruments.map((i) => (
+              sections.map((i) => (
                 <div
                   key={i}
                   className="flex items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-3 py-2"
@@ -108,8 +108,7 @@ export function FullScorePanel({ project }: { project: Project }) {
               <div className="space-y-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge tone="success">Generated</Badge>
-                  <Badge tone="info">Branch: {project.currentBranch}</Badge>
-                  <Badge>Commit: {project.currentCommitId}</Badge>
+                  <Badge tone="info">Branch: {project.currentBranchName}</Badge>
                 </div>
                 <div className="grid gap-3 md:grid-cols-2">
                   <MockSystemStaff title="Strings" lines={['Violin', 'Viola', 'Cello']} />

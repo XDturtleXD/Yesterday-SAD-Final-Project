@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAppState } from '../../state/AppState'
 import { Button } from '../primitives/Button'
@@ -37,10 +37,14 @@ type Tool =
 export function ScoreEditorPage() {
   const { projectId, scoreId } = useParams()
   const navigate = useNavigate()
-  const { currentUser, getProject, getScore, addCommit, addToast } = useAppState()
+  const { getProject, getScore, loadProjectDetail, addToast } = useAppState()
 
   const project = projectId ? getProject(projectId) : undefined
   const score = projectId && scoreId ? getScore(projectId, scoreId) : undefined
+
+  useEffect(() => {
+    if (projectId) loadProjectDetail(projectId)
+  }, [projectId, loadProjectDetail])
 
   const [tool, setTool] = useState<Tool>('draw')
   const [zoom, setZoom] = useState(100)
@@ -56,8 +60,7 @@ export function ScoreEditorPage() {
     return ids
   }, [])
 
-  const title = score?.name ?? 'Score editor'
-  const instrument = score?.instrument ?? '—'
+  const title = score?.title ?? 'Score editor'
 
   if (!project || !score) {
     return (
@@ -81,8 +84,8 @@ export function ScoreEditorPage() {
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <div className="truncate text-sm font-semibold text-slate-900">{title}</div>
-              <Badge tone="info">Instrument: {instrument}</Badge>
-              <Badge>Branch: {project.currentBranch}</Badge>
+              <Badge tone="info">{score.fileType}</Badge>
+              <Badge>Branch: {project.currentBranchName}</Badge>
               <Badge>Zoom: {zoom}%</Badge>
             </div>
             <div className="mt-1 text-xs text-slate-500">
@@ -284,17 +287,8 @@ export function ScoreEditorPage() {
             </Button>
             <Button
               onClick={() => {
-                const now = new Date().toISOString().slice(0, 16).replace('T', ' ')
-                addCommit(project.id, {
-                  projectId: project.id,
-                  branch: project.currentBranch,
-                  message: commitMessage || 'Updated markings (prototype)',
-                  authorUserId: currentUser.id,
-                  timestamp: now,
-                  changedScoreId: score.id,
-                })
                 setCommitOpen(false)
-                addToast({ title: 'Commit created (simulated)', message: commitMessage })
+                addToast({ title: 'Changes saved locally', message: commitMessage })
                 navigate(`/projects/${project.id}?tab=versions`)
               }}
             >

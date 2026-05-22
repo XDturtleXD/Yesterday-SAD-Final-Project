@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { useAppState } from '../../state/AppState'
+import { ApiError } from '../../api/client'
+import { useAppState, useRequiredUser } from '../../state/AppState'
 import { Badge } from '../primitives/Badge'
 import { Button } from '../primitives/Button'
 import { Card } from '../primitives/Card'
@@ -17,35 +18,90 @@ type TabKey = 'overview' | 'scores' | 'members' | 'branches' | 'versions' | 'ful
 
 export function ProjectDetailPage() {
   const { projectId } = useParams()
-  const { currentUser, getProject, getUser } = useAppState()
+  const { getProject, loadProjectDetail, getMemberDisplayName, createInviteCode, addToast } =
+    useAppState()
+  const currentUser = useRequiredUser()
   const navigate = useNavigate()
   const [sp] = useSearchParams()
   const tab = (sp.get('tab') as TabKey) || 'overview'
   const [inviteOpen, setInviteOpen] = useState(false)
+  const [inviteCode, setInviteCode] = useState('')
+  const [inviteLoading, setInviteLoading] = useState(false)
+  const [accessDenied, setAccessDenied] = useState(false)
+  const [loading, setLoading] = useState(true)
 
   const project = projectId ? getProject(projectId) : undefined
+
+  useEffect(() => {
+    if (!projectId) return
+    setLoading(true)
+    setAccessDenied(false)
+    loadProjectDetail(projectId)
+      .then((p) => {
+        if (!p) setAccessDenied(true)
+      })
+      .catch((err) => {
+        if (err instanceof ApiError && (err.status === 403 || err.status === 404)) {
+          setAccessDenied(true)
+        }
+      })
+      .finally(() => setLoading(false))
+  }, [projectId, loadProjectDetail])
 
   const myMember = useMemo(
     () => project?.members.find((m) => m.userId === currentUser.id),
     [project, currentUser.id],
   )
-  const myRole = myMember?.roles.join(', ') ?? (currentUser.role === 'admin' ? 'admin' : 'viewer')
-  const myInstruments = myMember?.instruments.join(', ') ?? '—'
-  const currentCommit = project?.commits.find((c) => c.id === project?.currentCommitId)
+  const myRole = myMember?.role ?? (currentUser.role === 'admin' ? 'admin' : 'viewer')
+  const mySection = myMember?.sectionName ?? '—'
+  const currentCommit = project?.commits.find(
+    (c) => c.id === project.branches.find((b) => b.id === project.currentBranchId)?.headCommitId,
+  )
 
-  if (!project) {
+  const canInvite =
+    currentUser.role === 'admin' ||
+    myMember?.role === 'concertmaster' ||
+    myMember?.role === 'principal'
+
+  if (loading || project?.detailLoading) {
     return (
       <Card className="p-6">
-        <div className="text-sm font-semibold text-slate-900">Project not found</div>
+        <div className="text-sm text-slate-600">Loading project…</div>
+      </Card>
+    )
+  }
+
+  if (!project || accessDenied) {
+    return (
+      <Card className="p-6">
+        <div className="text-sm font-semibold text-slate-900">
+          {accessDenied ? '無權存取此專案' : 'Project not found'}
+        </div>
         <div className="mt-1 text-sm text-slate-600">
-          Go back to the <Link className="underline" to="/projects">project list</Link>.
+          Go back to the{' '}
+          <Link className="underline" to="/projects">
+            project list
+          </Link>
+          .
         </div>
       </Card>
     )
   }
 
-  const isOwner = currentUser.role === 'owner' || project.members.some((m) => m.userId === currentUser.id && m.roles.includes('owner'))
-  const isAdmin = currentUser.role === 'admin'
+  if (!myMember && currentUser.role !== 'admin') {
+    return (
+      <Card className="p-6">
+        <div className="text-sm font-semibold text-slate-900">你不是此專案的成員</div>
+        <div className="mt-1 text-sm text-slate-600">
+          Go back to the{' '}
+          <Link className="underline" to="/projects">
+            project list
+          </Link>
+          .
+        </div>
+      </Card>
+    )
+  }
 
   return (
     <div className="space-y-5">
@@ -55,18 +111,18 @@ export function ProjectDetailPage() {
             <div className="truncate text-xl font-semibold text-slate-950">{project.name}</div>
             <Badge tone="info">
               <GitBranch className="mr-1 size-3" />
-              {project.currentBranch}
+              {project.currentBranchName}
             </Badge>
           </div>
           <div className="mt-1 text-sm text-slate-600">{project.description}</div>
           <div className="mt-2 text-xs text-slate-500">
-            {project.ensembleType} · {project.members.length} members · {project.scores.length} scores · {myRole}
-            {myInstruments !== '—' ? ` · ${myInstruments}` : ''}
+            {project.members.length} members · {project.scores.length} scores · {myRole}
+            {mySection !== '—' ? ` · ${mySection}` : ''}
           </div>
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" onClick={() => setInviteOpen(true)} disabled={!isOwner && !isAdmin}>
+          <Button variant="secondary" onClick={() => setInviteOpen(true)} disabled={!canInvite}>
             <MailPlus className="size-4" />
             Invite member
           </Button>
@@ -84,32 +140,14 @@ export function ProjectDetailPage() {
           <Card className="p-4 lg:col-span-2">
             <div className="text-sm font-semibold text-slate-950">Overview</div>
             {currentCommit && (
-              <div className="mt-1 text-sm text-slate-600">
-                Latest: {currentCommit.message}
-              </div>
+              <div className="mt-1 text-sm text-slate-600">Latest: {currentCommit.message}</div>
             )}
 
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <QuickLink
-                title="Scores"
-                desc="Open parts and MusicXML editing."
-                to={`?tab=scores`}
-              />
-              <QuickLink
-                title="Members"
-                desc="Roles and instruments."
-                to={`?tab=members`}
-              />
-              <QuickLink
-                title="Branches"
-                desc="Switch and merge versions."
-                to={`?tab=branches`}
-              />
-              <QuickLink
-                title="Full score"
-                desc="Preview combined parts."
-                to={`?tab=fullscore`}
-              />
+              <QuickLink title="Scores" desc="Open parts and MusicXML editing." to={`?tab=scores`} />
+              <QuickLink title="Members" desc="Roles and sections." to={`?tab=members`} />
+              <QuickLink title="Branches" desc="Switch and merge versions." to={`?tab=branches`} />
+              <QuickLink title="Full score" desc="Preview combined parts." to={`?tab=fullscore`} />
             </div>
           </Card>
 
@@ -120,10 +158,13 @@ export function ProjectDetailPage() {
                 <div key={c.id} className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
                   <div className="text-sm font-medium text-slate-950">{c.message}</div>
                   <div className="mt-1 text-xs text-slate-500">
-                    {getUser(c.authorUserId)?.name ?? c.authorUserId} · {c.branch}
+                    {getMemberDisplayName(c.authorUserId)} · {c.branchName}
                   </div>
                 </div>
               ))}
+              {project.commits.length === 0 && (
+                <div className="text-sm text-slate-500">尚無 commit 紀錄</div>
+              )}
             </div>
             <div className="mt-3">
               <Button variant="ghost" onClick={() => navigate(`?tab=versions`)}>
@@ -141,36 +182,76 @@ export function ProjectDetailPage() {
       {tab === 'fullscore' && <FullScorePanel project={project} />}
 
       <Modal
-        title="Invite member (simulated)"
+        title="邀請成員"
         open={inviteOpen}
         onClose={() => setInviteOpen(false)}
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setInviteOpen(false)}>
-              Cancel
+              Close
             </Button>
             <Button
-              onClick={() => {
-                setInviteOpen(false)
-                // Simulation only: just a toast for clarity
-                // Actual membership edits are out of scope for this prototype stage.
+              disabled={inviteLoading || !inviteCode}
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(inviteCode)
+                  addToast({ title: '邀請碼已複製', message: '分享給團員即可加入' })
+                } catch {
+                  addToast({ title: '複製失敗', message: '請手動選取邀請碼' })
+                }
               }}
             >
-              Send invite
+              Copy code
             </Button>
           </div>
         }
       >
         <div className="text-sm text-slate-600">
-          Owner-only action. In the prototype, this only demonstrates where invitations would be triggered.
+          將以下邀請碼分享給團員。對方登入後可在 Projects 頁面使用「Join by code」加入。
         </div>
-        <input
-          placeholder="email@example.com"
-          className="mt-3 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
-        />
+        {inviteLoading ? (
+          <div className="mt-3 text-sm text-slate-500">產生邀請碼中…</div>
+        ) : (
+          <textarea
+            readOnly
+            value={inviteCode}
+            rows={4}
+            className="mt-3 w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-xs"
+          />
+        )}
       </Modal>
+
+      {inviteOpen && !inviteCode && !inviteLoading && (
+        <InviteCodeLoader
+          projectId={project.id}
+          createInviteCode={createInviteCode}
+          onLoaded={setInviteCode}
+          onLoading={setInviteLoading}
+        />
+      )}
     </div>
   )
+}
+
+function InviteCodeLoader({
+  projectId,
+  createInviteCode,
+  onLoaded,
+  onLoading,
+}: {
+  projectId: string
+  createInviteCode: (id: string) => Promise<string>
+  onLoaded: (code: string) => void
+  onLoading: (v: boolean) => void
+}) {
+  useEffect(() => {
+    onLoading(true)
+    createInviteCode(projectId)
+      .then(onLoaded)
+      .finally(() => onLoading(false))
+  }, [projectId, createInviteCode, onLoaded, onLoading])
+
+  return null
 }
 
 function Tabs({ tab, projectId }: { tab: TabKey; projectId: string }) {
@@ -203,7 +284,10 @@ function Tabs({ tab, projectId }: { tab: TabKey; projectId: string }) {
 
 function QuickLink({ title, desc, to }: { title: string; desc: string; to: string }) {
   return (
-    <Link to={to} className="group block rounded-lg border border-slate-200 bg-white p-4 transition hover:border-slate-300 hover:bg-slate-50">
+    <Link
+      to={to}
+      className="group block rounded-lg border border-slate-200 bg-white p-4 transition hover:border-slate-300 hover:bg-slate-50"
+    >
       <div className="text-sm font-semibold text-slate-950 group-hover:underline">{title}</div>
       <div className="mt-1 text-sm text-slate-600">{desc}</div>
     </Link>

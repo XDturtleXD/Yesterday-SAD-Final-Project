@@ -4,10 +4,12 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react'
 import * as authApi from '../api/auth'
 import {
+  ApiError,
   clearStoredToken,
   getStoredToken,
   setStoredToken,
@@ -34,56 +36,66 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<ApiUser | null>(null)
   const [isLoading, setIsLoading] = useState(() => !!getStoredToken())
 
-  const completeAuth = useCallback(
-    (payload: AuthPayload) => {
-      setStoredToken(payload.token)
-      setUser(payload.user)
-      applyAuthUser(payload.user)
-    },
-    [applyAuthUser],
-  )
+  const applyAuthUserRef = useRef(applyAuthUser)
+  const clearAuthUserRef = useRef(clearAuthUser)
+  applyAuthUserRef.current = applyAuthUser
+  clearAuthUserRef.current = clearAuthUser
+
+  const completeAuth = useCallback(async (payload: AuthPayload) => {
+    setStoredToken(payload.token)
+    setUser(payload.user)
+    await applyAuthUserRef.current(payload.user)
+  }, [])
 
   const logout = useCallback(() => {
     clearStoredToken()
     setUser(null)
-    clearAuthUser()
-  }, [clearAuthUser])
+    clearAuthUserRef.current()
+  }, [])
 
   useEffect(() => {
     setUnauthorizedHandler(() => {
+      clearStoredToken()
       setUser(null)
-      clearAuthUser()
+      clearAuthUserRef.current()
     })
-  }, [clearAuthUser])
+  }, [])
 
   useEffect(() => {
-    const token = getStoredToken()
-    if (!token) {
-      return
-    }
-
     let cancelled = false
 
-    authApi
-      .getMe()
-      .then((me) => {
+    async function restoreSession() {
+      const token = getStoredToken()
+      if (!token) {
+        setIsLoading(false)
+        return
+      }
+
+      try {
+        const me = await authApi.getMe()
         if (cancelled) return
         setUser(me)
-        applyAuthUser(me)
-      })
-      .catch(() => {
+        void applyAuthUserRef.current(me).catch(() => {
+          // Project loading failure must not invalidate the auth session.
+        })
+      } catch (error) {
         if (cancelled) return
-        clearStoredToken()
-        clearAuthUser()
-      })
-      .finally(() => {
+        if (error instanceof ApiError && error.status === 401) {
+          clearStoredToken()
+          clearAuthUserRef.current()
+          setUser(null)
+        }
+      } finally {
         if (!cancelled) setIsLoading(false)
-      })
+      }
+    }
+
+    void restoreSession()
 
     return () => {
       cancelled = true
     }
-  }, [applyAuthUser, clearAuthUser])
+  }, [])
 
   const value = useMemo<AuthContextValue>(
     () => ({
@@ -92,16 +104,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isLoading,
       login: async (email, password) => {
         const payload = await authApi.login(email, password)
-        completeAuth(payload)
+        await completeAuth(payload)
       },
       register: async (email, password, name) => {
         await authApi.register(email, password, name)
         const payload = await authApi.login(email, password)
-        completeAuth(payload)
+        await completeAuth(payload)
       },
       googleLogin: async (idToken) => {
         const payload = await authApi.googleLogin(idToken)
-        completeAuth(payload)
+        await completeAuth(payload)
       },
       logout,
       isAdmin: user?.system_role === 'platform_admin',

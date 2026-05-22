@@ -48,10 +48,21 @@ const joinByInviteCode = async (req, res, next) => {
   }
 };
 
+const getProjectMembers = async (req, res, next) => {
+  try {
+    const { projectId } = req.params;
+    const members = await projectService.listProjectMembers(projectId, req.user);
+    return sendSuccess(res, members, "Project members fetched successfully");
+  } catch (error) {
+    return next(error);
+  }
+};
+
 module.exports = {
   createProject,
   getProjects,
   getProjectById,
+  getProjectMembers,
   createInviteCode,
   joinByInviteCode,
 };

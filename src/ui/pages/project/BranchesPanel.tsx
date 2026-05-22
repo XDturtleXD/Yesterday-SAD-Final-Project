@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { Project } from '../../../types'
-import { useAppState } from '../../../state/AppState'
+import { useAppState, useRequiredUser } from '../../../state/AppState'
 import { Badge } from '../../primitives/Badge'
 import { Button } from '../../primitives/Button'
 import { Card } from '../../primitives/Card'
@@ -8,17 +8,21 @@ import { Modal } from '../../primitives/Modal'
 import { GitBranch, GitMerge, Repeat2 } from 'lucide-react'
 
 export function BranchesPanel({ project }: { project: Project }) {
-  const { currentUser, createBranch, switchBranch, mergeBranch, addToast } = useAppState()
+  const { createBranch, switchBranch, mergeBranch, addToast } = useAppState()
+  const currentUser = useRequiredUser()
   const [createOpen, setCreateOpen] = useState(false)
   const [mergeOpen, setMergeOpen] = useState(false)
-  const [branchName, setBranchName] = useState('new-branch')
-  const [mergeFrom, setMergeFrom] = useState(project.branches[0] ?? 'main')
-  const [mergeInto, setMergeInto] = useState('main')
+  const [branchName, setBranchName] = useState('')
+  const [mergeFrom, setMergeFrom] = useState(project.currentBranchId)
+  const [mergeInto, setMergeInto] = useState(
+    project.branches.find((b) => b.isDefault)?.id ?? project.currentBranchId,
+  )
+  const [loading, setLoading] = useState(false)
 
   const canMerge = useMemo(() => {
     if (currentUser.role === 'admin') return true
     const me = project.members.find((m) => m.userId === currentUser.id)
-    return !!me?.roles.includes('owner')
+    return me?.role === 'concertmaster'
   }, [currentUser, project.members])
 
   return (
@@ -27,7 +31,7 @@ export function BranchesPanel({ project }: { project: Project }) {
         <div>
           <div className="text-sm font-semibold text-slate-900">Branches / Versions</div>
           <div className="mt-1 text-sm text-slate-600">
-            Create/switch/merge branches (simulated). Only the project owner can merge.
+            建立、切換與合併分支。僅 concertmaster 可合併。
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -46,71 +50,66 @@ export function BranchesPanel({ project }: { project: Project }) {
         <Card className="p-4">
           <div className="text-sm font-semibold text-slate-900">Merge permissions</div>
           <div className="mt-1 text-sm text-slate-600">
-            Your current role cannot merge branches. Switch to “project owner” on the Login page or header role switcher to demo merges.
+            你的角色無法合併分支。僅 concertmaster 或平台管理員可合併。
           </div>
         </Card>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card className="p-4">
-          <div className="flex items-center justify-between">
-            <div className="text-sm font-semibold text-slate-900">Current branch</div>
-            <Badge tone="info">{project.currentBranch}</Badge>
-          </div>
-          <div className="mt-3 space-y-2">
-            {project.branches.map((b) => (
-              <div
-                key={b}
-                className="flex items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-3 py-2"
-              >
-                <div className="flex items-center gap-2">
-                  <div className="text-sm font-medium text-slate-900">{b}</div>
-                  {b === 'main' && <Badge>default</Badge>}
-                  {b === project.currentBranch && <Badge tone="success">active</Badge>}
-                </div>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => {
-                    switchBranch(project.id, b)
-                    addToast({ title: 'Switched branch (simulated)', message: b })
-                  }}
-                >
-                  <Repeat2 className="size-4" />
-                  Switch
-                </Button>
+      <Card className="p-4">
+        <div className="flex items-center justify-between">
+          <div className="text-sm font-semibold text-slate-900">Branches</div>
+          <Badge tone="info">{project.currentBranchName}</Badge>
+        </div>
+        <div className="mt-3 space-y-2">
+          {project.branches.length === 0 && (
+            <div className="text-sm text-slate-500">尚無分支。建立第一個 commit 後會自動產生 default branch。</div>
+          )}
+          {project.branches.map((b) => (
+            <div
+              key={b.id}
+              className="flex items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-3 py-2"
+            >
+              <div className="flex items-center gap-2">
+                <div className="text-sm font-medium text-slate-900">{b.name}</div>
+                {b.isDefault && <Badge>default</Badge>}
+                {b.id === project.currentBranchId && <Badge tone="success">active</Badge>}
               </div>
-            ))}
-          </div>
-        </Card>
-
-        <Card className="p-4">
-          <div className="text-sm font-semibold text-slate-900">Branch graph (mock)</div>
-          <div className="mt-1 text-sm text-slate-600">
-            Visual placeholder for a Git-like branch graph.
-          </div>
-          <pre className="mt-4 overflow-auto rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs leading-5 text-slate-800">
-{mockGraph(project.currentBranch)}
-          </pre>
-        </Card>
-      </div>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => {
+                  switchBranch(project.id, b.id)
+                  addToast({ title: '已切換分支', message: b.name })
+                }}
+              >
+                <Repeat2 className="size-4" />
+                Switch
+              </Button>
+            </div>
+          ))}
+        </div>
+      </Card>
 
       <Modal
-        title="Create branch (simulated)"
+        title="Create branch"
         open={createOpen}
         onClose={() => setCreateOpen(false)}
         footer={
           <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setCreateOpen(false)}>
+            <Button variant="secondary" onClick={() => setCreateOpen(false)} disabled={loading}>
               Cancel
             </Button>
             <Button
-              onClick={() => {
-                const name = branchName.trim()
-                if (!name) return
-                createBranch(project.id, name)
-                setCreateOpen(false)
-                addToast({ title: 'Branch created (simulated)', message: name })
+              disabled={loading || !branchName.trim()}
+              onClick={async () => {
+                setLoading(true)
+                try {
+                  await createBranch(project.id, branchName.trim())
+                  setCreateOpen(false)
+                  addToast({ title: '分支已建立', message: branchName.trim() })
+                } finally {
+                  setLoading(false)
+                }
               }}
             >
               Create
@@ -118,32 +117,34 @@ export function BranchesPanel({ project }: { project: Project }) {
           </div>
         }
       >
-        <div className="text-sm text-slate-600">
-          Creating a branch only updates local mock state.
-        </div>
         <input
           value={branchName}
           onChange={(e) => setBranchName(e.target.value)}
-          className="mt-3 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+          className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
           placeholder="e.g. bowing-update"
         />
       </Modal>
 
       <Modal
-        title="Merge branch (simulated)"
+        title="Merge branch"
         open={mergeOpen}
         onClose={() => setMergeOpen(false)}
         footer={
           <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setMergeOpen(false)}>
+            <Button variant="secondary" onClick={() => setMergeOpen(false)} disabled={loading}>
               Cancel
             </Button>
             <Button
-              disabled={!canMerge}
-              onClick={() => {
-                mergeBranch(project.id, mergeFrom, mergeInto)
-                setMergeOpen(false)
-                addToast({ title: 'Merged (simulated)', message: `${mergeFrom} → ${mergeInto}` })
+              disabled={!canMerge || loading}
+              onClick={async () => {
+                setLoading(true)
+                try {
+                  await mergeBranch(project.id, mergeFrom, mergeInto)
+                  setMergeOpen(false)
+                  addToast({ title: '合併完成' })
+                } finally {
+                  setLoading(false)
+                }
               }}
             >
               Confirm merge
@@ -151,10 +152,7 @@ export function BranchesPanel({ project }: { project: Project }) {
           </div>
         }
       >
-        <div className="text-sm text-slate-600">
-          Owner-only. This creates a mock merge commit and switches to the target branch.
-        </div>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <div className="text-sm font-medium text-slate-800">From</div>
             <select
@@ -163,8 +161,8 @@ export function BranchesPanel({ project }: { project: Project }) {
               className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
             >
               {project.branches.map((b) => (
-                <option key={b} value={b}>
-                  {b}
+                <option key={b.id} value={b.id}>
+                  {b.name}
                 </option>
               ))}
             </select>
@@ -177,32 +175,14 @@ export function BranchesPanel({ project }: { project: Project }) {
               className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
             >
               {project.branches.map((b) => (
-                <option key={b} value={b}>
-                  {b}
+                <option key={b.id} value={b.id}>
+                  {b.name}
                 </option>
               ))}
             </select>
           </div>
         </div>
-
-        {!canMerge && (
-          <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-            Permission warning: only the project owner can merge branches.
-          </div>
-        )}
       </Modal>
     </div>
   )
-}
-
-function mockGraph(activeBranch: string) {
-  return [
-    '*   c3 (main) Merge: violin-section-revision → main',
-    '|\\',
-    `| * c2 (${activeBranch === 'violin-section-revision' ? activeBranch : 'violin-section-revision'}) "Updated violin bowing for measures 12–18"`,
-    '| |',
-    `| * c1 (${activeBranch === 'bowing-update' ? activeBranch : 'bowing-update'}) "Adjusted cello fingering in rehearsal section B"`,
-    '|/',
-    '*   c0 (main) "Synced flute phrasing with conductor notes"',
-  ].join('\n')
 }

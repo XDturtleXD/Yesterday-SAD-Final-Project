@@ -38,11 +38,7 @@ export default function App() {
                   element={<ScoreEditorPage />}
                 />
                 <Route
-                  path="projects/:projectId/songs/:songId/musicxml"
-                  element={<ScoreMusicXmlPage />}
-                />
-                <Route
-                  path="projects/:projectId/songs/:songId/pdf"
+                  path="projects/:projectId/scores/:scoreId/musicxml"
                   element={<ScoreMusicXmlPage />}
                 />
                 <Route path="users/:userId" element={<UserProfilePage />} />

@@ -19,3 +19,82 @@ export type AuthPayload = {
   token: string
   user: ApiUser
 }
+
+export type ApiSection = {
+  id: string
+  code: string
+  name: string
+  sort_order: number
+  created_at?: string
+}
+
+export type ApiProject = {
+  id: string
+  name: string
+  description: string | null
+  created_by: string
+  created_at: string
+  updated_at: string
+}
+
+export type ApiProjectMemberRecord = {
+  project_member_id: string
+  project_id: string
+  user_id: string
+  user_name: string
+  user_email: string
+  section_id: string
+  section_code: string
+  section_name: string
+  role: 'concertmaster' | 'principal' | 'member'
+  created_at: string
+  updated_at: string
+}
+
+export type ApiProjectMember = {
+  id: string
+  project_id: string
+  user_id: string
+  section_id: string
+  role: 'concertmaster' | 'principal' | 'member'
+  created_at: string
+  updated_at: string
+}
+
+export type ApiScore = {
+  id: string
+  project_id: string
+  section_id: string
+  title: string
+  storage_bucket: string
+  storage_path: string
+  file_type: string
+  original_filename: string | null
+  mime_type: string | null
+  file_size_bytes: number | null
+  created_by: string
+  created_at: string
+  updated_at: string
+}
+
+export type ApiBranch = {
+  id: string
+  project_id: string
+  name: string
+  head_commit_id: string | null
+  is_default: boolean
+  created_by: string
+  created_at: string
+  updated_at: string
+}
+
+export type ApiCommit = {
+  id: string
+  project_id: string
+  branch_id: string
+  parent_commit_id: string | null
+  merge_parent_commit_id: string | null
+  message: string
+  author_user_id: string
+  created_at: string
+}

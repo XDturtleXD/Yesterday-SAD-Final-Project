@@ -404,11 +404,31 @@ function fileSafeName(name: string) {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 }
 
+function resolveXmlUrl(score: Score) {
+  if (SCORE_XML_MAP[score.id]) {
+    return SCORE_XML_MAP[score.id].xmlUrl
+  }
+  if (score.storagePath.startsWith('/')) {
+    return score.storagePath
+  }
+  if (score.storagePath.includes('dvorak')) {
+    const lower = score.storagePath.toLowerCase()
+    if (lower.includes('violin1')) return '/musicxml/dvorak-sym9-violin1.musicxml'
+    if (lower.includes('violin2')) return '/musicxml/dvorak-sym9-violin2.musicxml'
+    if (lower.includes('full')) return '/musicxml/dvorak-sym9-full-score.musicxml'
+  }
+  return null
+}
+
 export function ScoreMusicXmlPage() {
-  const { projectId, songId } = useParams()
+  const { projectId, scoreId: scoreIdParam } = useParams()
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
-  const { getProject, addToast } = useAppState()
+  const { getProject, loadProjectDetail, addToast } = useAppState()
+
+  useEffect(() => {
+    if (projectId) loadProjectDetail(projectId)
+  }, [projectId, loadProjectDetail])
 
   const containerRef = useRef<HTMLDivElement | null>(null)
   const osmdRef = useRef<OpenSheetMusicDisplay | null>(null)
@@ -416,22 +436,23 @@ export function ScoreMusicXmlPage() {
   const zoomRef = useRef(100)
 
   const project = projectId ? getProject(projectId) : undefined
-  const song = useMemo(
-    () => project?.songs?.find((s) => s.id === songId),
-    [project, songId],
-  )
+  const scoreId = scoreIdParam ?? searchParams.get('scoreId') ?? ''
 
   const availableScores = useMemo(() => {
-    if (!project || !song) return []
-    return song.scoreIds
-      .map((id) => project.scores.find((s) => s.id === id))
-      .filter((score): score is Score => !!score && !!SCORE_XML_MAP[score.id])
-  }, [project, song])
+    if (!project) return []
+    return project.scores.filter((s) => !!resolveXmlUrl(s))
+  }, [project])
 
-  const defaultScoreId = availableScores[0]?.id ?? 's-canon-v1'
-  const scoreId = searchParams.get('scoreId') ?? defaultScoreId
-  const score = project?.scores.find((s) => s.id === scoreId)
-  const xmlEntry = SCORE_XML_MAP[scoreId] ?? SCORE_XML_MAP[defaultScoreId]
+  const defaultScoreId = availableScores[0]?.id ?? scoreId
+  const activeScoreId = scoreId || defaultScoreId
+  const activeScore = project?.scores.find((s) => s.id === activeScoreId)
+  const xmlEntry = activeScore
+    ? {
+        title: activeScore.title,
+        composer: '',
+        xmlUrl: resolveXmlUrl(activeScore) ?? '',
+      }
+    : SCORE_XML_MAP[activeScoreId] ?? SCORE_XML_MAP['s-canon-v1']
 
   const [status, setStatus] = useState<RenderStatus>('idle')
   const [error, setError] = useState<string | null>(null)
@@ -533,7 +554,7 @@ export function ScoreMusicXmlPage() {
     selectedGraphicalNoteRef.current = null
   }, [status, zoom])
 
-  if (!project || !song) {
+  if (!project || !activeScore || !xmlEntry?.xmlUrl) {
     return (
       <div className="p-6">
         <Card className="p-6">
@@ -794,7 +815,7 @@ export function ScoreMusicXmlPage() {
               </Badge>
             </div>
             <div className="mt-1 text-xs text-slate-500">
-              {score?.instrument === 'full' ? 'Full score' : score?.instrument} · {xmlEntry.composer}
+              {activeScore?.fileType ?? 'musicxml'} · {xmlEntry.composer || '—'}
             </div>
           </div>
 
@@ -807,7 +828,7 @@ export function ScoreMusicXmlPage() {
             >
               {availableScores.map((s) => (
                 <option key={s.id} value={s.id}>
-                  {s.name}
+                  {s.title}
                 </option>
               ))}
             </select>

@@ -1,12 +1,12 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../auth/AuthContext'
-import { useAppState } from '../../state/AppState'
+import { useRequiredUser } from '../../state/AppState'
 import { cn } from '../utils/cn'
 import { Shield, User, FolderKanban, Home, LogOut, Music2 } from 'lucide-react'
 import { Button } from '../primitives/Button'
 
 export function Sidebar() {
-  const { currentUser } = useAppState()
+  const currentUser = useRequiredUser()
   const { isAdmin, logout } = useAuth()
   const navigate = useNavigate()
 

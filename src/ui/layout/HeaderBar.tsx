@@ -1,12 +1,12 @@
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../auth/AuthContext'
-import { useAppState } from '../../state/AppState'
+import { useRequiredUser } from '../../state/AppState'
 import { Avatar } from '../primitives/Avatar'
 import { Button } from '../primitives/Button'
 import { FolderKanban, LogOut, User } from 'lucide-react'
 
 export function HeaderBar() {
-  const { currentUser } = useAppState()
+  const currentUser = useRequiredUser()
   const { logout } = useAuth()
   const navigate = useNavigate()
 

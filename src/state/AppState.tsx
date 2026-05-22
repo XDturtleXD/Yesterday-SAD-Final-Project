@@ -1,43 +1,52 @@
-import React, { createContext, useContext, useMemo, useState } from 'react'
+import React, { createContext, useCallback, useContext, useMemo, useState } from 'react'
+import * as historyApi from '../api/history'
+import {
+  mapBranch,
+  mapCommit,
+  mapProjectMember,
+  mapProjectSummary,
+  mapScore,
+  mapSection,
+} from '../api/mappers'
+import * as projectsApi from '../api/projects'
+import * as scoresApi from '../api/scores'
+import * as sectionsApi from '../api/sections'
 import type { ApiUser } from '../api/types'
-import { mockProjects, mockUsers } from '../mock/mockData'
-import type { Commit, Project, Score, User, UserRole } from '../types'
+import type { Commit, Project, ProjectMember, Score, Section, User } from '../types'
 
 type Toast = { id: string; title: string; message?: string }
 
 type AppState = {
-  currentUser: User
-  users: User[]
+  currentUser: User | null
   projects: Project[]
+  sections: Section[]
+  projectsLoading: boolean
+  sectionsLoading: boolean
   toasts: Toast[]
 
-  switchUser: (role: UserRole) => void
-  applyAuthUser: (apiUser: ApiUser) => void
+  applyAuthUser: (apiUser: ApiUser) => Promise<void>
   clearAuthUser: () => void
-  getUser: (id: string) => User | undefined
+  refreshProjects: () => Promise<void>
+  loadSections: () => Promise<Section[]>
+  loadProjectDetail: (projectId: string) => Promise<Project | undefined>
   getProject: (id: string) => Project | undefined
   getScore: (projectId: string, scoreId: string) => Score | undefined
+  getMemberDisplayName: (userId: string) => string
 
-  createProject: (partial: {
+  createProject: (input: {
     name: string
     description: string
-    ensembleType: string
-    initialInstruments: string[]
-    inviteEmails: string[]
-  }) => Project
+    sectionId: string
+  }) => Promise<Project>
+  joinProject: (input: { inviteCode: string; sectionId: string }) => Promise<void>
+  createInviteCode: (projectId: string) => Promise<string>
 
   addToast: (t: Omit<Toast, 'id'>) => void
   dismissToast: (id: string) => void
 
-  addCommit: (projectId: string, commit: Omit<Commit, 'id'>) => void
-  createBranch: (projectId: string, name: string) => void
-  switchBranch: (projectId: string, name: string) => void
-  mergeBranch: (projectId: string, from: string, into: string) => void
-  toggleSongPin: (projectId: string, songId: string) => void
-
-  deleteProject: (projectId: string) => void
-  deleteUser: (userId: string) => void
-  deleteScore: (projectId: string, scoreId: string) => void
+  createBranch: (projectId: string, name: string) => Promise<void>
+  switchBranch: (projectId: string, branchId: string) => void
+  mergeBranch: (projectId: string, fromBranchId: string, intoBranchId: string) => Promise<void>
 }
 
 const Ctx = createContext<AppState | null>(null)
@@ -46,217 +55,304 @@ function id(prefix: string) {
   return `${prefix}-${Math.random().toString(16).slice(2)}`
 }
 
-function roleToUserId(role: UserRole) {
-  if (role === 'regular') return 'u-regular'
-  if (role === 'owner') return 'u-owner'
-  return 'u-admin'
-}
-
 function mapApiUserToUser(apiUser: ApiUser): User {
-  const role: UserRole =
-    apiUser.system_role === 'platform_admin' ? 'admin' : 'regular'
   return {
     id: apiUser.id,
     name: apiUser.name,
-    role,
+    role: apiUser.system_role === 'platform_admin' ? 'admin' : 'regular',
     intro: apiUser.email,
   }
 }
 
-export function AppStateProvider({ children }: { children: React.ReactNode }) {
-  const [currentUserId, setCurrentUserId] = useState<string>('u-owner')
-  const [users, setUsers] = useState<User[]>(mockUsers)
-  const [projects, setProjects] = useState<Project[]>(mockProjects)
-  const [toasts, setToasts] = useState<Toast[]>([])
+const emptyUser: User = {
+  id: '',
+  name: 'Guest',
+  role: 'regular',
+  intro: '',
+}
 
-  const currentUser = useMemo(
-    () => users.find((u) => u.id === currentUserId) ?? users[0],
-    [users, currentUserId],
+export function AppStateProvider({ children }: { children: React.ReactNode }) {
+  const [currentUser, setCurrentUser] = useState<User | null>(null)
+  const [projects, setProjects] = useState<Project[]>([])
+  const [sections, setSections] = useState<Section[]>([])
+  const [projectsLoading, setProjectsLoading] = useState(false)
+  const [sectionsLoading, setSectionsLoading] = useState(false)
+  const [toasts, setToasts] = useState<Toast[]>([])
+  const [nameCache, setNameCache] = useState<Record<string, string>>({})
+
+  const rememberNames = useCallback((members: ProjectMember[]) => {
+    setNameCache((prev) => {
+      const next = { ...prev }
+      for (const m of members) {
+        next[m.userId] = m.userName
+      }
+      return next
+    })
+  }, [])
+
+  const refreshProjects = useCallback(async () => {
+    setProjectsLoading(true)
+    try {
+      const rows = await projectsApi.listProjects()
+      setProjects((prev) => {
+        const prevById = new Map(prev.map((p) => [p.id, p]))
+        return rows.map((row) => {
+          const existing = prevById.get(row.id)
+          if (existing?.detailLoaded) {
+            return {
+              ...existing,
+              name: row.name,
+              description: row.description ?? '',
+              createdBy: row.created_by,
+              createdAt: row.created_at,
+              updatedAt: row.updated_at,
+            }
+          }
+          return mapProjectSummary(row)
+        })
+      })
+    } finally {
+      setProjectsLoading(false)
+    }
+  }, [])
+
+  const loadSections = useCallback(async () => {
+    if (sections.length > 0) return sections
+    setSectionsLoading(true)
+    try {
+      const rows = await sectionsApi.listSections()
+      const mapped = rows.map(mapSection)
+      setSections(mapped)
+      return mapped
+    } finally {
+      setSectionsLoading(false)
+    }
+  }, [sections])
+
+  const loadProjectDetail = useCallback(
+    async (projectId: string) => {
+      const existing = projects.find((p) => p.id === projectId)
+      if (existing?.detailLoaded) return existing
+      if (existing?.detailLoading) return existing
+
+      setProjects((prev) =>
+        prev.map((p) => (p.id === projectId ? { ...p, detailLoading: true } : p)),
+      )
+
+      try {
+        const [projectRow, memberRows, scoreRows, branchRows] = await Promise.all([
+          projectsApi.getProject(projectId),
+          projectsApi.listProjectMembers(projectId),
+          scoresApi.listProjectScores(projectId),
+          historyApi.listBranches(projectId),
+        ])
+
+        const members = memberRows.map(mapProjectMember)
+        rememberNames(members)
+
+        const scores = scoreRows.map(mapScore)
+        const branches = branchRows.map(mapBranch)
+        const defaultBranch = branches.find((b) => b.isDefault) ?? branches[0]
+        const currentBranchId = defaultBranch?.id ?? ''
+        const currentBranchName = defaultBranch?.name ?? 'main'
+
+        let commits: Commit[] = []
+        if (defaultBranch) {
+          const commitRows = await historyApi.listBranchCommits(projectId, defaultBranch.id)
+          commits = commitRows.map((c) => mapCommit(c, defaultBranch.name))
+          rememberNames(
+            commits.map((c) => ({
+              id: c.id,
+              userId: c.authorUserId,
+              userName: nameCache[c.authorUserId] ?? c.authorUserId,
+              userEmail: '',
+              sectionId: '',
+              sectionCode: '',
+              sectionName: '',
+              role: 'member' as const,
+            })),
+          )
+        }
+
+        const detail: Project = {
+          id: projectRow.id,
+          name: projectRow.name,
+          description: projectRow.description ?? '',
+          createdBy: projectRow.created_by,
+          createdAt: projectRow.created_at,
+          updatedAt: projectRow.updated_at,
+          members,
+          scores,
+          branches,
+          currentBranchId,
+          currentBranchName,
+          commits,
+          detailLoaded: true,
+          detailLoading: false,
+        }
+
+        setProjects((prev) => {
+          const idx = prev.findIndex((p) => p.id === projectId)
+          if (idx === -1) return [...prev, detail]
+          return prev.map((p) => (p.id === projectId ? detail : p))
+        })
+
+        return detail
+      } catch {
+        setProjects((prev) =>
+          prev.map((p) =>
+            p.id === projectId ? { ...p, detailLoading: false, detailLoaded: false } : p,
+          ),
+        )
+        return undefined
+      }
+    },
+    [projects, rememberNames, nameCache],
   )
+
+  const applyAuthUser = useCallback(async (apiUser: ApiUser) => {
+    const mapped = mapApiUserToUser(apiUser)
+    setCurrentUser(mapped)
+    setNameCache((prev) => ({ ...prev, [mapped.id]: mapped.name }))
+    setProjects([])
+    try {
+      await refreshProjects()
+    } catch {
+      // Keep the authenticated session even if project loading fails.
+    }
+  }, [refreshProjects])
+
+  const clearAuthUser = useCallback(() => {
+    setCurrentUser(null)
+    setProjects([])
+    setSections([])
+    setNameCache({})
+  }, [])
 
   const api: AppState = useMemo(
     () => ({
       currentUser,
-      users,
       projects,
+      sections,
+      projectsLoading,
+      sectionsLoading,
       toasts,
 
-      switchUser: (role) => setCurrentUserId(roleToUserId(role)),
+      applyAuthUser,
+      clearAuthUser,
+      refreshProjects,
+      loadSections,
+      loadProjectDetail,
 
-      applyAuthUser: (apiUser) => {
-        const mapped = mapApiUserToUser(apiUser)
-        setUsers((prev) => {
-          const exists = prev.some((u) => u.id === mapped.id)
-          if (exists) {
-            return prev.map((u) => (u.id === mapped.id ? { ...u, ...mapped } : u))
-          }
-          return [...prev, mapped]
-        })
-        setCurrentUserId(mapped.id)
-      },
-
-      clearAuthUser: () => setCurrentUserId('u-owner'),
-
-      getUser: (userId) => users.find((u) => u.id === userId),
       getProject: (projectId) => projects.find((p) => p.id === projectId),
       getScore: (projectId, scoreId) =>
-        projects
-          .find((p) => p.id === projectId)
-          ?.scores.find((s) => s.id === scoreId),
+        projects.find((p) => p.id === projectId)?.scores.find((s) => s.id === scoreId),
+      getMemberDisplayName: (userId) => nameCache[userId] ?? userId,
 
-      createProject: (partial) => {
-        const projectId = id('p')
-        const now = new Date().toISOString().slice(0, 16).replace('T', ' ')
-        const p: Project = {
-          id: projectId,
-          name: partial.name,
-          description: partial.description,
-          ensembleType: partial.ensembleType,
-          members: [
-            {
-              userId: currentUser.id,
-              roles: currentUser.role === 'admin' ? ['owner'] : ['owner'],
-              instruments: ['piano'],
-            },
-          ],
-          scores: [],
-          branches: ['main'],
-          currentBranch: 'main',
-          currentCommitId: id('c'),
-          commits: [
-            {
-              id: id('c'),
-              projectId,
-              branch: 'main',
-              message: 'Initial project created',
-              authorUserId: currentUser.id,
-              timestamp: now,
-            },
-          ],
-          lastUpdatedAt: now,
-        }
-        setProjects((prev) => [p, ...prev])
+      createProject: async (input) => {
+        const created = await projectsApi.createProject({
+          name: input.name,
+          description: input.description,
+          sectionId: input.sectionId,
+        })
+        const project = mapProjectSummary(created)
+        setProjects((prev) => [project, ...prev])
         setToasts((prev) => [
           ...prev,
-          { id: id('t'), title: 'Project created', message: p.name },
+          { id: id('t'), title: '專案已建立', message: project.name },
         ])
-        return p
+        const loaded = await loadProjectDetail(project.id)
+        return loaded ?? project
       },
 
-      addToast: (t) =>
-        setToasts((prev) => [...prev, { ...t, id: id('t') }]),
-      dismissToast: (toastId) =>
-        setToasts((prev) => prev.filter((t) => t.id !== toastId)),
-
-      addCommit: (projectId, commit) => {
-        setProjects((prev) =>
-          prev.map((p) => {
-            if (p.id !== projectId) return p
-            const full: Commit = { ...commit, id: id('c') }
-            return {
-              ...p,
-              commits: [full, ...p.commits],
-              currentCommitId: full.id,
-              lastUpdatedAt: full.timestamp,
-            }
-          }),
-        )
-      },
-
-      createBranch: (projectId, name) => {
-        setProjects((prev) =>
-          prev.map((p) => {
-            if (p.id !== projectId) return p
-            if (p.branches.includes(name)) return p
-            return { ...p, branches: [...p.branches, name] }
-          }),
-        )
-      },
-
-      switchBranch: (projectId, name) => {
-        setProjects((prev) =>
-          prev.map((p) => (p.id === projectId ? { ...p, currentBranch: name } : p)),
-        )
-      },
-
-      mergeBranch: (projectId, from, into) => {
-        const now = new Date().toISOString().slice(0, 16).replace('T', ' ')
-        setProjects((prev) =>
-          prev.map((p) => {
-            if (p.id !== projectId) return p
-            const mergeCommit: Commit = {
-              id: id('c'),
-              projectId,
-              branch: into,
-              message: `Merge branch "${from}" into "${into}" (simulated)`,
-              authorUserId: currentUser.id,
-              timestamp: now,
-            }
-            return {
-              ...p,
-              currentBranch: into,
-              commits: [mergeCommit, ...p.commits],
-              currentCommitId: mergeCommit.id,
-              lastUpdatedAt: now,
-            }
-          }),
-        )
-      },
-
-      toggleSongPin: (projectId, songId) => {
-        setProjects((prev) =>
-          prev.map((p) => {
-            if (p.id !== projectId) return p
-            if (!p.songs) return p
-            return {
-              ...p,
-              songs: p.songs.map((s) =>
-                s.id === songId ? { ...s, pinned: !s.pinned } : s,
-              ),
-            }
-          }),
-        )
-      },
-
-      deleteProject: (projectId) => {
-        setProjects((prev) => prev.filter((p) => p.id !== projectId))
+      joinProject: async (input) => {
+        await projectsApi.joinByInviteCode(input)
+        await refreshProjects()
         setToasts((prev) => [
           ...prev,
-          { id: id('t'), title: 'Project deleted (simulated)' },
+          { id: id('t'), title: '已加入專案', message: '歡迎加入！' },
         ])
       },
 
-      deleteUser: (userId) => {
-        setUsers((prev) => prev.filter((u) => u.id !== userId))
-        setToasts((prev) => [
-          ...prev,
-          { id: id('t'), title: 'User deleted (simulated)' },
-        ])
+      createInviteCode: async (projectId) => {
+        const result = await projectsApi.createInviteCode(projectId)
+        return result.inviteCode
       },
 
-      deleteScore: (projectId, scoreId) => {
+      addToast: (t) => setToasts((prev) => [...prev, { ...t, id: id('t') }]),
+      dismissToast: (toastId) => setToasts((prev) => prev.filter((t) => t.id !== toastId)),
+
+      createBranch: async (projectId, name) => {
+        const project = projects.find((p) => p.id === projectId)
+        const fromCommitId = project?.branches.find((b) => b.id === project.currentBranchId)
+          ?.headCommitId
+        const branch = await historyApi.createBranch(projectId, {
+          name,
+          fromCommitId: fromCommitId ?? undefined,
+        })
         setProjects((prev) =>
           prev.map((p) =>
             p.id === projectId
-              ? { ...p, scores: p.scores.filter((s) => s.id !== scoreId) }
+              ? {
+                  ...p,
+                  branches: [...p.branches, mapBranch(branch)],
+                  currentBranchId: branch.id,
+                  currentBranchName: branch.name,
+                }
               : p,
           ),
         )
-        setToasts((prev) => [
-          ...prev,
-          { id: id('t'), title: 'Score deleted (simulated)' },
-        ])
+      },
+
+      switchBranch: (projectId, branchId) => {
+        setProjects((prev) =>
+          prev.map((p) => {
+            if (p.id !== projectId) return p
+            const branch = p.branches.find((b) => b.id === branchId)
+            if (!branch) return p
+            return {
+              ...p,
+              currentBranchId: branch.id,
+              currentBranchName: branch.name,
+            }
+          }),
+        )
+      },
+
+      mergeBranch: async (projectId, fromBranchId, intoBranchId) => {
+        await historyApi.mergeBranches(projectId, {
+          fromBranchId,
+          intoBranchId,
+        })
+        await loadProjectDetail(projectId)
       },
     }),
-    [currentUser, users, projects, toasts],
+    [
+      currentUser,
+      projects,
+      sections,
+      projectsLoading,
+      sectionsLoading,
+      toasts,
+      applyAuthUser,
+      clearAuthUser,
+      refreshProjects,
+      loadSections,
+      loadProjectDetail,
+      nameCache,
+    ],
   )
 
   return <Ctx.Provider value={api}>{children}</Ctx.Provider>
 }
 
-// eslint-disable-next-line react-refresh/only-export-components
 export function useAppState() {
   const v = useContext(Ctx)
   if (!v) throw new Error('useAppState must be used within AppStateProvider')
   return v
+}
+
+export function useRequiredUser() {
+  const { currentUser } = useAppState()
+  return currentUser ?? emptyUser
 }

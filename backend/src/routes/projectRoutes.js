@@ -11,6 +11,7 @@ router.post("/join-by-code", projectController.joinByInviteCode);
 router.post("/", projectController.createProject);
 router.get("/", projectController.getProjects);
 router.get("/:projectId", projectController.getProjectById);
+router.get("/:projectId/members", projectController.getProjectMembers);
 router.post("/:projectId/invite-code", projectController.createInviteCode);
 router.get(
   "/:projectId/scores",

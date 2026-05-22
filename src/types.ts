@@ -1,23 +1,4 @@
-export type UserRole = 'regular' | 'owner' | 'admin'
-
-export type Instrument =
-  | 'violin'
-  | 'viola'
-  | 'cello'
-  | 'flute'
-  | 'clarinet'
-  | 'trumpet'
-  | 'piano'
-  | 'full'
-
-export type ProjectRole =
-  | 'owner'
-  | 'conductor'
-  | 'section leader'
-  | 'performer'
-  | 'editor'
-
-export type FileType = 'musicxml' | 'musescore' | 'pdf (deferred)'
+export type UserRole = 'regular' | 'admin'
 
 export type User = {
   id: string
@@ -27,67 +8,77 @@ export type User = {
   avatarUrl?: string
 }
 
+export type Section = {
+  id: string
+  code: string
+  name: string
+  sortOrder: number
+}
+
+export type ProjectMemberRole = 'concertmaster' | 'principal' | 'member'
+
 export type ProjectMember = {
+  id: string
   userId: string
-  roles: ProjectRole[]
-  instruments: Instrument[]
+  userName: string
+  userEmail: string
+  sectionId: string
+  sectionCode: string
+  sectionName: string
+  role: ProjectMemberRole
 }
 
 export type Score = {
   id: string
   projectId: string
-  name: string
-  instrument: Instrument
-  fileType: FileType
-  currentVersion: string
-  lastEditorUserId: string
-  lastUpdatedAt: string
-}
-
-export type SongRole = 'principal' | 'member' | 'conductor' | 'section leader'
-
-export type SongAssignment = {
-  userId: string
-  role: SongRole
-  partName: string
-  /** References a score in the parent project's `scores` array. */
-  primaryScoreId?: string
-}
-
-export type Song = {
-  id: string
+  sectionId: string
   title: string
-  composer: string
-  pinned: boolean
-  lastPracticedAt: string
-  /** References score ids in the parent project's `scores` array. */
-  scoreIds: string[]
-  /** References the "full score" score id for this song, if present. */
-  fullScoreId?: string
-  assignments: SongAssignment[]
+  storageBucket: string
+  storagePath: string
+  fileType: string
+  originalFilename?: string
+  mimeType?: string
+  fileSizeBytes?: number
+  createdBy: string
+  createdAt: string
+  updatedAt: string
+}
+
+export type Branch = {
+  id: string
+  projectId: string
+  name: string
+  headCommitId: string | null
+  isDefault: boolean
+  createdAt: string
 }
 
 export type Commit = {
   id: string
   projectId: string
-  branch: string
+  branchId: string
+  branchName: string
+  parentCommitId: string | null
+  mergeParentCommitId: string | null
   message: string
   authorUserId: string
   timestamp: string
-  changedScoreId?: string
+  createdAt: string
 }
 
 export type Project = {
   id: string
   name: string
   description: string
-  ensembleType: string
+  createdBy: string
+  createdAt: string
+  updatedAt: string
   members: ProjectMember[]
   scores: Score[]
-  songs?: Song[]
-  branches: string[]
-  currentBranch: string
-  currentCommitId: string
+  branches: Branch[]
+  currentBranchId: string
+  currentBranchName: string
   commits: Commit[]
-  lastUpdatedAt: string
+  detailLoaded?: boolean
+  detailLoading?: boolean
 }
