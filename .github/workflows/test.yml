@@ -1,0 +1,35 @@
+name: tests
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend-tests:
+    name: Backend (node:test)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          # Node 22+ is required so that `node --test "tests/**/*.test.js"`
+          # expands the glob (added in Node 22).
+          node-version: "22"
+          cache: "npm"
+          # Cache both root and backend lockfiles.
+          cache-dependency-path: |
+            package-lock.json
+            backend/package-lock.json
+
+      - name: Install dependencies
+        # Root `postinstall` also installs backend/ deps.
+        run: npm ci
+
+      - name: Run backend tests
+        run: npm test --prefix backend
