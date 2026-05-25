@@ -98,3 +98,27 @@ export type ApiCommit = {
   author_user_id: string
   created_at: string
 }
+
+export type ApiScoreVersion = {
+  id: string
+  commit_id: string
+  score_id: string
+  storage_bucket: string
+  storage_path: string
+  file_type: string
+  original_filename: string | null
+  mime_type: string | null
+  file_size_bytes: number | null
+  created_at: string
+}
+
+export type ApiCommitDetail = ApiCommit & { score_versions: ApiScoreVersion[] }
+
+export type ApiCommitDiff = {
+  from: ApiCommit
+  to: ApiCommit
+  added: { score_id: string; from: null; to: ApiScoreVersion }[]
+  removed: { score_id: string; from: ApiScoreVersion; to: null }[]
+  modified: { score_id: string; from: ApiScoreVersion; to: ApiScoreVersion }[]
+  unchanged: { score_id: string; from: ApiScoreVersion; to: ApiScoreVersion }[]
+}

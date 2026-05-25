@@ -66,6 +66,19 @@ export type Commit = {
   createdAt: string
 }
 
+export type ScoreVersion = {
+  id: string
+  commitId: string
+  scoreId: string
+  storageBucket: string
+  storagePath: string
+  fileType: string
+  originalFilename?: string
+  mimeType?: string
+  fileSizeBytes?: number
+  createdAt: string
+}
+
 export type Project = {
   id: string
   name: string

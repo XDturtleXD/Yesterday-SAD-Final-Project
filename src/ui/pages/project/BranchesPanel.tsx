@@ -5,19 +5,21 @@ import { Badge } from '../../primitives/Badge'
 import { Button } from '../../primitives/Button'
 import { Card } from '../../primitives/Card'
 import { Modal } from '../../primitives/Modal'
-import { GitBranch, GitMerge, Repeat2 } from 'lucide-react'
+import { GitBranch, GitMerge, Repeat2, Trash2 } from 'lucide-react'
 
 export function BranchesPanel({ project }: { project: Project }) {
-  const { createBranch, switchBranch, mergeBranch, addToast } = useAppState()
+  const { createBranch, switchBranch, deleteBranch, mergeBranch, addToast } = useAppState()
   const currentUser = useRequiredUser()
   const [createOpen, setCreateOpen] = useState(false)
   const [mergeOpen, setMergeOpen] = useState(false)
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null)
   const [branchName, setBranchName] = useState('')
   const [mergeFrom, setMergeFrom] = useState(project.currentBranchId)
   const [mergeInto, setMergeInto] = useState(
     project.branches.find((b) => b.isDefault)?.id ?? project.currentBranchId,
   )
   const [loading, setLoading] = useState(false)
+  const [switchingBranchId, setSwitchingBranchId] = useState<string | null>(null)
 
   const canMerge = useMemo(() => {
     if (currentUser.role === 'admin') return true
@@ -74,17 +76,36 @@ export function BranchesPanel({ project }: { project: Project }) {
                 {b.isDefault && <Badge>default</Badge>}
                 {b.id === project.currentBranchId && <Badge tone="success">active</Badge>}
               </div>
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => {
-                  switchBranch(project.id, b.id)
-                  addToast({ title: '已切換分支', message: b.name })
-                }}
-              >
-                <Repeat2 className="size-4" />
-                Switch
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={switchingBranchId === b.id}
+                  onClick={async () => {
+                    setSwitchingBranchId(b.id)
+                    try {
+                      await switchBranch(project.id, b.id)
+                      addToast({ title: '已切換分支', message: b.name })
+                    } catch {
+                      addToast({ title: '切換分支失敗', message: b.name })
+                    } finally {
+                      setSwitchingBranchId(null)
+                    }
+                  }}
+                >
+                  <Repeat2 className="size-4" />
+                  {switchingBranchId === b.id ? '切換中…' : 'Switch'}
+                </Button>
+                {!b.isDefault && canMerge && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => setDeleteTargetId(b.id)}
+                  >
+                    <Trash2 className="size-4 text-red-500" />
+                  </Button>
+                )}
+              </div>
             </div>
           ))}
         </div>
@@ -123,6 +144,46 @@ export function BranchesPanel({ project }: { project: Project }) {
           className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
           placeholder="e.g. bowing-update"
         />
+      </Modal>
+
+      <Modal
+        title="刪除分支"
+        open={deleteTargetId !== null}
+        onClose={() => setDeleteTargetId(null)}
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setDeleteTargetId(null)} disabled={loading}>
+              Cancel
+            </Button>
+            <Button
+              disabled={loading}
+              onClick={async () => {
+                if (!deleteTargetId) return
+                const branchName = project.branches.find((b) => b.id === deleteTargetId)?.name ?? ''
+                setLoading(true)
+                try {
+                  await deleteBranch(project.id, deleteTargetId)
+                  setDeleteTargetId(null)
+                  addToast({ title: '分支已刪除', message: branchName })
+                } catch {
+                  addToast({ title: '刪除分支失敗', message: branchName })
+                } finally {
+                  setLoading(false)
+                }
+              }}
+            >
+              確認刪除
+            </Button>
+          </div>
+        }
+      >
+        <div className="text-sm text-slate-700">
+          確定要刪除分支{' '}
+          <span className="font-semibold">
+            {project.branches.find((b) => b.id === deleteTargetId)?.name}
+          </span>
+          ？此操作無法復原。
+        </div>
       </Modal>
 
       <Modal

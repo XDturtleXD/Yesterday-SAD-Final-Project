@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useMemo, useState } from 'react'
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import * as historyApi from '../api/history'
 import {
   mapBranch,
@@ -11,7 +11,7 @@ import {
 import * as projectsApi from '../api/projects'
 import * as scoresApi from '../api/scores'
 import * as sectionsApi from '../api/sections'
-import type { ApiUser } from '../api/types'
+import type { ApiBranch, ApiScore, ApiUser } from '../api/types'
 import type { Commit, Project, ProjectMember, Score, Section, User } from '../types'
 
 type Toast = { id: string; title: string; message?: string }
@@ -45,7 +45,8 @@ type AppState = {
   dismissToast: (id: string) => void
 
   createBranch: (projectId: string, name: string) => Promise<void>
-  switchBranch: (projectId: string, branchId: string) => void
+  switchBranch: (projectId: string, branchId: string) => Promise<void>
+  deleteBranch: (projectId: string, branchId: string) => Promise<void>
   mergeBranch: (projectId: string, fromBranchId: string, intoBranchId: string) => Promise<void>
 }
 
@@ -79,6 +80,12 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [sectionsLoading, setSectionsLoading] = useState(false)
   const [toasts, setToasts] = useState<Toast[]>([])
   const [nameCache, setNameCache] = useState<Record<string, string>>({})
+
+  // Stable refs so callbacks don't need projects/nameCache as deps
+  const projectsRef = useRef(projects)
+  const nameCacheRef = useRef(nameCache)
+  useEffect(() => { projectsRef.current = projects }, [projects])
+  useEffect(() => { nameCacheRef.current = nameCache }, [nameCache])
 
   const rememberNames = useCallback((members: ProjectMember[]) => {
     setNameCache((prev) => {
@@ -131,7 +138,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
 
   const loadProjectDetail = useCallback(
     async (projectId: string) => {
-      const existing = projects.find((p) => p.id === projectId)
+      // Read via ref so this callback stays stable across renders
+      const existing = projectsRef.current.find((p) => p.id === projectId)
       if (existing?.detailLoaded) return existing
       if (existing?.detailLoading) return existing
 
@@ -140,12 +148,21 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       )
 
       try {
-        const [projectRow, memberRows, scoreRows, branchRows] = await Promise.all([
+        const [projectRes, membersRes, scoresRes, branchesRes] = await Promise.allSettled([
           projectsApi.getProject(projectId),
           projectsApi.listProjectMembers(projectId),
           scoresApi.listProjectScores(projectId),
           historyApi.listBranches(projectId),
         ])
+
+        if (projectRes.status === 'rejected') throw projectRes.reason
+        if (membersRes.status === 'rejected') throw membersRes.reason
+
+        const projectRow = projectRes.value
+        const memberRows = membersRes.value
+        const scoreRows: ApiScore[] = scoresRes.status === 'fulfilled' ? scoresRes.value : []
+        const branchRows: ApiBranch[] =
+          branchesRes.status === 'fulfilled' ? branchesRes.value : []
 
         const members = memberRows.map(mapProjectMember)
         rememberNames(members)
@@ -158,20 +175,24 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
 
         let commits: Commit[] = []
         if (defaultBranch) {
-          const commitRows = await historyApi.listBranchCommits(projectId, defaultBranch.id)
-          commits = commitRows.map((c) => mapCommit(c, defaultBranch.name))
-          rememberNames(
-            commits.map((c) => ({
-              id: c.id,
-              userId: c.authorUserId,
-              userName: nameCache[c.authorUserId] ?? c.authorUserId,
-              userEmail: '',
-              sectionId: '',
-              sectionCode: '',
-              sectionName: '',
-              role: 'member' as const,
-            })),
-          )
+          try {
+            const commitRows = await historyApi.listBranchCommits(projectId, defaultBranch.id)
+            commits = commitRows.map((c) => mapCommit(c, defaultBranch.name))
+            rememberNames(
+              commits.map((c) => ({
+                id: c.id,
+                userId: c.authorUserId,
+                userName: nameCacheRef.current[c.authorUserId] ?? c.authorUserId,
+                userEmail: '',
+                sectionId: '',
+                sectionCode: '',
+                sectionName: '',
+                role: 'member' as const,
+              })),
+            )
+          } catch {
+            commits = []
+          }
         }
 
         const detail: Project = {
@@ -207,7 +228,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         return undefined
       }
     },
-    [projects, rememberNames, nameCache],
+    [rememberNames],
   )
 
   const applyAuthUser = useCallback(async (apiUser: ApiUser) => {
@@ -304,19 +325,55 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         )
       },
 
-      switchBranch: (projectId, branchId) => {
+      switchBranch: async (projectId, branchId) => {
+        const project = projects.find((p) => p.id === projectId)
+        const branch = project?.branches.find((b) => b.id === branchId)
+        if (!branch) return
         setProjects((prev) =>
           prev.map((p) => {
             if (p.id !== projectId) return p
-            const branch = p.branches.find((b) => b.id === branchId)
-            if (!branch) return p
-            return {
-              ...p,
-              currentBranchId: branch.id,
-              currentBranchName: branch.name,
-            }
+            return { ...p, currentBranchId: branch.id, currentBranchName: branch.name }
           }),
         )
+        const commitRows = await historyApi.listBranchCommits(projectId, branchId)
+        const commits = commitRows.map((c) => mapCommit(c, branch.name))
+        setProjects((prev) =>
+          prev.map((p) => (p.id === projectId ? { ...p, commits } : p)),
+        )
+      },
+
+      deleteBranch: async (projectId, branchId) => {
+        await historyApi.deleteBranch(projectId, branchId)
+        const project = projects.find((p) => p.id === projectId)
+        const wasActive = project?.currentBranchId === branchId
+        setProjects((prev) =>
+          prev.map((p) => {
+            if (p.id !== projectId) return p
+            const newBranches = p.branches.filter((b) => b.id !== branchId)
+            if (wasActive) {
+              const next = newBranches.find((b) => b.isDefault) ?? newBranches[0]
+              return {
+                ...p,
+                branches: newBranches,
+                currentBranchId: next?.id ?? '',
+                currentBranchName: next?.name ?? 'main',
+                commits: [],
+              }
+            }
+            return { ...p, branches: newBranches }
+          }),
+        )
+        if (wasActive && project) {
+          const remaining = project.branches.filter((b) => b.id !== branchId)
+          const next = remaining.find((b) => b.isDefault) ?? remaining[0]
+          if (next) {
+            const commitRows = await historyApi.listBranchCommits(projectId, next.id)
+            const commits = commitRows.map((c) => mapCommit(c, next.name))
+            setProjects((prev) =>
+              prev.map((p) => (p.id === projectId ? { ...p, commits } : p)),
+            )
+          }
+        }
       },
 
       mergeBranch: async (projectId, fromBranchId, intoBranchId) => {

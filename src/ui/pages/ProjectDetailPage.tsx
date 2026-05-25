@@ -34,18 +34,23 @@ export function ProjectDetailPage() {
 
   useEffect(() => {
     if (!projectId) return
+    // Read current project state directly — intentionally not in deps to avoid
+    // re-triggering every time `projects` state changes (which would cause a loop).
+    const already = getProject(projectId)
+    if (already?.detailLoaded) {
+      setLoading(false)
+      return
+    }
     setLoading(true)
     setAccessDenied(false)
     loadProjectDetail(projectId)
-      .then((p) => {
-        if (!p) setAccessDenied(true)
-      })
       .catch((err) => {
         if (err instanceof ApiError && (err.status === 403 || err.status === 404)) {
           setAccessDenied(true)
         }
       })
       .finally(() => setLoading(false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, loadProjectDetail])
 
   const myMember = useMemo(
@@ -83,6 +88,21 @@ export function ProjectDetailPage() {
             project list
           </Link>
           .
+        </div>
+      </Card>
+    )
+  }
+
+  // detailLoaded=false here means the API fetch failed (members would be empty []).
+  // Show a retry card rather than the misleading "not a member" message.
+  if (!project.detailLoaded) {
+    return (
+      <Card className="p-6">
+        <div className="text-sm font-semibold text-slate-900">載入專案失敗</div>
+        <div className="mt-1 text-sm text-slate-600">無法取得專案詳細資料，請重新整理頁面後再試。</div>
+        <div className="mt-3 flex gap-2">
+          <Button onClick={() => window.location.reload()}>重新整理</Button>
+          <Button variant="secondary" onClick={() => navigate('/projects')}>返回列表</Button>
         </div>
       </Card>
     )

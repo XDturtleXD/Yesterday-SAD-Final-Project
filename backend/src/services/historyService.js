@@ -59,6 +59,17 @@ const listBranches = async (projectId) => {
     .order("created_at", { ascending: true });
 
   if (error) {
+    const code = error.code || "";
+    const msg = String(error.message || "");
+    // Unmigrated DB: history tables missing — treat as empty branch list so projects still open.
+    if (
+      code === "42P01" ||
+      code === "PGRST205" ||
+      /relation.*branches.*does not exist/i.test(msg) ||
+      /Could not find the table.*branches/i.test(msg)
+    ) {
+      return [];
+    }
     throw new AppError("Failed to fetch branches", 500, error);
   }
 

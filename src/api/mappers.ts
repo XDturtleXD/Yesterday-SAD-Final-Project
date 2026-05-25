@@ -4,9 +4,10 @@ import type {
   ApiProject,
   ApiProjectMemberRecord,
   ApiScore,
+  ApiScoreVersion,
   ApiSection,
 } from './types'
-import type { Branch, Commit, Project, ProjectMember, Score, Section } from '../types'
+import type { Branch, Commit, Project, ProjectMember, Score, ScoreVersion, Section } from '../types'
 
 export function mapSection(s: ApiSection): Section {
   return {
@@ -45,6 +46,21 @@ export function mapScore(s: ApiScore): Score {
     createdBy: s.created_by,
     createdAt: s.created_at,
     updatedAt: s.updated_at,
+  }
+}
+
+export function mapScoreVersion(v: ApiScoreVersion): ScoreVersion {
+  return {
+    id: v.id,
+    commitId: v.commit_id,
+    scoreId: v.score_id,
+    storageBucket: v.storage_bucket,
+    storagePath: v.storage_path,
+    fileType: v.file_type,
+    originalFilename: v.original_filename ?? undefined,
+    mimeType: v.mime_type ?? undefined,
+    fileSizeBytes: v.file_size_bytes ?? undefined,
+    createdAt: v.created_at,
   }
 }
 
