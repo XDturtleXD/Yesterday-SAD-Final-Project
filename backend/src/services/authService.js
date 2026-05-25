@@ -5,9 +5,30 @@ const env = require("../config/env");
 const AppError = require("../utils/appError");
 const { signAccessToken } = require("../utils/jwt");
 
-const USER_COLUMNS = "id, email, name, system_role, created_at, google_sub";
-const USER_COLUMNS_WITH_PASSWORD =
-  "id, email, name, system_role, created_at, password_hash, google_sub";
+const USER_BASE_COLUMNS =
+  "id, email, name, system_role, created_at, google_sub";
+const USER_PROFILE_COLUMNS = "avatar_url, intro";
+const USER_COLUMNS = `${USER_BASE_COLUMNS}, ${USER_PROFILE_COLUMNS}`;
+const USER_COLUMNS_WITH_PASSWORD = `${USER_COLUMNS}, password_hash`;
+
+const isMissingColumnError = (error) => {
+  const message = String(error?.message || "");
+  return error?.code === "42703" || message.includes("does not exist");
+};
+
+const selectUserColumns = async (buildQuery, { withPassword = false } = {}) => {
+  const fullColumns = withPassword ? USER_COLUMNS_WITH_PASSWORD : USER_COLUMNS;
+  const result = await buildQuery(fullColumns);
+  if (!result.error || !isMissingColumnError(result.error)) {
+    return result;
+  }
+
+  const baseColumns = withPassword
+    ? `${USER_BASE_COLUMNS}, password_hash`
+    : USER_BASE_COLUMNS;
+  return buildQuery(baseColumns);
+};
+
 const googleClient = new OAuth2Client();
 
 const ensureSupabaseReady = () => {
@@ -58,16 +79,18 @@ const register = async ({ email, password, name }) => {
 
   const passwordHash = await bcrypt.hash(password, 10);
 
-  const { data: createdUser, error: insertError } = await supabase
-    .from("users")
-    .insert({
-      email: normalizedEmail,
-      password_hash: passwordHash,
-      name: normalizedName,
-      system_role: "user",
-    })
-    .select(USER_COLUMNS)
-    .single();
+  const { data: createdUser, error: insertError } = await selectUserColumns((columns) =>
+    supabase
+      .from("users")
+      .insert({
+        email: normalizedEmail,
+        password_hash: passwordHash,
+        name: normalizedName,
+        system_role: "user",
+      })
+      .select(columns)
+      .single(),
+  );
 
   if (insertError) {
     throw new AppError("Failed to register user", 500, insertError);
@@ -84,11 +107,11 @@ const login = async ({ email, password }) => {
     throw new AppError("email and password are required", 400);
   }
 
-  const { data: user, error: fetchError } = await supabase
-    .from("users")
-    .select(USER_COLUMNS_WITH_PASSWORD)
-    .eq("email", normalizedEmail)
-    .maybeSingle();
+  const { data: user, error: fetchError } = await selectUserColumns(
+    (columns) =>
+      supabase.from("users").select(columns).eq("email", normalizedEmail).maybeSingle(),
+    { withPassword: true },
+  );
 
   if (fetchError) {
     throw new AppError("Failed to fetch user", 500, fetchError);
@@ -114,17 +137,91 @@ const login = async ({ email, password }) => {
 const findUserById = async (userId) => {
   ensureSupabaseReady();
 
-  const { data: user, error } = await supabase
-    .from("users")
-    .select(USER_COLUMNS)
-    .eq("id", userId)
-    .maybeSingle();
+  const { data: user, error } = await selectUserColumns((columns) =>
+    supabase.from("users").select(columns).eq("id", userId).maybeSingle(),
+  );
 
   if (error) {
     throw new AppError("Failed to fetch current user", 500, error);
   }
 
-  return user;
+  return sanitizeUser(user);
+};
+
+const MAX_INTRO_LENGTH = 1000;
+const MAX_AVATAR_URL_LENGTH = 500_000;
+
+const normalizeAvatarUrl = (value) => {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+
+  const url = String(value).trim();
+  if (!url) {
+    return null;
+  }
+
+  if (url.length > MAX_AVATAR_URL_LENGTH) {
+    throw new AppError("avatar_url is too large", 400);
+  }
+
+  if (url.startsWith("data:image/")) {
+    if (!/^data:image\/(jpeg|jpg|png|webp|gif);base64,/.test(url)) {
+      throw new AppError("avatar_url must be a JPEG, PNG, WebP, or GIF image", 400);
+    }
+    return url;
+  }
+
+  if (url.startsWith("http://") || url.startsWith("https://")) {
+    return url;
+  }
+
+  throw new AppError("avatar_url must be an http(s) URL or uploaded image", 400);
+};
+
+const updateProfile = async (userId, { name, intro, avatar_url: avatarUrl }) => {
+  ensureSupabaseReady();
+
+  const updates = {};
+
+  if (name !== undefined) {
+    const normalizedName = String(name).trim();
+    if (!normalizedName) {
+      throw new AppError("name cannot be empty", 400);
+    }
+    updates.name = normalizedName;
+  }
+
+  if (intro !== undefined) {
+    updates.intro = String(intro).trim().slice(0, MAX_INTRO_LENGTH) || null;
+  }
+
+  if (avatarUrl !== undefined) {
+    updates.avatar_url = normalizeAvatarUrl(avatarUrl);
+  }
+
+  if (Object.keys(updates).length === 0) {
+    throw new AppError("At least one profile field is required", 400);
+  }
+
+  const { data: updatedUser, error } = await supabase
+    .from("users")
+    .update(updates)
+    .eq("id", userId)
+    .select(USER_COLUMNS)
+    .single();
+
+  if (error) {
+    if (isMissingColumnError(error)) {
+      throw new AppError(
+        "Profile fields are not available yet. Run supabase/migrations/20260521_add_user_profile_fields.sql",
+        500,
+      );
+    }
+    throw new AppError("Failed to update profile", 500, error);
+  }
+
+  return sanitizeUser(updatedUser);
 };
 
 const googleLogin = async ({ idToken }) => {
@@ -157,11 +254,9 @@ const googleLogin = async ({ idToken }) => {
   const email = String(payload.email).trim().toLowerCase();
   const name = payload.name ? String(payload.name).trim() : email.split("@")[0];
 
-  const { data: existingByGoogleSub, error: byGoogleSubError } = await supabase
-    .from("users")
-    .select(USER_COLUMNS)
-    .eq("google_sub", googleSub)
-    .maybeSingle();
+  const { data: existingByGoogleSub, error: byGoogleSubError } = await selectUserColumns(
+    (columns) => supabase.from("users").select(columns).eq("google_sub", googleSub).maybeSingle(),
+  );
 
   if (byGoogleSubError) {
     if (String(byGoogleSubError.message || "").includes("google_sub")) {
@@ -176,25 +271,25 @@ const googleLogin = async ({ idToken }) => {
   let user = existingByGoogleSub;
 
   if (!user) {
-    const { data: existingByEmail, error: byEmailError } = await supabase
-      .from("users")
-      .select(USER_COLUMNS)
-      .eq("email", email)
-      .maybeSingle();
+    const { data: existingByEmail, error: byEmailError } = await selectUserColumns((columns) =>
+      supabase.from("users").select(columns).eq("email", email).maybeSingle(),
+    );
 
     if (byEmailError) {
       throw new AppError("Failed to fetch user by email", 500, byEmailError);
     }
 
     if (existingByEmail) {
-      const { data: linkedUser, error: linkError } = await supabase
-        .from("users")
-        .update({
-          google_sub: googleSub,
-        })
-        .eq("id", existingByEmail.id)
-        .select(USER_COLUMNS)
-        .single();
+      const { data: linkedUser, error: linkError } = await selectUserColumns((columns) =>
+        supabase
+          .from("users")
+          .update({
+            google_sub: googleSub,
+          })
+          .eq("id", existingByEmail.id)
+          .select(columns)
+          .single(),
+      );
 
       if (linkError) {
         throw new AppError("Failed to link Google account", 500, linkError);
@@ -204,17 +299,19 @@ const googleLogin = async ({ idToken }) => {
     } else {
       const generatedPasswordHash = await bcrypt.hash(`${googleSub}:${email}`, 10);
 
-      const { data: createdUser, error: createError } = await supabase
-        .from("users")
-        .insert({
-          email,
-          password_hash: generatedPasswordHash,
-          name,
-          system_role: "user",
-          google_sub: googleSub,
-        })
-        .select(USER_COLUMNS)
-        .single();
+      const { data: createdUser, error: createError } = await selectUserColumns((columns) =>
+        supabase
+          .from("users")
+          .insert({
+            email,
+            password_hash: generatedPasswordHash,
+            name,
+            system_role: "user",
+            google_sub: googleSub,
+          })
+          .select(columns)
+          .single(),
+      );
 
       if (createError) {
         throw new AppError("Failed to create user from Google login", 500, createError);
@@ -236,4 +333,5 @@ module.exports = {
   login,
   findUserById,
   googleLogin,
+  updateProfile,
 };

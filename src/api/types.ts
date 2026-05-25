@@ -11,6 +11,8 @@ export type ApiUser = {
   name: string
   system_role: string
   role?: string
+  avatar_url?: string | null
+  intro?: string | null
   created_at?: string
   google_sub?: string | null
 }
