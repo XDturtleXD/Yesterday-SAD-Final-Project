@@ -41,9 +41,23 @@ const me = async (req, res, next) => {
   }
 };
 
+const updateMe = async (req, res, next) => {
+  try {
+    if (!req.user) {
+      throw new AppError("Unauthorized", 401);
+    }
+
+    const user = await authService.updateProfile(req.user.id, req.body);
+    return sendSuccess(res, user, "Profile updated successfully");
+  } catch (error) {
+    return next(error);
+  }
+};
+
 module.exports = {
   register,
   login,
   googleLogin,
   me,
+  updateMe,
 };

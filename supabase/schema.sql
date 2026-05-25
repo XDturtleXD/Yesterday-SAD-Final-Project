@@ -32,6 +32,8 @@ create table if not exists public.users (
 );
 
 alter table public.users add column if not exists google_sub text;
+alter table public.users add column if not exists avatar_url text;
+alter table public.users add column if not exists intro text;
 create unique index if not exists users_google_sub_key on public.users(google_sub) where google_sub is not null;
 
 create table if not exists public.sections (

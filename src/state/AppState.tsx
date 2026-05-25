@@ -61,7 +61,8 @@ function mapApiUserToUser(apiUser: ApiUser): User {
     id: apiUser.id,
     name: apiUser.name,
     role: apiUser.system_role === 'platform_admin' ? 'admin' : 'regular',
-    intro: apiUser.email,
+    intro: apiUser.intro ?? '',
+    avatarUrl: apiUser.avatar_url ?? undefined,
   }
 }
 

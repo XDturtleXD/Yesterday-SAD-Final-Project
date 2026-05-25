@@ -26,6 +26,7 @@ type AuthContextValue = {
   register: (email: string, password: string, name: string) => Promise<void>
   googleLogin: (idToken: string) => Promise<void>
   logout: () => void
+  updateProfile: (input: authApi.UpdateProfileInput) => Promise<void>
   isAdmin: boolean
 }
 
@@ -114,6 +115,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       googleLogin: async (idToken) => {
         const payload = await authApi.googleLogin(idToken)
         await completeAuth(payload)
+      },
+      updateProfile: async (input) => {
+        const updated = await authApi.updateProfile(input)
+        setUser(updated)
+        await applyAuthUserRef.current(updated)
       },
       logout,
       isAdmin: user?.system_role === 'platform_admin',
