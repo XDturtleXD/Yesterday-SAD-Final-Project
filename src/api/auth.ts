@@ -37,3 +37,16 @@ export function googleLogin(idToken: string) {
 export function getMe() {
   return apiRequest<ApiUser>('/auth/me')
 }
+
+export type UpdateProfileInput = {
+  name?: string
+  intro?: string
+  avatar_url?: string | null
+}
+
+export function updateProfile(body: UpdateProfileInput) {
+  return apiRequest<ApiUser>('/auth/me', {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  })
+}

@@ -1,14 +1,12 @@
-import { NavLink, useNavigate } from 'react-router-dom'
+import { NavLink } from 'react-router-dom'
 import { useAuth } from '../../auth/AuthContext'
 import { useRequiredUser } from '../../state/AppState'
 import { cn } from '../utils/cn'
-import { Shield, User, FolderKanban, Home, LogOut, Music2 } from 'lucide-react'
-import { Button } from '../primitives/Button'
+import { Shield, User, FolderKanban, Home, Music2 } from 'lucide-react'
 
 export function Sidebar() {
   const currentUser = useRequiredUser()
-  const { isAdmin, logout } = useAuth()
-  const navigate = useNavigate()
+  const { isAdmin } = useAuth()
 
   return (
     <aside className="hidden w-72 shrink-0 border-r border-slate-200 bg-white md:block">
@@ -48,22 +46,9 @@ export function Sidebar() {
           />
         </nav>
 
-        <div className="mt-auto space-y-2">
-          <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
-            <div className="truncate text-sm font-medium">{currentUser.name}</div>
-            <div className="text-xs text-slate-500">{currentUser.role}</div>
-          </div>
-          <Button
-            variant="secondary"
-            className="w-full"
-            onClick={() => {
-              logout()
-              navigate('/')
-            }}
-          >
-            <LogOut className="size-4" />
-            Logout
-          </Button>
+        <div className="mt-auto rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+          <div className="truncate text-sm font-medium">{currentUser.name}</div>
+          <div className="text-xs text-slate-500">{currentUser.role}</div>
         </div>
       </div>
     </aside>
