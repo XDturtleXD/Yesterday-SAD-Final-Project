@@ -263,6 +263,96 @@ Request body：
 
 無權限回 `403`。
 
+### 3) `POST /projects/:projectId/scores`（上傳樂譜）
+
+用途：對應 `functional map.mmd` 的「上傳樂譜」。在指定專案中為某個曲目
+（piece）× 某個聲部建立一份樂譜。同一個專案中同名曲目會自動共用一個
+`piece` row。
+
+權限規則：
+
+- `platform_admin`、`concertmaster`：可為任何聲部上傳
+- `principal`：**只能為自己的 `section_id` 上傳**
+- `member`：不可上傳，固定 `403`
+- 非專案成員：`403`
+
+Header：
+
+```http
+Authorization: Bearer <token>
+Content-Type: application/json
+```
+
+Request body：
+
+```json
+{
+  "sectionId": "11111111-1111-1111-1111-111111111101",
+  "title": "第一小提琴 - Beethoven 5th - Movement 1",
+  "piece": { "title": "Symphony No. 5", "composer": "Beethoven" },
+  "fileType": "musicxml",
+  "xmlContent": "<?xml version=\"1.0\"?>...<score-partwise>...</score-partwise>",
+  "originalFilename": "beethoven_5_m1_violin1.musicxml",
+  "mimeType": "application/vnd.recordare.musicxml+xml",
+  "fileSizeBytes": 182044
+}
+```
+
+必填參數：
+
+- `sectionId`：聲部 UUID，必須是資料庫中存在的 `sections.id`。
+- `title`：這份樂譜的標題（例：第一小提琴 - Beethoven 5th）。
+- **曲目擇一**：
+  - `piece.title`（與選用的 `piece.composer`）：依 `(project_id, title)` 在
+    `pieces` 中尋找，找不到則自動建立並指派下一個 `sort_order`。
+  - `pieceId`：直接指定既有的 `pieces.id`（必須屬於同專案，否則 `404`）。
+- **檔案內容擇一**：
+  - `xmlContent`：MusicXML / XML 檔案內容字串（≤ 5 MB；超出回 `413`）。寫入
+    `scores.xml_content`，並由後端自動合成 `storage_path`。
+  - `storagePath`：若前端已先把檔案上傳到 Supabase Storage，直接傳 path。
+    此時 `xmlContent` 不必填、`scores.xml_content` 將為 `null`。
+
+可選參數：
+
+- `fileType`：`musicxml`、`xml`、`mxl` 三選一，預設 `musicxml`。
+- `storageBucket`：預設 `scores`。
+- `originalFilename`、`mimeType`、`fileSizeBytes`：metadata，未提供即為 `null`。
+
+可能錯誤：
+
+- `400`：必填欄位缺少、`fileType` 不合法、同時提供 `pieceId` 與 `piece.title`、
+  同時都沒提供、`sectionId` 不存在。
+- `403`：權限不足（如 `principal` 試圖上傳到其他聲部，或 `member` 嘗試上傳）。
+- `404`：`pieceId` 不屬於此 `projectId`。
+- `409`：`(piece_id, section_id)` 已存在一份樂譜（schema 的
+  `scores_piece_section_unique` 約束）。
+- `413`：`xmlContent` 超過 5 MB 上限。
+
+Response（`201`）`data`：
+
+```json
+{
+  "id": "uuid",
+  "project_id": "uuid",
+  "piece_id": "uuid",
+  "section_id": "uuid",
+  "title": "第一小提琴 - Beethoven 5th - Movement 1",
+  "storage_bucket": "scores",
+  "storage_path": "inline/<project>/<piece>/<section>.musicxml",
+  "file_type": "musicxml",
+  "original_filename": "beethoven_5_m1_violin1.musicxml",
+  "mime_type": "application/vnd.recordare.musicxml+xml",
+  "file_size_bytes": 182044,
+  "xml_content": "<?xml ...",
+  "created_by": "uuid",
+  "created_at": "iso-timestamp",
+  "updated_at": "iso-timestamp"
+}
+```
+
+> 上傳採用 `application/json`（MVP 簡化方案）；前端讀取檔案後以字串放在
+> `xmlContent`。日後若要支援大檔或 `mxl` 二進位檔，再改成 multipart 上傳。
+
 ---
 
 ## 三之二、歷史紀錄 API（git-like history）

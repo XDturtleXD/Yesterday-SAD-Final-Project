@@ -18,5 +18,10 @@ router.get(
   projectPermissionMiddleware("params"),
   scoreController.getProjectScores
 );
+router.post(
+  "/:projectId/scores",
+  projectPermissionMiddleware("params"),
+  scoreController.uploadScore
+);
 
 module.exports = router;

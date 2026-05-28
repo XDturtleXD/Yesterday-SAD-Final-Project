@@ -26,6 +26,12 @@ class QueryBuilder {
     this.headOnly = false;
     this.insertRows = null;
     this.updatePatch = null;
+    this.limitN = null;
+  }
+
+  limit(n) {
+    this.limitN = n;
+    return this;
   }
 
   select(_cols, opts) {
@@ -111,7 +117,9 @@ class QueryBuilder {
       if (this.countMode === "exact" && this.headOnly) {
         return { data: null, error: null, count: matched.length };
       }
-      return { data: clone(this._sorted(matched)), error: null };
+      let rows = this._sorted(matched);
+      if (typeof this.limitN === "number") rows = rows.slice(0, this.limitN);
+      return { data: clone(rows), error: null };
     }
 
     if (this.mode === "insert") {
@@ -143,6 +151,39 @@ class QueryBuilder {
             return {
               data: null,
               error: { code: "23505", message: "duplicate branch name" },
+            };
+          }
+        }
+        // Mimic the "(project_id, title)" and "(project_id, sort_order)" unique on pieces.
+        if (this.tableName === "pieces") {
+          const dupTitle = table.find(
+            (p) => p.project_id === row.project_id && p.title === row.title,
+          );
+          if (dupTitle) {
+            return {
+              data: null,
+              error: { code: "23505", message: "duplicate piece title" },
+            };
+          }
+          const dupSort = table.find(
+            (p) => p.project_id === row.project_id && p.sort_order === row.sort_order,
+          );
+          if (dupSort) {
+            return {
+              data: null,
+              error: { code: "23505", message: "duplicate piece sort_order" },
+            };
+          }
+        }
+        // Mimic the "(piece_id, section_id)" unique on scores.
+        if (this.tableName === "scores") {
+          const dup = table.find(
+            (s) => s.piece_id === row.piece_id && s.section_id === row.section_id,
+          );
+          if (dup) {
+            return {
+              data: null,
+              error: { code: "23505", message: "duplicate (piece_id, section_id)" },
             };
           }
         }

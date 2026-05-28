@@ -313,7 +313,7 @@ GOOGLE_CLIENT_ID=your-google-oauth-client-id.apps.googleusercontent.com
 5. **版本與分支**：可建立分支、比較版本、切換版本；分支合併權限保留給群主。
 6. **總譜合成與輸出**：在 Full Score 面板選擇要套用的各聲部版本，預覽後匯出 MusicXML 或 PDF。
 
-> 詳細的編輯器互動、衝突偵測 UI 仍在開發中。後端目前已完成認證、專案、邀請、樂譜列表/讀取，以及對應 functional map「歷史紀錄_用git_」的分支／commit／比較／合併 API（合併權限限定 concertmaster）。實際的 score 編輯類 API 仍然只預留 `canEditScoreMiddleware`，尚未掛上路由 —— 註記內容會以 commit + score_versions 的方式被快照保存。
+> 詳細的編輯器互動、衝突偵測 UI 仍在開發中。後端目前已完成認證、專案、邀請、樂譜列表/讀取與**上傳**（`POST /api/projects/:projectId/scores`，會自動依專案內 piece 標題 find-or-create），以及對應 functional map「歷史紀錄_用git_」的分支／commit／比較／合併 API（合併權限限定 concertmaster）。實際的 score 編輯（畫筆 / 註記）類 API 仍然只預留 `canEditScoreMiddleware`，尚未掛上路由 —— 註記內容會以 commit + score_versions 的方式被快照保存。
 
 ---
 
@@ -334,6 +334,7 @@ GOOGLE_CLIENT_ID=your-google-oauth-client-id.apps.googleusercontent.com
 | `POST` | `/api/projects/:projectId/invite-code` | 產生邀請碼 |
 | `POST` | `/api/projects/join-by-code` | 用邀請碼加入專案 |
 | `GET` | `/api/projects/:projectId/scores` | 列出專案中可見的樂譜 |
+| `POST` | `/api/projects/:projectId/scores` | 上傳樂譜（body `{ sectionId, title, piece, xmlContent }`；principal 限自己聲部） |
 | `GET` | `/api/scores/:scoreId` | 取得單一樂譜 metadata |
 | `GET` | `/api/projects/:projectId/branches` | 列出分支 |
 | `POST` | `/api/projects/:projectId/branches` | 建立分支（body `{ name, fromCommitId? }`） |
@@ -385,11 +386,13 @@ Authorization: Bearer <jwt>
   - `middlewares/`：`errorHandler` 邏輯（含 `NODE_ENV` 對 stack 揭露的影響）。
   - `services/`：
     - `scoreService.test.js` — `canViewScore` / `assertCanViewScore` 對四種角色 × section 的可見性矩陣。
+    - `scoreService.upload.helpers.test.js` — 上傳 payload 驗證、權限矩陣（`canUploadScore`）、inline storage_path 合成。
+    - `scoreService.upload.integration.test.js` — 用 fake supabase 端到端測試 piece find-or-create、principal 跨聲部 403、`(piece, section)` 重複 409、sort_order 連續遞增。
     - `projectService.test.js` — `isPlatformAdmin` 判斷。
     - `historyService.helpers.test.js` — `normalizeSnapshot`、`buildVersionMap`、`filterVisibleVersions`、`assertConcertmaster` 等純 helper（在 `historyService` 中以 `_helpers` 命名空間導出，僅供測試）。
     - `historyService.integration.test.js` — 用 fake supabase 端到端測試 createBranch（首條分支變 default）、createCommit（父 commit 繼承 + override、principal 跨聲部 commit 被擋、branch head 推進）、compareCommits（added / removed / modified / unchanged 分類 + section 過濾）、mergeBranches（concertmaster gate、theirs-wins 策略、branch head 推進）、updateBranch、deleteBranch。
 
-  目前共 **59 個測試**，全部通過。
+  目前共 **86 個測試**，全部通過。
 
 - **CI**：GitHub Actions workflow 設定在 `.github/workflows/test.yml`。每次 `push`（任何分支）與 PR 進 `main` 時會自動在 Ubuntu + Node 22 上 `npm ci` 並執行 `npm test --prefix backend`。
 

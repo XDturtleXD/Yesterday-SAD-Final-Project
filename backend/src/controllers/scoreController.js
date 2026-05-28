@@ -21,7 +21,23 @@ const getScoreById = async (req, res, next) => {
   }
 };
 
+const uploadScore = async (req, res, next) => {
+  try {
+    const { projectId } = req.params;
+    const score = await scoreService.uploadScore(
+      req.body,
+      projectId,
+      req.user,
+      req.projectMembership,
+    );
+    return sendSuccess(res, score, "Score uploaded successfully", 201);
+  } catch (error) {
+    return next(error);
+  }
+};
+
 module.exports = {
   getProjectScores,
   getScoreById,
+  uploadScore,
 };
