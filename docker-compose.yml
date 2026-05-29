@@ -1,0 +1,60 @@
+# Yesterday — production-style local orchestration.
+#
+# Variable substitution below pulls from the project's .env file at the repo
+# root (the same one `npm run dev` uses). Required keys:
+#   SUPABASE_URL, SUPABASE_ANON_KEY, JWT_SECRET
+# Optional keys (defaults shown):
+#   JWT_EXPIRES_IN=7d
+#   GOOGLE_CLIENT_ID  / VITE_GOOGLE_CLIENT_ID  (both empty disables Google login)
+#   VITE_API_URL=/api  (the nginx in the frontend image proxies /api → backend)
+#
+# Bring everything up with:
+#   docker compose up --build
+# Visit http://localhost:8080 — calls to /api land at the backend container.
+
+services:
+  backend:
+    build:
+      context: ./backend
+    image: yesterday-backend:latest
+    container_name: yesterday-backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "3001"
+      SUPABASE_URL: ${SUPABASE_URL:?SUPABASE_URL is required}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:?SUPABASE_ANON_KEY is required}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+    # Expose 3001 on the host for direct API calls / debugging. The frontend
+    # does NOT need this — it reaches the backend via the internal docker
+    # network as `backend:3001`. Comment out if you want a sealed prod-style
+    # setup with only the frontend reachable from outside.
+    ports:
+      - "3001:3001"
+    healthcheck:
+      # node:22-alpine ships busybox wget; --spider just probes for 2xx/3xx.
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:3001/api/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # Vite inlines these at build time, NOT at container start. Changing
+        # them requires `docker compose build frontend`.
+        VITE_API_URL: ${VITE_API_URL:-/api}
+        VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-}
+    image: yesterday-frontend:latest
+    container_name: yesterday-frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "8080:80"

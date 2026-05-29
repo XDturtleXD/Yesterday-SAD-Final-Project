@@ -1,0 +1,38 @@
+# Build context for the FRONTEND image (Dockerfile at repo root).
+# Keep it tight so docker doesn't ship the whole repo to the daemon.
+
+node_modules
+dist
+dist-ssr
+build
+
+# Secrets must NEVER end up in the image.
+.env
+.env.*
+!.env.example
+
+# Other workspace + tooling state.
+.git
+.gitignore
+.vscode
+.idea
+.github
+*.log
+
+# Docs (the frontend doesn't need them).
+*.md
+!index.html
+
+# Things that are exclusively backend / database concerns — irrelevant to the
+# frontend build context.
+backend
+supabase
+
+# Top-level raw PDFs are dev assets, not part of the bundle. The example
+# files served by Vite live under public/ and are intentionally kept.
+pdf
+
+# Docker self-references.
+Dockerfile
+nginx.conf
+docker-compose.yml

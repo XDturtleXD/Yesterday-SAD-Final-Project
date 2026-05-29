@@ -101,6 +101,10 @@ Yesterday-SAD-Final-Project/
 ├── eslint.config.js               # ESLint 設定
 ├── index.html                     # Vite 入口 HTML
 ├── .env.example                   # 前端 + 後端共用環境變數樣板
+├── Dockerfile                     # 前端容器映像（multi-stage：vite build → nginx）
+├── nginx.conf                     # 前端容器內的 nginx 設定（SPA fallback + /api proxy）
+├── docker-compose.yml             # 一鍵起前後端服務
+├── .dockerignore                  # 前端 build context 排除清單
 │
 ├── public/                        # 靜態資源（Vite public）
 │   ├── favicon.svg
@@ -159,6 +163,8 @@ Yesterday-SAD-Final-Project/
 ├── backend/                       # 後端服務（Express, CommonJS）
 │   ├── package.json
 │   ├── .env.example
+│   ├── Dockerfile                 # 後端容器映像（node:22-alpine, USER node）
+│   ├── .dockerignore
 │   ├── README-backend.md          # 後端 API 詳細契約
 │   ├── tests/                     # node:test 測試
 │   │   ├── helpers/
@@ -253,6 +259,66 @@ npm install
 - 健康檢查：<http://localhost:3001/api/health>
 
 Vite 已設定把 `/api/*` 反向代理到 `:3001`，前端程式可直接呼叫相對路徑 `/api/...` 或使用 `VITE_API_URL`。
+
+---
+
+## Docker
+
+如果你想用容器跑（接近 production 的方式），repo 已附：
+
+- `Dockerfile`（根目錄）— 前端，multi-stage：`node:22-alpine` build → `nginx:1.27-alpine` 提供 `dist/` 並把 `/api/*` 反代到 `backend` 服務。
+- `nginx.conf`（根目錄）— SPA fallback、`/api` proxy、Vite hashed assets 的 1 年快取設定。
+- `backend/Dockerfile` — 後端，`node:22-alpine` + `npm ci --omit=dev`，runtime 用 `node` 使用者執行。
+- `docker-compose.yml`（根目錄）— 把 `backend`（`:3001`）與 `frontend`（host `:8080` → container `:80`）一起拉起來，並用 `/api/health` 做 backend healthcheck，`frontend` 等到 backend `healthy` 才啟動。
+
+### 前置條件
+
+確保 repo 根目錄有 `.env` 並包含必填變數（同 [環境變數](#環境變數) 那節）：
+
+```dotenv
+SUPABASE_URL=...
+SUPABASE_ANON_KEY=...
+JWT_SECRET=...
+# 選填
+JWT_EXPIRES_IN=7d
+GOOGLE_CLIENT_ID=...
+VITE_GOOGLE_CLIENT_ID=...
+# 選填，預設 /api 走 nginx proxy
+VITE_API_URL=/api
+```
+
+`docker compose` 會自動把根目錄 `.env` 拿去做變數代換；缺 `SUPABASE_URL`、`SUPABASE_ANON_KEY` 或 `JWT_SECRET` 任一個會直接讓 compose 報錯（必填守門）。
+
+### 常用指令
+
+```bash
+# 建置並啟動
+docker compose up --build
+
+# 背景啟動
+docker compose up -d --build
+
+# 看 log
+docker compose logs -f backend
+docker compose logs -f frontend
+
+# 停止並清掉容器
+docker compose down
+```
+
+啟動後：
+
+- 前端：<http://localhost:8080>
+- 後端 API：<http://localhost:3001/api>（也可從前端的 `/api` 走）
+- 健康檢查：<http://localhost:3001/api/health>
+
+### 重要注意
+
+- **Vite 變數會在 build time 寫死進 bundle**。`VITE_API_URL` 與 `VITE_GOOGLE_CLIENT_ID` 改了之後必須 `docker compose build frontend` 重 build；只 `up` 不會生效。
+- **Supabase 不在 compose 中**。本專案用外部 Supabase，沒有本機 DB 容器；compose 只負責 frontend + backend。
+- **`/api` 路徑**：前端容器內的 nginx 把 `/api/*` 反代到 `backend:3001/api/*`，所以前端可以一直用相對路徑 `/api/...`，跟 dev 模式行為一致。
+- **port 8080**：用 8080 而不是 80 是為了避免要 sudo / 與系統 web server 衝突；要改可在 `docker-compose.yml` 改 `ports:`。
+- **後端 port 3001 仍對外開放**，方便用 curl / Postman 直接打 backend。要做真正的 sealed production 部署，把 `backend.ports` 整個註解掉。
 
 ---
 

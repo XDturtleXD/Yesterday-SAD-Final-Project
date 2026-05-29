@@ -1,0 +1,21 @@
+# Keep the build context (and the image) small + free of secrets.
+node_modules
+npm-debug.log*
+
+# Local env files must NEVER end up in the image — pass secrets through
+# docker-compose `environment:` instead.
+.env
+.env.*
+!.env.example
+
+# Tests are runtime-irrelevant.
+tests
+
+# VCS / editor noise.
+.git
+.gitignore
+.vscode
+.idea
+
+# Docs are optional for the image.
+README*.md
