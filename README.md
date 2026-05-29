@@ -163,10 +163,14 @@ Yesterday-SAD-Final-Project/
 │   ├── tests/                     # node:test 測試
 │   │   ├── helpers/
 │   │   │   ├── testEnv.js         # 測試前設定 env vars
-│   │   │   └── fakeSupabase.js    # 記憶體版 supabase client（給 integration test 用）
+│   │   │   ├── fakeSupabase.js    # 記憶體版 supabase client（給 integration / E2E test 用）
+│   │   │   ├── httpHarness.js     # 把 Express 綁到 ephemeral port + fetch helper
+│   │   │   └── fixtures.js        # seed sections / users / JWT
 │   │   ├── utils/                 # response / appError / jwt / inviteToken
 │   │   ├── middlewares/           # errorHandler
-│   │   └── services/              # scoreService / projectService / historyService（含 integration）
+│   │   ├── services/              # scoreService / projectService / historyService（純單元 + service-level integration）
+│   │   ├── integration/           # HTTP 層整合測試（health / auth / projects / invites / scores）
+│   │   └── e2e/                   # 多步驟 user journey 測試
 │   └── src/
 │       ├── server.js              # 啟動 Express server
 │       ├── app.js                 # 組裝 Express middleware 與路由
@@ -378,21 +382,28 @@ Authorization: Bearer <jwt>
 ### 後端
 
 - **執行方式**：`npm test --prefix backend`（或在 `backend/` 內 `npm test`）。
-- **執行器**：Node 內建的 `node:test`（不需額外安裝任何套件，要求 Node 18+）。
+- **執行器**：Node 內建的 `node:test`（不需額外安裝任何套件，要求 Node 18+ / CI 用 22；HTTP harness 仰賴全域 `fetch`）。
+- **測試類型**：純單元測試（pure helpers）→ 服務層整合測試（記憶體版 Supabase）→ HTTP 層整合測試（真正啟動 Express 並用 `fetch` 打）→ 多步驟 E2E 旅程測試。
 - **測試目錄結構**（`backend/tests/`）：
   - `helpers/testEnv.js`：每個測試的第一行 `require("../helpers/testEnv")` 會先把 `JWT_SECRET`、`SUPABASE_URL` 等測試環境變數塞進 `process.env`，再 require 任何 production module。
-  - `helpers/fakeSupabase.js`：給 `historyService.integration.test.js` 用的記憶體版 supabase client，模擬 `.from().select().eq().in().order().single()` 等鏈式 API；測試前透過 `require.cache` 注入。
-  - `utils/`：`response`、`appError`、`jwt`、`inviteToken` 等純函式單元測試。
-  - `middlewares/`：`errorHandler` 邏輯（含 `NODE_ENV` 對 stack 揭露的影響）。
-  - `services/`：
-    - `scoreService.test.js` — `canViewScore` / `assertCanViewScore` 對四種角色 × section 的可見性矩陣。
-    - `scoreService.upload.helpers.test.js` — 上傳 payload 驗證、權限矩陣（`canUploadScore`）、inline storage_path 合成。
-    - `scoreService.upload.integration.test.js` — 用 fake supabase 端到端測試 piece find-or-create、principal 跨聲部 403、`(piece, section)` 重複 409、sort_order 連續遞增。
-    - `projectService.test.js` — `isPlatformAdmin` 判斷。
-    - `historyService.helpers.test.js` — `normalizeSnapshot`、`buildVersionMap`、`filterVisibleVersions`、`assertConcertmaster` 等純 helper（在 `historyService` 中以 `_helpers` 命名空間導出，僅供測試）。
-    - `historyService.integration.test.js` — 用 fake supabase 端到端測試 createBranch（首條分支變 default）、createCommit（父 commit 繼承 + override、principal 跨聲部 commit 被擋、branch head 推進）、compareCommits（added / removed / modified / unchanged 分類 + section 過濾）、mergeBranches（concertmaster gate、theirs-wins 策略、branch head 推進）、updateBranch、deleteBranch。
+  - `helpers/fakeSupabase.js`：記憶體版 supabase client，模擬 `.from().select().eq().in().order().limit().single()/.maybeSingle()` 等鏈式 API，會依 `select("col1, col2")` 投影欄位（模擬 Postgres 行為，避免 `password_hash` 之類欄位意外外洩）；也模擬 `branches`、`pieces`、`scores` 上的 unique 約束。透過 `require.cache` 注入。
+  - `helpers/httpHarness.js`：把 Express app bind 到 ephemeral port，並提供 `request(method, path, { body, token })` 用全域 `fetch` 發 request。每個 HTTP 測試檔 `test.after(harness.stop)` 收尾。
+  - `helpers/fixtures.js`：seed 5 個聲部、seed user（內建 bcrypt 雜湊的 `password123` 供登入測試）、`signAccessToken` 直接簽 JWT 供需要繞過 bcrypt 的測試使用。
+  - `utils/`、`middlewares/`、`services/*.test.js`：純單元測試。
+  - `services/scoreService.upload.*.test.js`：上傳 payload 驗證、權限矩陣、xml_content 持久化、`(piece, section)` 重複 409、`fileType` 變體、`storage_bucket` 覆寫等。
+  - `services/historyService.*.test.js`：分支／commit／compare／merge 服務層測試。
+  - `integration/*.http.test.js`：HTTP 層測試，把 request 從 Express 入口打完整路徑：
+    - `health.http.test.js` — `/api/health` 與未知 route 的錯誤封套。
+    - `auth.http.test.js` — register / login（真正跑 bcrypt）/ `/auth/me` 的 401／403 / 200 路徑。
+    - `projects.http.test.js` — projects 建立、列表、依角色可視；platform_admin 看全部；非成員 403；不存在 404。
+    - `invites.http.test.js` — `/projects/:id/invite-code` 與 `/projects/join-by-code` 雙端流程，含重複加入 409。
+    - `scores.http.test.js` — 上傳 happy path、auth/permission 401／403、`(piece, section)` 409、principal 跨聲部 403、聲部過濾後的 list / get。
+  - `e2e/*.test.js`：多步驟 user journey：
+    - `concertmasterJourney.test.js` — 註冊 → 登入 → 取得使用者 → 建立 project → 上傳 2 份不同聲部的樂譜（共用同一個 piece）→ list → get。
+    - `inviteAndUploadJourney.test.js` — CM 註冊／登入／建專案／發邀請碼，第二位使用者註冊／登入／用邀請碼加入（member）→ 嘗試上傳被擋 403 → 升格為 principal → 上傳自己聲部 OK／跨聲部 403；CM 列表看到雙聲部，principal 列表只看到自己聲部。
+    - `historyJourney.test.js` — 完整跑一遍 git-like 流程：建立 default branch → 連兩個 commit → list → compare → 開 feature 分支 → 在分支上 commit → merge 回主幹並驗證 head 推進與 score_versions 採用 feature 分支版本。
 
-  目前共 **86 個測試**，全部通過。
+  目前共 **135 個測試**，全部通過（執行時間約 2 秒）。
 
 - **CI**：GitHub Actions workflow 設定在 `.github/workflows/test.yml`。每次 `push`（任何分支）與 PR 進 `main` 時會自動在 Ubuntu + Node 22 上 `npm ci` 並執行 `npm test --prefix backend`。
 

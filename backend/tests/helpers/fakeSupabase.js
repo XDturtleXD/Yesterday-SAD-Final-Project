@@ -27,6 +27,7 @@ class QueryBuilder {
     this.insertRows = null;
     this.updatePatch = null;
     this.limitN = null;
+    this.selectedColumns = null;
   }
 
   limit(n) {
@@ -34,15 +35,34 @@ class QueryBuilder {
     return this;
   }
 
-  select(_cols, opts) {
+  select(cols, opts) {
+    // Parse "id, email, name" into a column whitelist so the fake mirrors
+    // postgres' "only return what was asked for" behaviour. A bare "*" or
+    // empty string means "all columns".
+    if (typeof cols === "string" && cols.trim() && !cols.includes("*")) {
+      this.selectedColumns = cols.split(",").map((c) => c.trim()).filter(Boolean);
+    }
     if (this.mode === "select") {
       // pure select; capture count/head options
       if (opts && opts.count === "exact") this.countMode = "exact";
       if (opts && opts.head === true) this.headOnly = true;
     }
     // For insert/update chains a trailing .select() just hints "return the row";
-    // our fake always returns affected rows, so nothing else to do.
+    // the column whitelist (if any) is applied at result projection time.
     return this;
+  }
+
+  _project(rows) {
+    if (!this.selectedColumns) return rows;
+    return rows.map((row) => {
+      const projected = {};
+      for (const col of this.selectedColumns) {
+        if (Object.prototype.hasOwnProperty.call(row, col)) {
+          projected[col] = row[col];
+        }
+      }
+      return projected;
+    });
   }
 
   eq(col, val) {
@@ -119,7 +139,7 @@ class QueryBuilder {
       }
       let rows = this._sorted(matched);
       if (typeof this.limitN === "number") rows = rows.slice(0, this.limitN);
-      return { data: clone(rows), error: null };
+      return { data: clone(this._project(rows)), error: null };
     }
 
     if (this.mode === "insert") {
@@ -189,7 +209,7 @@ class QueryBuilder {
         }
         table.push(row);
       }
-      return { data: clone(inserted), error: null };
+      return { data: clone(this._project(inserted)), error: null };
     }
 
     if (this.mode === "update") {
@@ -197,7 +217,7 @@ class QueryBuilder {
       for (const row of targets) {
         Object.assign(row, this.updatePatch, { updated_at: new Date().toISOString() });
       }
-      return { data: clone(targets), error: null };
+      return { data: clone(this._project(targets)), error: null };
     }
 
     if (this.mode === "delete") {
@@ -248,6 +268,15 @@ const createFakeSupabase = () => {
         cloned[name] = rows.map((r) => ({ ...r }));
       }
       state.tables = cloned;
+    },
+    // Synchronously push rows into a table, bypassing the insert path's
+    // uniqueness checks. Useful for tests that need to set up "as if it
+    // were already in the DB" without going through the API.
+    seedRows(table, rows) {
+      if (!state.tables[table]) state.tables[table] = [];
+      for (const row of rows) {
+        state.tables[table].push({ ...row });
+      }
     },
     snapshot() {
       return clone(state.tables);
