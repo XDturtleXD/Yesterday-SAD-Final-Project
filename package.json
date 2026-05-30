@@ -5,8 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "concurrently -n frontend,backend -c cyan,magenta \"vite\" \"npm run dev --prefix backend\"",
+    "dev:all": "concurrently -n frontend,backend,omr -c cyan,magenta,green \"vite\" \"npm run dev --prefix backend\" \"npm run dev:omr\"",
     "dev:frontend": "vite",
     "dev:backend": "npm run dev --prefix backend",
+    "dev:omr": "cd services/omr && uvicorn main:app --reload --port 8000",
     "postinstall": "npm install --prefix backend",
     "build": "tsc -b && vite build",
     "lint": "eslint .",

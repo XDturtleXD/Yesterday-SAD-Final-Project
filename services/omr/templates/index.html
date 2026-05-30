@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Score PDF to MusicXML</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <main class="page-shell">
+    <section class="submission-card">
+      <div class="card-header">
+        <p class="eyebrow">OMR MVP</p>
+        <h1>Score PDF to MusicXML</h1>
+        <p class="subtitle">Upload a clean printed score PDF and convert it into editable MusicXML with Audiveris.</p>
+      </div>
+
+      <form id="uploadForm" class="upload-form">
+        <label id="dropZone" class="upload-zone" for="pdfFile">
+          <span class="upload-icon">PDF</span>
+          <span class="upload-title">Choose a score PDF</span>
+          <span id="fileName" class="upload-note">PDF only</span>
+          <input id="pdfFile" name="file" type="file" accept="application/pdf,.pdf">
+        </label>
+
+        <div class="form-grid single-field">
+          <label class="field-label" for="preprocessMode">
+            <span>Preprocess mode</span>
+            <select id="preprocessMode" name="preprocess_mode">
+              <option value="none">none</option>
+              <option value="basic">basic</option>
+              <option value="high_contrast">high_contrast</option>
+              <option value="resize">resize</option>
+              <option value="classical_part">classical_part</option>
+              <option value="thin_ink">thin_ink</option>
+            </select>
+          </label>
+        </div>
+
+        <button id="uploadButton" class="primary-button" type="submit">Upload</button>
+      </form>
+
+      <section id="jobPanel" class="job-panel hidden" aria-live="polite">
+        <div class="job-meta">
+          <span class="label">Job ID</span>
+          <code id="jobId">-</code>
+        </div>
+
+        <div class="status-row">
+          <span id="statusBadge" class="status-badge queued">Queued</span>
+          <span id="statusMessage" class="status-message">Waiting to start</span>
+        </div>
+
+        <div class="progress-track">
+          <div id="progressBar" class="progress-bar"></div>
+        </div>
+        <p id="progressText" class="progress-text">Processing page 0 / 0</p>
+
+        <div id="errorBox" class="error-box hidden"></div>
+
+        <div id="resultActions" class="result-actions hidden">
+          <button id="retryButton" class="secondary-button hidden" type="button">Retry Job</button>
+        </div>
+
+        <div id="engineResults" class="engine-results hidden">
+          <section id="audiverisResult" class="engine-result hidden" data-engine="audiveris">
+            <div class="engine-result-header">
+              <h2>Result</h2>
+              <span class="engine-status">Waiting</span>
+            </div>
+            <div class="engine-actions"></div>
+            <pre class="engine-log hidden"></pre>
+          </section>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <script>
+    window.INITIAL_JOB_ID = "{{ initial_job_id }}";
+  </script>
+  <script src="/static/app.js"></script>
+</body>
+</html>

@@ -63,6 +63,92 @@ test("POST /scores: concertmaster uploads and gets 201 + score row", async () =>
   assert.ok(body.data.id);
 });
 
+test("POST /scores/upload: concertmaster uploads a MusicXML file", async () => {
+  const { owner, projectId } = await setupScenario();
+  const baseURL = await harness.baseURLPromise;
+  const form = new FormData();
+  form.set(
+    "file",
+    new Blob(['<?xml version="1.0"?><score-partwise version="4.0"></score-partwise>'], {
+      type: "application/vnd.recordare.musicxml+xml",
+    }),
+    "violin.musicxml",
+  );
+  form.set("sectionId", SECTION_FIRST_VIOLIN);
+  form.set("title", "Violin I");
+  form.set("pieceTitle", "Test Piece");
+
+  const res = await fetch(`${baseURL}/api/projects/${projectId}/scores/upload`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${owner.token}` },
+    body: form,
+  });
+  const body = await res.json();
+
+  assert.equal(res.status, 201);
+  assert.equal(body.success, true);
+  assert.equal(body.data.project_id, projectId);
+  assert.equal(body.data.original_filename, "violin.musicxml");
+  assert.equal(body.data.file_type, "musicxml");
+});
+
+test("POST /scores/upload: rejects non-MusicXML XML content", async () => {
+  const { owner, projectId } = await setupScenario();
+  const baseURL = await harness.baseURLPromise;
+  const form = new FormData();
+  form.set("file", new Blob(["<not-music></not-music>"], { type: "application/xml" }), "bad.xml");
+  form.set("sectionId", SECTION_FIRST_VIOLIN);
+  form.set("title", "Bad");
+  form.set("pieceTitle", "Bad Piece");
+
+  const res = await fetch(`${baseURL}/api/projects/${projectId}/scores/upload`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${owner.token}` },
+    body: form,
+  });
+  const body = await res.json();
+
+  assert.equal(res.status, 400);
+  assert.match(body.message, /MusicXML/);
+});
+
+test("POST /scores/upload: PDF upload starts a conversion job", async () => {
+  const { owner, projectId } = await setupScenario();
+  const baseURL = await harness.baseURLPromise;
+  const originalFetch = global.fetch;
+  global.fetch = async (url, options) => {
+    if (String(url).startsWith("http://127.0.0.1:8000/") && options?.method === "POST") {
+      return new Response(JSON.stringify({ job_id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    return originalFetch(url, options);
+  };
+
+  try {
+    const form = new FormData();
+    form.set("file", new Blob(["%PDF-1.7"], { type: "application/pdf" }), "part.pdf");
+    form.set("sectionId", SECTION_FIRST_VIOLIN);
+    form.set("title", "Violin I");
+    form.set("pieceTitle", "PDF Piece");
+
+    const res = await fetch(`${baseURL}/api/projects/${projectId}/scores/upload`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${owner.token}` },
+      body: form,
+    });
+    const body = await res.json();
+
+    assert.equal(res.status, 202);
+    assert.equal(body.success, true);
+    assert.equal(body.data.jobId, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    assert.equal(body.data.status, "queued");
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
 test("POST /scores: 401 without token", async () => {
   const { projectId } = await setupScenario();
   const { status } = await harness.request("POST", `/api/projects/${projectId}/scores`, {

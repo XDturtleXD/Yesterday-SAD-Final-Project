@@ -28,7 +28,10 @@ type AppState = {
   clearAuthUser: () => void
   refreshProjects: () => Promise<void>
   loadSections: () => Promise<Section[]>
-  loadProjectDetail: (projectId: string) => Promise<Project | undefined>
+  loadProjectDetail: (
+    projectId: string,
+    options?: { force?: boolean },
+  ) => Promise<Project | undefined>
   getProject: (id: string) => Project | undefined
   getScore: (projectId: string, scoreId: string) => Score | undefined
   getMemberDisplayName: (userId: string) => string
@@ -138,11 +141,11 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   }, [sections])
 
   const loadProjectDetail = useCallback(
-    async (projectId: string) => {
+    async (projectId: string, options: { force?: boolean } = {}) => {
       // Read via ref so this callback stays stable across renders
       const existing = projectsRef.current.find((p) => p.id === projectId)
-      if (existing?.detailLoaded) return existing
-      if (existing?.detailLoading) return existing
+      if (!options.force && existing?.detailLoaded) return existing
+      if (!options.force && existing?.detailLoading) return existing
 
       setProjects((prev) =>
         prev.map((p) => (p.id === projectId ? { ...p, detailLoading: true } : p)),

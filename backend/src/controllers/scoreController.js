@@ -1,5 +1,29 @@
 const scoreService = require("../services/scoreService");
+const conversionService = require("../services/conversionService");
+const AppError = require("../utils/appError");
 const { sendSuccess } = require("../utils/response");
+
+const XML_EXTENSIONS = new Set([".xml", ".musicxml"]);
+const PDF_EXTENSIONS = new Set([".pdf"]);
+
+const getFileExtension = (filename = "") => {
+  const match = filename.toLowerCase().match(/\.[^.]+$/);
+  return match ? match[0] : "";
+};
+
+const assertLooksLikeMusicXml = (xmlContent) => {
+  const trimmed = String(xmlContent || "").trim();
+  if (!trimmed) {
+    throw new AppError("Uploaded XML file is empty", 400);
+  }
+  if (
+    !trimmed.includes("<score-partwise") &&
+    !trimmed.includes("<score-timewise") &&
+    !trimmed.includes("<opus")
+  ) {
+    throw new AppError("Uploaded XML does not look like a MusicXML score", 400);
+  }
+};
 
 const getProjectScores = async (req, res, next) => {
   try {
@@ -36,8 +60,62 @@ const uploadScore = async (req, res, next) => {
   }
 };
 
+const uploadScoreFile = async (req, res, next) => {
+  try {
+    const { projectId } = req.params;
+    const file = req.file;
+
+    if (!file) {
+      throw new AppError("Score file is required", 400);
+    }
+
+    const extension = getFileExtension(file.originalname);
+    if (PDF_EXTENSIONS.has(extension)) {
+      const conversion = await conversionService.startConversion({
+        file,
+        preprocessMode: req.body.preprocessMode,
+        projectId,
+        userId: req.user.id,
+      });
+      return sendSuccess(res, conversion, "Conversion started", 202);
+    }
+
+    if (!XML_EXTENSIONS.has(extension)) {
+      throw new AppError("Only PDF, XML, and MusicXML files are supported", 400);
+    }
+
+    const xmlContent = file.buffer.toString("utf8");
+    assertLooksLikeMusicXml(xmlContent);
+
+    const score = await scoreService.uploadScore(
+      {
+        ...req.body,
+        piece:
+          req.body.pieceTitle || req.body.pieceComposer
+            ? {
+                title: req.body.pieceTitle,
+                composer: req.body.pieceComposer,
+              }
+            : req.body.piece,
+        fileType: extension === ".xml" ? "xml" : "musicxml",
+        xmlContent,
+        originalFilename: file.originalname,
+        mimeType: file.mimetype || "application/vnd.recordare.musicxml+xml",
+        fileSizeBytes: file.size,
+      },
+      projectId,
+      req.user,
+      req.projectMembership,
+    );
+    return sendSuccess(res, score, "Score uploaded successfully", 201);
+  } catch (error) {
+    return next(error);
+  }
+};
+
 module.exports = {
   getProjectScores,
   getScoreById,
   uploadScore,
+  uploadScoreFile,
 };

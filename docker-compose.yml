@@ -7,6 +7,7 @@
 #   JWT_EXPIRES_IN=7d
 #   GOOGLE_CLIENT_ID  / VITE_GOOGLE_CLIENT_ID  (both empty disables Google login)
 #   VITE_API_URL=/api  (the nginx in the frontend image proxies /api → backend)
+#   OMR_SERVICE_URL=http://omr:8000
 #
 # Bring everything up with:
 #   docker compose up --build
@@ -27,6 +28,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      OMR_SERVICE_URL: ${OMR_SERVICE_URL:-http://omr:8000}
     # Expose 3001 on the host for direct API calls / debugging. The frontend
     # does NOT need this — it reaches the backend via the internal docker
     # network as `backend:3001`. Comment out if you want a sealed prod-style
@@ -36,6 +38,26 @@ services:
     healthcheck:
       # node:22-alpine ships busybox wget; --spider just probes for 2xx/3xx.
       test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:3001/api/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  omr:
+    build:
+      context: ./services/omr
+    image: yesterday-omr:latest
+    container_name: yesterday-omr
+    restart: unless-stopped
+    environment:
+      OMR_TEST_MAX_PAGES: ${OMR_TEST_MAX_PAGES:-all}
+      AUDIVERIS_BIN: ${AUDIVERIS_BIN:-/opt/audiveris/bin/Audiveris}
+    volumes:
+      - omr-jobs:/app/jobs
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"]
       interval: 10s
       timeout: 3s
       retries: 5
@@ -58,3 +80,6 @@ services:
         condition: service_healthy
     ports:
       - "8080:80"
+
+volumes:
+  omr-jobs:
