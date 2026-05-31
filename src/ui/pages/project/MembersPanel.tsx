@@ -43,32 +43,37 @@ export function MembersPanel({ project }: { project: Project }) {
               </tr>
             </thead>
             <tbody>
-              {project.members.map((m) => (
-                <tr key={m.id} className="border-t border-slate-200">
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <Avatar name={m.userName} size={36} />
-                      <div className="min-w-0">
-                        <div className="truncate font-medium text-slate-900">
-                          <Link to={`/users/${m.userId}`} className="hover:underline">
-                            {m.userName}
-                          </Link>
-                          {m.userId === currentUser.id && (
-                            <span className="ml-2 text-xs text-slate-500">(you)</span>
-                          )}
+              {project.members.map((m) => {
+                const avatarSrc =
+                  m.avatarUrl || (m.userId === currentUser.id ? currentUser.avatarUrl : undefined)
+
+                return (
+                  <tr key={m.id} className="border-t border-slate-200">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <Avatar name={m.userName} src={avatarSrc} size={36} />
+                        <div className="min-w-0">
+                          <div className="truncate font-medium text-slate-900">
+                            <Link to={`/users/${m.userId}`} className="hover:underline">
+                              {m.userName}
+                            </Link>
+                            {m.userId === currentUser.id && (
+                              <span className="ml-2 text-xs text-slate-500">(you)</span>
+                            )}
+                          </div>
+                          <div className="text-xs text-slate-500">{m.userEmail}</div>
                         </div>
-                        <div className="text-xs text-slate-500">{m.userEmail}</div>
                       </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <Badge>{roleLabels[m.role]}</Badge>
-                  </td>
-                  <td className="px-4 py-3">
-                    <Badge tone="info">{m.sectionName}</Badge>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge>{roleLabels[m.role]}</Badge>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge tone="info">{m.sectionName}</Badge>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>

@@ -45,6 +45,7 @@ export type ApiProjectMemberRecord = {
   user_id: string
   user_name: string
   user_email: string
+  user_avatar_url?: string | null
   section_id: string
   section_code: string
   section_name: string

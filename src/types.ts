@@ -22,6 +22,7 @@ export type ProjectMember = {
   userId: string
   userName: string
   userEmail: string
+  avatarUrl?: string
   sectionId: string
   sectionCode: string
   sectionName: string

@@ -32,6 +32,7 @@ export function UserProfilePage() {
           name: member.userName,
           role: 'regular' as const,
           intro: '',
+          avatarUrl: member.avatarUrl,
         }
       }
     }

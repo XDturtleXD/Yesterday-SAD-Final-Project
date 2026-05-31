@@ -368,12 +368,34 @@ const uploadScore = async (body, projectId, requestUser, membership) => {
   return created;
 };
 
+const deleteScore = async (score, membership) => {
+  ensureSupabaseReady();
+
+  if (!score) {
+    throw new AppError("Score not found", 404);
+  }
+
+  assertCanUploadScore(membership, score.section_id);
+
+  const { error } = await supabase
+    .from("scores")
+    .delete()
+    .eq("id", score.id);
+
+  if (error) {
+    throw new AppError("Failed to delete score", 500, error);
+  }
+
+  return score;
+};
+
 module.exports = {
   listScoresByProjectId,
   getScoreById,
   canViewScore,
   assertCanViewScore,
   uploadScore,
+  deleteScore,
   // Pure helpers exported for unit tests (no Supabase dependency required).
   _helpers: {
     canUploadScore,

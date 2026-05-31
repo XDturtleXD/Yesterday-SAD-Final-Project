@@ -13,6 +13,7 @@ const env = {
   jwtSecret: process.env.JWT_SECRET || "",
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || "7d",
   googleClientId: process.env.GOOGLE_CLIENT_ID || "",
+  omrServiceUrl: process.env.OMR_SERVICE_URL || "http://127.0.0.1:8000",
 };
 
 module.exports = env;
