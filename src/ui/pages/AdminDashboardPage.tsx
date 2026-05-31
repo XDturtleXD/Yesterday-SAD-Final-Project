@@ -36,7 +36,7 @@ export function AdminDashboardPage() {
           <div>
             <div className="text-xl font-semibold text-slate-950">Admin dashboard</div>
             <div className="mt-1 text-sm text-slate-600">
-              平台管理員可檢視所有專案。
+              Platform admins can view every project.
             </div>
           </div>
         </div>
@@ -45,7 +45,7 @@ export function AdminDashboardPage() {
       <Card className="p-5">
         <div className="flex items-center gap-2 text-sm font-semibold text-slate-950">
           <FolderKanban className="size-4 text-slate-500" />
-          All projects ({projectsLoading ? '…' : projects.length})
+          All projects ({projectsLoading ? '...' : projects.length})
         </div>
         <div className="mt-4 space-y-3">
           {projects.map((p) => (

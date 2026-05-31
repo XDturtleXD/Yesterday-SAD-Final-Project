@@ -7,6 +7,7 @@ import { Button } from '../primitives/Button'
 import { Card } from '../primitives/Card'
 import { Modal } from '../primitives/Modal'
 import { cn } from '../utils/cn'
+import { memberSectionLabel } from '../../utils/sectionLabels'
 import { BranchesPanel } from './project/BranchesPanel'
 import { FullScorePanel } from './project/FullScorePanel'
 import { MembersPanel } from './project/MembersPanel'
@@ -61,7 +62,7 @@ export function ProjectDetailPage() {
     [project, currentUser.id],
   )
   const myRole = myMember?.role ?? (currentUser.role === 'admin' ? 'admin' : 'viewer')
-  const mySection = myMember?.sectionName ?? '—'
+  const mySection = myMember ? memberSectionLabel(myMember) : '—'
   const currentCommit = project?.commits.find(
     (c) => c.id === project.branches.find((b) => b.id === project.currentBranchId)?.headCommitId,
   )
@@ -74,7 +75,7 @@ export function ProjectDetailPage() {
   if (loading || project?.detailLoading) {
     return (
       <Card className="p-6">
-        <div className="text-sm text-slate-600">Loading project…</div>
+        <div className="text-sm text-slate-600">Loading project...</div>
       </Card>
     )
   }
@@ -83,7 +84,7 @@ export function ProjectDetailPage() {
     return (
       <Card className="p-6">
         <div className="text-sm font-semibold text-slate-900">
-          {accessDenied ? '無權存取此專案' : 'Project not found'}
+          {accessDenied ? 'You do not have access to this project' : 'Project not found'}
         </div>
         <div className="mt-1 text-sm text-slate-600">
           Go back to the{' '}
@@ -101,11 +102,11 @@ export function ProjectDetailPage() {
   if (!project.detailLoaded) {
     return (
       <Card className="p-6">
-        <div className="text-sm font-semibold text-slate-900">載入專案失敗</div>
-        <div className="mt-1 text-sm text-slate-600">無法取得專案詳細資料，請重新整理頁面後再試。</div>
+        <div className="text-sm font-semibold text-slate-900">Failed to load project</div>
+        <div className="mt-1 text-sm text-slate-600">Could not load project details. Refresh the page and try again.</div>
         <div className="mt-3 flex gap-2">
-          <Button onClick={() => window.location.reload()}>重新整理</Button>
-          <Button variant="secondary" onClick={() => navigate('/projects')}>返回列表</Button>
+          <Button onClick={() => window.location.reload()}>Refresh</Button>
+          <Button variant="secondary" onClick={() => navigate('/projects')}>Back to list</Button>
         </div>
       </Card>
     )
@@ -114,7 +115,7 @@ export function ProjectDetailPage() {
   if (!myMember && currentUser.role !== 'admin') {
     return (
       <Card className="p-6">
-        <div className="text-sm font-semibold text-slate-900">你不是此專案的成員</div>
+        <div className="text-sm font-semibold text-slate-900">You are not a member of this project</div>
         <div className="mt-1 text-sm text-slate-600">
           Go back to the{' '}
           <Link className="underline" to="/projects">
@@ -171,7 +172,7 @@ export function ProjectDetailPage() {
             )}
 
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <QuickLink title="曲目與分譜" desc="建立曲目並為各聲部上傳分譜。" to={`?tab=pieces`} />
+              <QuickLink title="Pieces & Parts" desc="Create pieces and upload section parts." to={`?tab=pieces`} />
               <QuickLink title="Members" desc="Roles and sections." to={`?tab=members`} />
               <QuickLink title="Branches" desc="Switch and merge versions." to={`?tab=branches`} />
               <QuickLink title="Full score" desc="Preview combined parts." to={`?tab=fullscore`} />
@@ -190,7 +191,7 @@ export function ProjectDetailPage() {
                 </div>
               ))}
               {project.commits.length === 0 && (
-                <div className="text-sm text-slate-500">尚無 commit 紀錄</div>
+                <div className="text-sm text-slate-500">No commit history yet</div>
               )}
             </div>
             <div className="mt-3">
@@ -209,7 +210,7 @@ export function ProjectDetailPage() {
       {tab === 'fullscore' && <FullScorePanel project={project} />}
 
       <Modal
-        title="邀請成員"
+        title="Invite member"
         open={inviteOpen}
         onClose={() => setInviteOpen(false)}
         footer={
@@ -222,9 +223,9 @@ export function ProjectDetailPage() {
               onClick={async () => {
                 try {
                   await navigator.clipboard.writeText(inviteCode)
-                  addToast({ title: '邀請碼已複製', message: '分享給團員即可加入' })
+                  addToast({ title: 'Invite code copied', message: 'Share it with a teammate to let them join.' })
                 } catch {
-                  addToast({ title: '複製失敗', message: '請手動選取邀請碼' })
+                  addToast({ title: 'Copy failed', message: 'Select and copy the invite code manually.' })
                 }
               }}
             >
@@ -234,10 +235,10 @@ export function ProjectDetailPage() {
         }
       >
         <div className="text-sm text-slate-600">
-          將以下邀請碼分享給團員。對方登入後可在 Projects 頁面使用「Join by code」加入。
+          Share this invite code with a teammate. After signing in, they can join from the Projects page with "Join by code".
         </div>
         {inviteLoading ? (
-          <div className="mt-3 text-sm text-slate-500">產生邀請碼中…</div>
+          <div className="mt-3 text-sm text-slate-500">Generating invite code...</div>
         ) : (
           <textarea
             readOnly
@@ -284,7 +285,7 @@ function InviteCodeLoader({
 function Tabs({ tab, projectId }: { tab: TabKey; projectId: string }) {
   const items: Array<{ key: TabKey; label: string }> = [
     { key: 'overview', label: 'Overview' },
-    { key: 'pieces', label: '曲目與分譜' },
+    { key: 'pieces', label: 'Pieces & Parts' },
     { key: 'members', label: 'Members' },
     { key: 'branches', label: 'Branches' },
     { key: 'versions', label: 'Versions' },

@@ -5,6 +5,7 @@ import { Badge } from '../../primitives/Badge'
 import { Button } from '../../primitives/Button'
 import { Card } from '../../primitives/Card'
 import { Modal } from '../../primitives/Modal'
+import { memberSectionLabel } from '../../../utils/sectionLabels'
 
 export function FullScorePanel({ project }: { project: Project }) {
   const { addToast } = useAppState()
@@ -12,7 +13,7 @@ export function FullScorePanel({ project }: { project: Project }) {
   const [exportOpen, setExportOpen] = useState<null | 'musescore' | 'pdf'>(null)
 
   const sections = useMemo(() => {
-    const set = new Set(project.members.map((m) => m.sectionName))
+    const set = new Set(project.members.map((m) => memberSectionLabel(m)))
     return Array.from(set)
   }, [project.members])
 
@@ -176,4 +177,3 @@ function MockSystemStaff({ title, lines }: { title: string; lines: string[] }) {
     </Card>
   )
 }
-

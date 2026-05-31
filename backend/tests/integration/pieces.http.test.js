@@ -70,3 +70,40 @@ test("DELETE /pieces/:pieceId removes piece", async () => {
   });
   assert.equal(listed.body.data.length, 0);
 });
+
+test("PATCH /pieces/reorder: concertmaster reorders pieces", async () => {
+  const { owner, projectId } = await setupScenario();
+  const first = await harness.request("POST", `/api/projects/${projectId}/pieces`, {
+    token: owner.token,
+    body: { title: "First" },
+  });
+  const second = await harness.request("POST", `/api/projects/${projectId}/pieces`, {
+    token: owner.token,
+    body: { title: "Second" },
+  });
+  const third = await harness.request("POST", `/api/projects/${projectId}/pieces`, {
+    token: owner.token,
+    body: { title: "Third" },
+  });
+
+  const reordered = await harness.request("PATCH", `/api/projects/${projectId}/pieces/reorder`, {
+    token: owner.token,
+    body: {
+      orderedPieceIds: [
+        third.body.data.id,
+        first.body.data.id,
+        second.body.data.id,
+      ],
+    },
+  });
+
+  assert.equal(reordered.status, 200);
+  assert.deepEqual(
+    reordered.body.data.map((piece) => [piece.title, piece.sort_order]),
+    [
+      ["Third", 1],
+      ["First", 2],
+      ["Second", 3],
+    ],
+  );
+});

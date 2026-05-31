@@ -6,6 +6,7 @@ import { Badge } from '../primitives/Badge'
 import { Button } from '../primitives/Button'
 import { Card } from '../primitives/Card'
 import { Modal } from '../primitives/Modal'
+import { memberSectionLabel, sectionLabel } from '../../utils/sectionLabels'
 import { Copy, FolderPlus, LogIn, Music2 } from 'lucide-react'
 
 export function ProjectsPage() {
@@ -45,7 +46,7 @@ export function ProjectsPage() {
         <div className="min-w-0">
           <div className="text-xl font-semibold text-slate-950">Projects</div>
           <div className="mt-1 text-sm text-slate-600">
-            {projectsLoading ? 'Loading…' : `${projects.length} workspaces`}
+            {projectsLoading ? 'Loading...' : `${projects.length} workspaces`}
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -62,9 +63,9 @@ export function ProjectsPage() {
 
       {!projectsLoading && projects.length === 0 && (
         <Card className="p-6">
-          <div className="text-sm font-semibold text-slate-900">尚無專案</div>
+          <div className="text-sm font-semibold text-slate-900">No projects yet</div>
           <div className="mt-1 text-sm text-slate-600">
-            建立新專案，或使用邀請碼加入既有樂團。
+            Create a project or join an existing ensemble with an invite code.
           </div>
         </Card>
       )}
@@ -73,7 +74,7 @@ export function ProjectsPage() {
         {projects.map((p) => {
           const myMember = p.members.find((m) => m.userId === currentUser.id)
           const myRole = myMember?.role ?? (currentUser.role === 'admin' ? 'admin' : '—')
-          const mySection = myMember?.sectionName ?? '—'
+          const mySection = myMember ? memberSectionLabel(myMember) : '—'
           const lastCommit = latestCommit(p)
           const lastAuthor = lastCommit
             ? getMemberDisplayName(lastCommit.authorUserId)
@@ -129,11 +130,11 @@ export function ProjectsPage() {
                         try {
                           const code = await createInviteCode(p.id)
                           await navigator.clipboard.writeText(code)
-                          addToast({ title: '邀請碼已複製', message: '已複製到剪貼簿' })
+                          addToast({ title: 'Invite code copied', message: 'Copied to clipboard.' })
                         } catch (err) {
                           addToast({
-                            title: '無法建立邀請碼',
-                            message: err instanceof ApiError ? err.message : '請稍後再試',
+                            title: 'Could not create invite code',
+                            message: err instanceof ApiError ? err.message : 'Please try again later.',
                           })
                         }
                       }}
@@ -149,7 +150,7 @@ export function ProjectsPage() {
       </div>
 
       <Modal
-        title="使用邀請碼加入專案"
+        title="Join project by invite code"
         open={joinOpen}
         onClose={() => setJoinOpen(false)}
         footer={
@@ -170,24 +171,24 @@ export function ProjectsPage() {
                   setJoinOpen(false)
                   setInviteCode('')
                 } catch (err) {
-                  setJoinError(err instanceof ApiError ? err.message : '加入專案失敗')
+                  setJoinError(err instanceof ApiError ? err.message : 'Failed to join project')
                 } finally {
                   setJoinLoading(false)
                 }
               }}
             >
-              {joinLoading ? '加入中…' : 'Join'}
+              {joinLoading ? 'Joining...' : 'Join'}
             </Button>
           </div>
         }
       >
         <div className="text-sm text-slate-600">
-          輸入首席或 concertmaster 提供的邀請碼，並選擇你的聲部。
+          Enter the invite code from your principal or manager, then choose your section.
         </div>
         <input
           value={inviteCode}
           onChange={(e) => setInviteCode(e.target.value)}
-          placeholder="貼上邀請碼"
+          placeholder="Paste invite code"
           className="mt-3 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
         />
         <select
@@ -197,7 +198,7 @@ export function ProjectsPage() {
         >
           {sections.map((s) => (
             <option key={s.id} value={s.id}>
-              {s.name}
+              {sectionLabel(s)}
             </option>
           ))}
         </select>

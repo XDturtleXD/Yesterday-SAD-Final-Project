@@ -214,6 +214,40 @@ class QueryBuilder {
 
     if (this.mode === "update") {
       const targets = table.filter((r) => this._matches(r));
+      if (this.tableName === "pieces") {
+        for (const row of targets) {
+          const nextProjectId = this.updatePatch.project_id ?? row.project_id;
+          const nextTitle = this.updatePatch.title ?? row.title;
+          const nextSortOrder = this.updatePatch.sort_order ?? row.sort_order;
+
+          if (this.updatePatch.title !== undefined) {
+            const dupTitle = table.find(
+              (p) => p.id !== row.id && p.project_id === nextProjectId && p.title === nextTitle,
+            );
+            if (dupTitle) {
+              return {
+                data: null,
+                error: { code: "23505", message: "duplicate piece title" },
+              };
+            }
+          }
+
+          if (this.updatePatch.sort_order !== undefined) {
+            const dupSort = table.find(
+              (p) =>
+                p.id !== row.id &&
+                p.project_id === nextProjectId &&
+                p.sort_order === nextSortOrder,
+            );
+            if (dupSort) {
+              return {
+                data: null,
+                error: { code: "23505", message: "duplicate piece sort_order" },
+              };
+            }
+          }
+        }
+      }
       for (const row of targets) {
         Object.assign(row, this.updatePatch, { updated_at: new Date().toISOString() });
       }

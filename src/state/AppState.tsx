@@ -24,6 +24,7 @@ import type {
   Section,
   User,
 } from '../types'
+import { sectionLabel } from '../utils/sectionLabels'
 
 type Toast = { id: string; title: string; message?: string }
 
@@ -59,6 +60,7 @@ type AppState = {
   createPiece: (projectId: string, input: { title: string; composer?: string }) => Promise<Piece>
   deletePiece: (projectId: string, pieceId: string) => Promise<void>
   movePiece: (projectId: string, pieceId: string, direction: 'up' | 'down') => Promise<void>
+  reorderPieces: (projectId: string, orderedPieceIds: string[]) => Promise<void>
   deleteProjectScore: (projectId: string, scoreId: string) => Promise<void>
   joinProject: (input: { inviteCode: string; sectionId: string }) => Promise<void>
   createInviteCode: (projectId: string) => Promise<string>
@@ -323,7 +325,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         setProjects((prev) => [project, ...prev])
         setToasts((prev) => [
           ...prev,
-          { id: id('t'), title: '專案已建立', message: project.name },
+          { id: id('t'), title: 'Project created', message: project.name },
         ])
         const loaded = await loadProjectDetail(project.id)
         return loaded ?? project
@@ -347,7 +349,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         )
         setToasts((prev) => [
           ...prev,
-          { id: id('t'), title: '專案資料已暫存', message: '目前尚未寫回後端' },
+          { id: id('t'), title: 'Project changes saved locally', message: 'Backend update is not implemented yet.' },
         ])
       },
 
@@ -405,6 +407,14 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         )
       },
 
+      reorderPieces: async (projectId, orderedPieceIds) => {
+        const reordered = await piecesApi.reorderProjectPieces(projectId, orderedPieceIds)
+        const mapped = reordered.map(mapPiece)
+        setProjects((prev) =>
+          prev.map((p) => (p.id === projectId ? { ...p, pieces: mapped } : p)),
+        )
+      },
+
       deleteProjectScore: async (projectId, scoreId) => {
         await scoresApi.deleteScore(scoreId)
         setProjects((prev) =>
@@ -421,7 +431,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         await refreshProjects()
         setToasts((prev) => [
           ...prev,
-          { id: id('t'), title: '已加入專案', message: '歡迎加入！' },
+          { id: id('t'), title: 'Joined project', message: 'Welcome aboard.' },
         ])
       },
 
@@ -439,7 +449,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           id: id('invite'),
           projectId,
           sectionId: input.sectionId,
-          sectionName: section.name,
+          sectionName: sectionLabel(section),
           targetRole: input.targetRole,
           inviteCode: result.inviteCode,
           createdByUserId: currentUser.id,
@@ -470,7 +480,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         )
         setToasts((prev) => [
           ...prev,
-          { id: id('t'), title: '成員已從畫面移除', message: '目前尚未寫回後端' },
+          { id: id('t'), title: 'Member removed from this view', message: 'Backend removal is not implemented yet.' },
         ])
       },
 

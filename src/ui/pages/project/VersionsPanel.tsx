@@ -45,7 +45,7 @@ export function VersionsPanel({ project }: { project: Project }) {
     } catch (err) {
       setCommitDetailState({
         status: 'error',
-        message: err instanceof ApiError ? err.message : '無法載入 commit 詳情',
+        message: err instanceof ApiError ? err.message : 'Failed to load commit details',
       })
     }
   }
@@ -55,13 +55,13 @@ export function VersionsPanel({ project }: { project: Project }) {
     setCreating(true)
     try {
       await createCommit(project.id, commitMessage.trim())
-      addToast({ title: 'Commit 建立成功', message: commitMessage.trim() })
+      addToast({ title: 'Commit created', message: commitMessage.trim() })
       setCommitMessage('')
       setCreateOpen(false)
     } catch (err) {
       addToast({
-        title: 'Commit 建立失敗',
-        message: err instanceof ApiError ? err.message : '請稍後再試',
+        title: 'Failed to create commit',
+        message: err instanceof ApiError ? err.message : 'Please try again later.',
       })
     } finally {
       setCreating(false)
@@ -73,7 +73,7 @@ export function VersionsPanel({ project }: { project: Project }) {
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
           <div className="text-sm font-semibold text-slate-900">Version history (commits)</div>
-          <div className="mt-1 text-sm text-slate-600">專案的 commit 紀錄。點擊列可查看快照詳情。</div>
+          <div className="mt-1 text-sm text-slate-600">Project commit history. Click a row to inspect snapshot details.</div>
         </div>
         <Button variant="secondary" onClick={() => setCreateOpen(true)} disabled={!project.currentBranchId}>
           <Plus className="size-4" />
@@ -85,7 +85,7 @@ export function VersionsPanel({ project }: { project: Project }) {
         <Card className="p-3">
           <div className="flex flex-wrap items-center gap-2">
             <GitBranch className="size-4 shrink-0 text-slate-500" />
-            <span className="text-sm font-medium text-slate-700">Branch：</span>
+            <span className="text-sm font-medium text-slate-700">Branch:</span>
             {project.branches.map((branch) => (
               <button
                 key={branch.id}
@@ -102,7 +102,7 @@ export function VersionsPanel({ project }: { project: Project }) {
                 {branch.isDefault && (
                   <span className="ml-0.5 opacity-60">default</span>
                 )}
-                {switchingId === branch.id && <span className="ml-1 opacity-60">…</span>}
+                {switchingId === branch.id && <span className="ml-1 opacity-60">...</span>}
               </button>
             ))}
           </div>
@@ -111,7 +111,7 @@ export function VersionsPanel({ project }: { project: Project }) {
 
       <Card className="overflow-hidden">
         {commits.length === 0 ? (
-          <div className="p-6 text-sm text-slate-500">尚無 commit 紀錄</div>
+          <div className="p-6 text-sm text-slate-500">No commit history yet</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
@@ -129,7 +129,7 @@ export function VersionsPanel({ project }: { project: Project }) {
                     key={c.id}
                     className="cursor-pointer border-t border-slate-200 hover:bg-slate-50"
                     onClick={() => handleOpenCommitDetail(c.id)}
-                    title="點擊查看此 commit 的快照詳情"
+                    title="Click to view this commit snapshot"
                   >
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
@@ -151,7 +151,7 @@ export function VersionsPanel({ project }: { project: Project }) {
       </Card>
 
       <Modal
-        title="建立 Commit Snapshot"
+        title="Create commit snapshot"
         open={createOpen}
         onClose={() => { if (!creating) { setCreateOpen(false); setCommitMessage('') } }}
         footer={
@@ -161,22 +161,22 @@ export function VersionsPanel({ project }: { project: Project }) {
             </Button>
             <Button onClick={handleCreateCommit} disabled={creating || !commitMessage.trim()}>
               <GitCommitHorizontal className="size-4" />
-              {creating ? 'Creating…' : 'Create commit'}
+              {creating ? 'Creating...' : 'Create commit'}
             </Button>
           </div>
         }
       >
         <div className="grid gap-4">
           <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
-            將快照目前 <strong>{project.scores.length}</strong> 個分譜的儲存路徑，
-            記錄至分支 <strong>{project.currentBranchName}</strong> 的新 commit。
+            This will snapshot the storage paths for <strong>{project.scores.length}</strong> score(s)
+            on branch <strong>{project.currentBranchName}</strong>.
           </div>
           <div>
             <label className="text-sm font-medium text-slate-800">Commit message</label>
             <input
               value={commitMessage}
               onChange={(e) => setCommitMessage(e.target.value)}
-              placeholder="例：上傳第一版 Violin II 分譜"
+              placeholder="Example: upload first Violin II part"
               className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm focus:border-slate-400 focus:outline-none"
             />
           </div>
@@ -184,7 +184,6 @@ export function VersionsPanel({ project }: { project: Project }) {
       </Modal>
 
       <CommitDetailModal
-        projectId={project.id}
         state={commitDetailState}
         getScoreName={(scoreId) =>
           project.scores.find((s) => s.id === scoreId)?.title ?? scoreId.slice(0, 8)
@@ -196,12 +195,10 @@ export function VersionsPanel({ project }: { project: Project }) {
 }
 
 function CommitDetailModal({
-  projectId: _projectId,
   state,
   getScoreName,
   onClose,
 }: {
-  projectId: string
   state: CommitDetailState
   getScoreName: (scoreId: string) => string
   onClose: () => void
@@ -210,7 +207,7 @@ function CommitDetailModal({
 
   return (
     <Modal
-      title="Commit 詳情"
+      title="Commit details"
       open={isOpen}
       onClose={onClose}
       footer={
@@ -220,7 +217,7 @@ function CommitDetailModal({
       }
     >
       {state.status === 'loading' && (
-        <div className="py-6 text-center text-sm text-slate-500">載入中…</div>
+        <div className="py-6 text-center text-sm text-slate-500">Loading...</div>
       )}
       {state.status === 'error' && (
         <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -239,17 +236,17 @@ function CommitDetailModal({
               <span className="font-mono text-xs text-slate-600">{state.detail.id}</span>
             </div>
             <div className="flex gap-2">
-              <span className="w-20 shrink-0 font-medium text-slate-500">建立時間</span>
+              <span className="w-20 shrink-0 font-medium text-slate-500">Created</span>
               <span className="text-slate-600">{state.detail.created_at.slice(0, 16).replace('T', ' ')}</span>
             </div>
           </div>
 
           <div>
             <div className="mb-2 text-sm font-medium text-slate-700">
-              Score snapshots（{state.detail.score_versions.length}）
+              Score snapshots ({state.detail.score_versions.length})
             </div>
             {state.detail.score_versions.length === 0 ? (
-              <div className="text-sm text-slate-500">此 commit 無 score 快照</div>
+              <div className="text-sm text-slate-500">This commit has no score snapshots</div>
             ) : (
               <div className="divide-y divide-slate-100 rounded-md border border-slate-200">
                 {state.detail.score_versions.map((sv) => {

@@ -41,7 +41,7 @@ export function HomePage() {
         </div>
 
         <div className="mt-4 flex flex-wrap gap-2 text-sm text-slate-600">
-          <Badge>{projectsLoading ? '…' : projects.length} projects</Badge>
+          <Badge>{projectsLoading ? '...' : projects.length} projects</Badge>
           <Badge tone="info">{currentUser.role}</Badge>
         </div>
       </section>
@@ -56,9 +56,9 @@ export function HomePage() {
 
         {projects.length === 0 && !projectsLoading ? (
           <Card className="p-6">
-            <div className="text-sm font-semibold text-slate-900">尚無專案</div>
+            <div className="text-sm font-semibold text-slate-900">No projects yet</div>
             <div className="mt-1 text-sm text-slate-600">
-              建立新專案，或使用邀請碼加入既有樂團。
+              Create a project or join an existing ensemble with an invite code.
             </div>
             <div className="mt-4">
               <Button onClick={() => navigate('/projects/new')}>

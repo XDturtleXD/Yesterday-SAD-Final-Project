@@ -249,7 +249,7 @@ export function ScoreEditorPage() {
               <input
                 value={selectedCell ? '↓ bow · fingering 2' : ''}
                 readOnly={!selectedCell}
-                placeholder={selectedCell ? 'Type here…' : 'Select a measure'}
+                placeholder={selectedCell ? 'Type here...' : 'Select a measure'}
                 className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
                 onChange={() => {}}
               />
@@ -383,4 +383,3 @@ function MeasureRow({
     </button>
   )
 }
-

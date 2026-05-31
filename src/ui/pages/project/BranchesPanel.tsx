@@ -33,7 +33,7 @@ export function BranchesPanel({ project }: { project: Project }) {
         <div>
           <div className="text-sm font-semibold text-slate-900">Branches / Versions</div>
           <div className="mt-1 text-sm text-slate-600">
-            建立、切換與合併分支。僅 concertmaster 可合併。
+            Create, switch, and merge branches. Only concertmasters can merge.
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -52,7 +52,7 @@ export function BranchesPanel({ project }: { project: Project }) {
         <Card className="p-4">
           <div className="text-sm font-semibold text-slate-900">Merge permissions</div>
           <div className="mt-1 text-sm text-slate-600">
-            你的角色無法合併分支。僅 concertmaster 或平台管理員可合併。
+            Your role cannot merge branches. Only concertmasters and platform admins can merge.
           </div>
         </Card>
       )}
@@ -64,7 +64,7 @@ export function BranchesPanel({ project }: { project: Project }) {
         </div>
         <div className="mt-3 space-y-2">
           {project.branches.length === 0 && (
-            <div className="text-sm text-slate-500">尚無分支。建立第一個 commit 後會自動產生 default branch。</div>
+            <div className="text-sm text-slate-500">No branches yet. The default branch is created after the first commit.</div>
           )}
           {project.branches.map((b) => (
             <div
@@ -85,16 +85,16 @@ export function BranchesPanel({ project }: { project: Project }) {
                     setSwitchingBranchId(b.id)
                     try {
                       await switchBranch(project.id, b.id)
-                      addToast({ title: '已切換分支', message: b.name })
+                      addToast({ title: 'Branch switched', message: b.name })
                     } catch {
-                      addToast({ title: '切換分支失敗', message: b.name })
+                      addToast({ title: 'Failed to switch branch', message: b.name })
                     } finally {
                       setSwitchingBranchId(null)
                     }
                   }}
                 >
                   <Repeat2 className="size-4" />
-                  {switchingBranchId === b.id ? '切換中…' : 'Switch'}
+                  {switchingBranchId === b.id ? 'Switching...' : 'Switch'}
                 </Button>
                 {!b.isDefault && canMerge && (
                   <Button
@@ -127,7 +127,7 @@ export function BranchesPanel({ project }: { project: Project }) {
                 try {
                   await createBranch(project.id, branchName.trim())
                   setCreateOpen(false)
-                  addToast({ title: '分支已建立', message: branchName.trim() })
+                  addToast({ title: 'Branch created', message: branchName.trim() })
                 } finally {
                   setLoading(false)
                 }
@@ -147,7 +147,7 @@ export function BranchesPanel({ project }: { project: Project }) {
       </Modal>
 
       <Modal
-        title="刪除分支"
+        title="Delete branch"
         open={deleteTargetId !== null}
         onClose={() => setDeleteTargetId(null)}
         footer={
@@ -164,25 +164,25 @@ export function BranchesPanel({ project }: { project: Project }) {
                 try {
                   await deleteBranch(project.id, deleteTargetId)
                   setDeleteTargetId(null)
-                  addToast({ title: '分支已刪除', message: branchName })
+                  addToast({ title: 'Branch deleted', message: branchName })
                 } catch {
-                  addToast({ title: '刪除分支失敗', message: branchName })
+                  addToast({ title: 'Failed to delete branch', message: branchName })
                 } finally {
                   setLoading(false)
                 }
               }}
             >
-              確認刪除
+              Confirm delete
             </Button>
           </div>
         }
       >
         <div className="text-sm text-slate-700">
-          確定要刪除分支{' '}
+          Delete branch{' '}
           <span className="font-semibold">
             {project.branches.find((b) => b.id === deleteTargetId)?.name}
           </span>
-          ？此操作無法復原。
+          ? This cannot be undone.
         </div>
       </Modal>
 
@@ -202,7 +202,7 @@ export function BranchesPanel({ project }: { project: Project }) {
                 try {
                   await mergeBranch(project.id, mergeFrom, mergeInto)
                   setMergeOpen(false)
-                  addToast({ title: '合併完成' })
+                  addToast({ title: 'Merge complete' })
                 } finally {
                   setLoading(false)
                 }

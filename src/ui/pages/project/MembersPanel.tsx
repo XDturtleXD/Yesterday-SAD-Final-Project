@@ -8,6 +8,7 @@ import { Avatar } from '../../primitives/Avatar'
 import { Button } from '../../primitives/Button'
 import { Card } from '../../primitives/Card'
 import { Modal } from '../../primitives/Modal'
+import { memberSectionLabel, sectionLabel } from '../../../utils/sectionLabels'
 import { Copy, MailPlus, Trash2 } from 'lucide-react'
 
 const roleLabels: Record<ProjectMemberRole, string> = {
@@ -63,11 +64,11 @@ export function MembersPanel({ project }: { project: Project }) {
   async function submitInvite() {
     setInviteError('')
     if (!inviteSectionId) {
-      setInviteError('請選擇聲部')
+      setInviteError('Choose a section')
       return
     }
     if (!isManager && inviteMode === 'principal') {
-      setInviteError('只有 manager 可以邀請聲部首席')
+      setInviteError('Only managers can invite section principals')
       return
     }
 
@@ -78,9 +79,9 @@ export function MembersPanel({ project }: { project: Project }) {
         targetRole: inviteMode,
       })
       setLatestInvite(invite)
-      addToast({ title: '邀請碼已產生', message: `${invite.sectionName} · ${roleLabel(invite.targetRole)}` })
+      addToast({ title: 'Invite code generated', message: `${invite.sectionName} · ${roleLabel(invite.targetRole)}` })
     } catch (err) {
-      setInviteError(err instanceof ApiError ? err.message : '產生邀請碼失敗')
+      setInviteError(err instanceof ApiError ? err.message : 'Failed to generate invite code')
     } finally {
       setInviteLoading(false)
     }
@@ -90,9 +91,9 @@ export function MembersPanel({ project }: { project: Project }) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <div className="text-sm font-semibold text-slate-900">成員與邀請管理</div>
+          <div className="text-sm font-semibold text-slate-900">Members & Invites</div>
           <div className="mt-1 text-sm text-slate-600">
-            Manager 邀請各聲部首席；首席可邀請自己聲部的一般成員。
+            Managers invite section principals. Principals can invite members for their own section.
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -109,9 +110,9 @@ export function MembersPanel({ project }: { project: Project }) {
 
       {!canInvite && (
         <Card className="p-4">
-          <div className="text-sm font-semibold text-slate-900">權限限制</div>
+          <div className="text-sm font-semibold text-slate-900">Permission limits</div>
           <div className="mt-1 text-sm text-slate-600">
-            一般成員只能查看成員列表，無法邀請或移除成員。
+            Members can view the member list, but cannot invite or remove members.
           </div>
         </Card>
       )}
@@ -145,7 +146,7 @@ export function MembersPanel({ project }: { project: Project }) {
 
       {invites.length > 0 && (
         <Card className="p-4">
-          <div className="text-sm font-semibold text-slate-950">本次 session 已產生邀請</div>
+          <div className="text-sm font-semibold text-slate-950">Invites generated this session</div>
           <div className="mt-3 grid gap-2">
             {invites.map((invite) => (
               <div
@@ -160,7 +161,7 @@ export function MembersPanel({ project }: { project: Project }) {
                   variant="secondary"
                   onClick={async () => {
                     await navigator.clipboard.writeText(invite.inviteCode)
-                    addToast({ title: '邀請碼已複製' })
+                    addToast({ title: 'Invite code copied' })
                   }}
                 >
                   <Copy className="size-4" />
@@ -173,7 +174,7 @@ export function MembersPanel({ project }: { project: Project }) {
       )}
 
       <Modal
-        title={inviteMode === 'principal' ? '邀請聲部首席' : '邀請一般成員'}
+        title={inviteMode === 'principal' ? 'Invite section principal' : 'Invite member'}
         open={inviteOpen}
         onClose={() => setInviteOpen(false)}
         footer={
@@ -182,7 +183,7 @@ export function MembersPanel({ project }: { project: Project }) {
               Close
             </Button>
             <Button disabled={inviteLoading || !inviteSectionId} onClick={submitInvite}>
-              {inviteLoading ? 'Generating…' : 'Generate invite'}
+              {inviteLoading ? 'Generating...' : 'Generate invite'}
             </Button>
           </div>
         }
@@ -190,19 +191,19 @@ export function MembersPanel({ project }: { project: Project }) {
         <div className="grid gap-4">
           <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
             {/* TODO API contract: POST /api/projects/:projectId/invites request { targetRole, sectionId } response { inviteCode, targetRole, sectionId, expiresAt } */}
-            目前後端只有 generic invite-code；角色與聲部指派先由前端 UI 保存與提示。
+            The backend currently creates a generic invite code. Role and section intent are kept in this UI for now.
           </div>
           <div>
-            <label className="text-sm font-medium text-slate-800">邀請角色</label>
+            <label className="text-sm font-medium text-slate-800">Invite role</label>
             <div className="mt-1 flex h-10 items-center rounded-md border border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-900">
               {roleLabel(inviteMode)}
             </div>
             <div className="mt-1 text-xs text-slate-500">
-              角色由你點選的邀請入口決定；首席邀請時固定為一般成員。
+              The role is set by the invite button you chose. Principal invites are always for members.
             </div>
           </div>
           <div>
-            <label className="text-sm font-medium text-slate-800">綁定聲部</label>
+            <label className="text-sm font-medium text-slate-800">Assigned section</label>
             <select
               value={inviteSectionId}
               onChange={(event) => setInviteSectionId(event.target.value)}
@@ -210,7 +211,7 @@ export function MembersPanel({ project }: { project: Project }) {
             >
               {availableInviteSections.map((section) => (
                 <option key={section.id} value={section.id}>
-                  {section.name}
+                  {sectionLabel(section)}
                 </option>
               ))}
             </select>
@@ -275,7 +276,7 @@ function MemberRow({
         <Badge>{roleLabels[member.role]}</Badge>
       </td>
       <td className="px-4 py-3">
-        <Badge tone="info">{member.sectionName}</Badge>
+        <Badge tone="info">{memberSectionLabel(member)}</Badge>
       </td>
       <td className="px-4 py-3">
         <Button size="sm" variant="danger" disabled={!canRemove} onClick={onRemove}>
@@ -288,5 +289,5 @@ function MemberRow({
 }
 
 function roleLabel(role: InviteMode) {
-  return role === 'principal' ? '聲部首席' : '一般成員'
+  return role === 'principal' ? 'Section principal' : 'Member'
 }

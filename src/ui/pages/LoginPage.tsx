@@ -31,7 +31,7 @@ export function LoginPage() {
   const [confirmPassword, setConfirmPassword] = useState('')
 
   const handleSuccess = () => {
-    addToast({ title: '登入成功', message: '歡迎回來！' })
+    addToast({ title: 'Signed in', message: 'Welcome back.' })
     navigate(decodeURIComponent(redirect), { replace: true })
   }
 
@@ -40,21 +40,21 @@ export function LoginPage() {
     setError('')
 
     if (!email.trim() || !password) {
-      setError('請填寫 email 與密碼')
+      setError('Email and password are required')
       return
     }
 
     if (tab === 'register') {
       if (!name.trim()) {
-        setError('請填寫姓名')
+        setError('Name is required')
         return
       }
       if (password !== confirmPassword) {
-        setError('兩次輸入的密碼不一致')
+        setError('Passwords do not match')
         return
       }
       if (password.length < 6) {
-        setError('密碼至少需要 6 個字元')
+        setError('Password must be at least 6 characters')
         return
       }
     }
@@ -72,8 +72,8 @@ export function LoginPage() {
         err instanceof ApiError
           ? err.message
           : tab === 'login'
-            ? '登入失敗，請稍後再試'
-            : '註冊失敗，請稍後再試'
+            ? 'Sign in failed. Please try again later.'
+            : 'Sign up failed. Please try again later.'
       setError(message)
     } finally {
       setLoading(false)
@@ -82,7 +82,7 @@ export function LoginPage() {
 
   const handleGoogleSuccess = async (response: CredentialResponse) => {
     if (!response.credential) {
-      setError('Google 登入失敗，未取得憑證')
+      setError('Google sign-in failed. No credential was returned.')
       return
     }
 
@@ -92,7 +92,7 @@ export function LoginPage() {
       await googleLogin(response.credential)
       handleSuccess()
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Google 登入失敗，請稍後再試')
+      setError(err instanceof ApiError ? err.message : 'Google sign-in failed. Please try again later.')
     } finally {
       setLoading(false)
     }
@@ -124,7 +124,7 @@ export function LoginPage() {
             }`}
           >
             <LogIn className="size-4" />
-            登入
+            Log in
           </button>
           <button
             type="button"
@@ -139,18 +139,18 @@ export function LoginPage() {
             }`}
           >
             <UserPlus className="size-4" />
-            註冊
+            Sign up
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {tab === 'register' && (
             <div>
-              <label className="text-sm font-medium text-slate-800">姓名</label>
+              <label className="text-sm font-medium text-slate-800">Name</label>
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="王小明"
+                placeholder="Alex Chen"
                 className={inputClassName}
                 autoComplete="name"
               />
@@ -170,7 +170,7 @@ export function LoginPage() {
           </div>
 
           <div>
-            <label className="text-sm font-medium text-slate-800">密碼</label>
+            <label className="text-sm font-medium text-slate-800">Password</label>
             <input
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -183,7 +183,7 @@ export function LoginPage() {
 
           {tab === 'register' && (
             <div>
-              <label className="text-sm font-medium text-slate-800">確認密碼</label>
+              <label className="text-sm font-medium text-slate-800">Confirm password</label>
               <input
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
@@ -202,7 +202,7 @@ export function LoginPage() {
           )}
 
           <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? '處理中...' : tab === 'login' ? '登入' : '建立帳號'}
+            {loading ? 'Working...' : tab === 'login' ? 'Log in' : 'Create account'}
           </Button>
         </form>
 
@@ -213,13 +213,13 @@ export function LoginPage() {
                 <div className="w-full border-t border-slate-200" />
               </div>
               <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-white px-2 text-slate-500">或</span>
+                <span className="bg-white px-2 text-slate-500">or</span>
               </div>
             </div>
             <div className="flex justify-center">
               <GoogleLogin
                 onSuccess={handleGoogleSuccess}
-                onError={() => setError('Google 登入失敗')}
+                onError={() => setError('Google sign-in failed')}
                 theme="outline"
                 size="large"
                 text={tab === 'login' ? 'signin_with' : 'signup_with'}
@@ -233,7 +233,7 @@ export function LoginPage() {
 
       <p className="mt-4 text-center text-sm text-slate-600">
         <Link to="/" className="text-sky-700 hover:underline">
-          返回首頁
+          Back to home
         </Link>
       </p>
     </div>

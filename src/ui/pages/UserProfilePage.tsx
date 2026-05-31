@@ -7,6 +7,7 @@ import { Badge } from '../primitives/Badge'
 import { Avatar } from '../primitives/Avatar'
 import { Button } from '../primitives/Button'
 import { Card } from '../primitives/Card'
+import { memberSectionLabel } from '../../utils/sectionLabels'
 import { FolderKanban, Pencil, UserRound } from 'lucide-react'
 
 const MAX_AVATAR_FILE_BYTES = 300 * 1024
@@ -79,18 +80,18 @@ export function UserProfilePage() {
 
   async function handleAvatarFile(file: File) {
     if (!file.type.startsWith('image/')) {
-      setError('請上傳圖片檔（JPEG、PNG、WebP 或 GIF）')
+      setError('Upload an image file (JPEG, PNG, WebP, or GIF).')
       return
     }
     if (file.size > MAX_AVATAR_FILE_BYTES) {
-      setError('圖片大小需小於 300 KB')
+      setError('Image size must be under 300 KB.')
       return
     }
 
     const dataUrl = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader()
       reader.onload = () => resolve(String(reader.result))
-      reader.onerror = () => reject(new Error('無法讀取圖片'))
+      reader.onerror = () => reject(new Error('Could not read image'))
       reader.readAsDataURL(file)
     })
 
@@ -107,10 +108,10 @@ export function UserProfilePage() {
         intro: intro.trim(),
         avatar_url: avatarUrl.trim() || null,
       })
-      addToast({ title: '個人資料已更新' })
+      addToast({ title: 'Profile updated' })
       setEditing(false)
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : '更新失敗，請稍後再試')
+      setError(err instanceof ApiError ? err.message : 'Update failed. Please try again later.')
     } finally {
       setSaving(false)
     }
@@ -140,14 +141,14 @@ export function UserProfilePage() {
             <div className="min-w-0">
               <div className="text-xl font-semibold text-slate-950">User profile</div>
               <div className="mt-1 text-sm text-slate-600">
-                {isSelf ? '你的個人資料' : '查看其他使用者的公開資訊'}
+                {isSelf ? 'Manage your profile' : "View this user's public information"}
               </div>
             </div>
           </div>
           {isSelf && !editing && (
             <Button variant="secondary" onClick={startEditing}>
               <Pencil className="size-4" />
-              編輯
+              Edit
             </Button>
           )}
         </div>
@@ -160,7 +161,7 @@ export function UserProfilePage() {
               <Avatar name={name || currentUser.name} src={avatarUrl || undefined} size={64} />
               <div className="min-w-0 flex-1 space-y-3">
                 <div>
-                  <label className="text-sm font-medium text-slate-800">頭像</label>
+                  <label className="text-sm font-medium text-slate-800">Avatar</label>
                   <input
                     value={avatarUrl}
                     onChange={(e) => setAvatarUrl(e.target.value)}
@@ -185,7 +186,7 @@ export function UserProfilePage() {
                       size="sm"
                       onClick={() => fileInputRef.current?.click()}
                     >
-                      上傳圖片
+                      Upload image
                     </Button>
                     {avatarUrl && (
                       <Button
@@ -194,19 +195,19 @@ export function UserProfilePage() {
                         size="sm"
                         onClick={() => setAvatarUrl('')}
                       >
-                        移除頭像
+                        Remove avatar
                       </Button>
                     )}
                   </div>
                   <p className="mt-1 text-xs text-slate-500">
-                    可貼上圖片網址，或上傳小於 300 KB 的圖片。
+                    Paste an image URL or upload an image smaller than 300 KB.
                   </p>
                 </div>
               </div>
             </div>
 
             <div>
-              <label className="text-sm font-medium text-slate-800">姓名</label>
+              <label className="text-sm font-medium text-slate-800">Name</label>
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -225,13 +226,13 @@ export function UserProfilePage() {
             </div>
 
             <div>
-              <label className="text-sm font-medium text-slate-800">自我介紹</label>
+              <label className="text-sm font-medium text-slate-800">Bio</label>
               <textarea
                 value={intro}
                 onChange={(e) => setIntro(e.target.value)}
                 rows={4}
                 maxLength={1000}
-                placeholder="介紹你的樂器、排練習慣或協作偏好..."
+                placeholder="Share your instrument, rehearsal habits, or collaboration preferences..."
                 className={inputClassName}
               />
               <p className="mt-1 text-xs text-slate-500">{intro.length}/1000</p>
@@ -245,10 +246,10 @@ export function UserProfilePage() {
 
             <div className="flex flex-wrap gap-2">
               <Button onClick={() => void handleSave()} disabled={saving || !name.trim()}>
-                {saving ? '儲存中...' : '儲存'}
+                {saving ? 'Saving...' : 'Save'}
               </Button>
               <Button variant="secondary" onClick={cancelEditing} disabled={saving}>
-                取消
+                Cancel
               </Button>
             </div>
           </div>
@@ -278,9 +279,9 @@ export function UserProfilePage() {
             )}
 
             <div className="mt-4">
-              <div className="text-sm font-medium text-slate-800">自我介紹</div>
+              <div className="text-sm font-medium text-slate-800">Bio</div>
               <div className="mt-1 text-sm text-slate-600">
-                {profileUser.intro.trim() ? profileUser.intro : '尚未填寫自我介紹。'}
+                {profileUser.intro.trim() ? profileUser.intro : 'No bio yet.'}
               </div>
             </div>
           </>
@@ -311,7 +312,7 @@ export function UserProfilePage() {
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <Badge>Role: {m?.role ?? '—'}</Badge>
-                    <Badge>Section: {m?.sectionName ?? '—'}</Badge>
+                    <Badge>Section: {m ? memberSectionLabel(m) : '—'}</Badge>
                   </div>
                 </div>
               )

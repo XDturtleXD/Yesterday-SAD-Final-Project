@@ -153,20 +153,36 @@ const reorderPieces = async (body, projectId, membership) => {
     throw new AppError("orderedPieceIds must not contain duplicates", 400);
   }
 
-  const updates = orderedPieceIds.map((id, index) =>
-    supabase
-      .from("pieces")
-      .update({ sort_order: index + 1 })
-      .eq("id", id)
-      .eq("project_id", projectId),
-  );
+  const updateSortOrders = async (updates) => {
+    const results = await Promise.all(
+      updates.map(({ id, sortOrder }) =>
+        supabase
+          .from("pieces")
+          .update({ sort_order: sortOrder })
+          .eq("id", id)
+          .eq("project_id", projectId),
+      ),
+    );
 
-  const results = await Promise.all(updates);
-  for (const { error } of results) {
-    if (error) {
-      throw new AppError("Failed to reorder pieces", 500, error);
+    for (const { error } of results) {
+      if (error) {
+        throw new AppError("Failed to reorder pieces", 500, error);
+      }
     }
-  }
+  };
+
+  const maxSortOrder = existing.reduce(
+    (max, piece) => Math.max(max, piece.sort_order || 0),
+    0,
+  );
+  const temporaryOffset = maxSortOrder + orderedPieceIds.length + 1;
+
+  await updateSortOrders(
+    orderedPieceIds.map((id, index) => ({ id, sortOrder: temporaryOffset + index })),
+  );
+  await updateSortOrders(
+    orderedPieceIds.map((id, index) => ({ id, sortOrder: index + 1 })),
+  );
 
   return listPiecesByProjectId(projectId);
 };

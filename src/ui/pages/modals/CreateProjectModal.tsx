@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ApiError } from '../../../api/client'
 import { useAppState } from '../../../state/AppState'
+import { sectionLabel } from '../../../utils/sectionLabels'
 import { Button } from '../../primitives/Button'
 import { Modal } from '../../primitives/Modal'
 
@@ -26,7 +27,7 @@ export function CreateProjectModal({ open, onClose }: { open: boolean; onClose: 
 
   return (
     <Modal
-      title="建立專案"
+      title="Create project"
       open={open}
       onClose={onClose}
       footer={
@@ -48,30 +49,30 @@ export function CreateProjectModal({ open, onClose }: { open: boolean; onClose: 
                 onClose()
                 navigate(`/projects/${p.id}`)
               } catch (err) {
-                setError(err instanceof ApiError ? err.message : '建立專案失敗')
+                setError(err instanceof ApiError ? err.message : 'Failed to create project')
               } finally {
                 setLoading(false)
               }
             }}
           >
-            {loading ? '建立中…' : 'Create'}
+            {loading ? 'Creating...' : 'Create'}
           </Button>
         </div>
       }
     >
       <div className="grid gap-4">
         <div>
-          <div className="text-sm font-medium text-slate-800">專案名稱</div>
+          <div className="text-sm font-medium text-slate-800">Project name</div>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="弦樂團期末音樂會"
+            placeholder="String Ensemble Final Concert"
             className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
           />
         </div>
 
         <div>
-          <div className="text-sm font-medium text-slate-800">描述</div>
+          <div className="text-sm font-medium text-slate-800">Description</div>
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
@@ -81,7 +82,7 @@ export function CreateProjectModal({ open, onClose }: { open: boolean; onClose: 
         </div>
 
         <div>
-          <div className="text-sm font-medium text-slate-800">你的聲部</div>
+          <div className="text-sm font-medium text-slate-800">Your section</div>
           <select
             value={sectionId}
             onChange={(e) => setSectionId(e.target.value)}
@@ -90,12 +91,12 @@ export function CreateProjectModal({ open, onClose }: { open: boolean; onClose: 
           >
             {sections.map((s) => (
               <option key={s.id} value={s.id}>
-                {s.name}
+                {sectionLabel(s)}
               </option>
             ))}
           </select>
           <div className="mt-1 text-xs text-slate-500">
-            建立者將自動成為此聲部的 concertmaster。
+            The creator will automatically become the manager for this section.
           </div>
         </div>
 
