@@ -34,7 +34,7 @@ export function ScorePdfViewPage() {
       <div className="text-sm font-semibold text-slate-900">{score.title}</div>
       <div className="mt-1 text-sm text-slate-600">PDF preview is not available for this score yet.</div>
       <div className="mt-4">
-        <Button variant="secondary" onClick={() => navigate(`/projects/${project.id}?tab=scores`)}>
+        <Button variant="secondary" onClick={() => navigate(`/projects/${project.id}?tab=pieces`)}>
           Back to scores
         </Button>
       </div>

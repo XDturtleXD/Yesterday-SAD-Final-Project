@@ -1,9 +1,11 @@
 const scoreService = require("../services/scoreService");
 const conversionService = require("../services/conversionService");
 const AppError = require("../utils/appError");
+const { extractMusicXmlFromMxlBuffer } = require("../utils/mxlUtils");
 const { sendSuccess } = require("../utils/response");
 
 const XML_EXTENSIONS = new Set([".xml", ".musicxml"]);
+const MXL_EXTENSIONS = new Set([".mxl"]);
 const PDF_EXTENSIONS = new Set([".pdf"]);
 
 const getFileExtension = (filename = "") => {
@@ -80,29 +82,47 @@ const uploadScoreFile = async (req, res, next) => {
       return sendSuccess(res, conversion, "Conversion started", 202);
     }
 
-    if (!XML_EXTENSIONS.has(extension)) {
-      throw new AppError("Only PDF, XML, and MusicXML files are supported", 400);
+    if (!XML_EXTENSIONS.has(extension) && !MXL_EXTENSIONS.has(extension)) {
+      throw new AppError("Only PDF, XML, MusicXML, and MXL files are supported", 400);
     }
 
-    const xmlContent = file.buffer.toString("utf8");
-    assertLooksLikeMusicXml(xmlContent);
+    let xmlContent;
+    let fileType;
+    let mimeType;
+
+    if (MXL_EXTENSIONS.has(extension)) {
+      xmlContent = await extractMusicXmlFromMxlBuffer(file.buffer);
+      assertLooksLikeMusicXml(xmlContent);
+      fileType = "mxl";
+      mimeType = file.mimetype || "application/vnd.recordare.musicxml";
+    } else {
+      xmlContent = file.buffer.toString("utf8");
+      assertLooksLikeMusicXml(xmlContent);
+      fileType = extension === ".xml" ? "xml" : "musicxml";
+      mimeType = file.mimetype || "application/vnd.recordare.musicxml+xml";
+    }
+
+    const hasPieceId = typeof req.body.pieceId === "string" && req.body.pieceId.trim().length > 0;
+    const uploadBody = {
+      ...req.body,
+      fileType,
+      xmlContent,
+      originalFilename: file.originalname,
+      mimeType,
+      fileSizeBytes: file.size,
+    };
+
+    if (hasPieceId) {
+      uploadBody.pieceId = req.body.pieceId.trim();
+    } else if (req.body.pieceTitle || req.body.pieceComposer) {
+      uploadBody.piece = {
+        title: req.body.pieceTitle,
+        composer: req.body.pieceComposer,
+      };
+    }
 
     const score = await scoreService.uploadScore(
-      {
-        ...req.body,
-        piece:
-          req.body.pieceTitle || req.body.pieceComposer
-            ? {
-                title: req.body.pieceTitle,
-                composer: req.body.pieceComposer,
-              }
-            : req.body.piece,
-        fileType: extension === ".xml" ? "xml" : "musicxml",
-        xmlContent,
-        originalFilename: file.originalname,
-        mimeType: file.mimetype || "application/vnd.recordare.musicxml+xml",
-        fileSizeBytes: file.size,
-      },
+      uploadBody,
       projectId,
       req.user,
       req.projectMembership,

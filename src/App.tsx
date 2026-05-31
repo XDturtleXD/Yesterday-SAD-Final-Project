@@ -10,6 +10,7 @@ import { HomePage } from './ui/pages/HomePage'
 import { LandingPage } from './ui/pages/LandingPage'
 import { LoginPage } from './ui/pages/LoginPage'
 import { ProjectDetailPage } from './ui/pages/ProjectDetailPage'
+import { ProjectFormPage } from './ui/pages/ProjectFormPage'
 import { ProjectsPage } from './ui/pages/ProjectsPage'
 import { ScoreEditorPage } from './ui/pages/ScoreEditorPage'
 import { ScoreMusicXmlPage } from './ui/pages/ScoreMusicXmlPage'
@@ -32,6 +33,8 @@ export default function App() {
               <Route element={<AppLayout />}>
                 <Route path="dashboard" element={<HomePage />} />
                 <Route path="projects" element={<ProjectsPage />} />
+                <Route path="projects/new" element={<ProjectFormPage mode="create" />} />
+                <Route path="projects/:projectId/edit" element={<ProjectFormPage mode="edit" />} />
                 <Route path="projects/:projectId" element={<ProjectDetailPage />} />
                 <Route
                   path="projects/:projectId/scores/:scoreId/editor"

@@ -2,17 +2,21 @@ const conversionService = require("../services/conversionService");
 const scoreService = require("../services/scoreService");
 const { sendSuccess } = require("../utils/response");
 
-const buildScorePayload = (body, overrides = {}) => ({
-  ...body,
-  piece:
-    body.pieceTitle || body.pieceComposer
-      ? {
-          title: body.pieceTitle,
-          composer: body.pieceComposer,
-        }
-      : body.piece,
-  ...overrides,
-});
+const buildScorePayload = (body, overrides = {}) => {
+  const hasPieceId = typeof body.pieceId === "string" && body.pieceId.trim().length > 0;
+  const payload = { ...body, ...overrides };
+
+  if (hasPieceId) {
+    payload.pieceId = body.pieceId.trim();
+  } else if (body.pieceTitle || body.pieceComposer) {
+    payload.piece = {
+      title: body.pieceTitle,
+      composer: body.pieceComposer,
+    };
+  }
+
+  return payload;
+};
 
 const startProjectConversion = async (req, res, next) => {
   try {

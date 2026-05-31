@@ -39,8 +39,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const applyAuthUserRef = useRef(applyAuthUser)
   const clearAuthUserRef = useRef(clearAuthUser)
-  applyAuthUserRef.current = applyAuthUser
-  clearAuthUserRef.current = clearAuthUser
+
+  useEffect(() => {
+    applyAuthUserRef.current = applyAuthUser
+    clearAuthUserRef.current = clearAuthUser
+  }, [applyAuthUser, clearAuthUser])
 
   const completeAuth = useCallback(async (payload: AuthPayload) => {
     setStoredToken(payload.token)

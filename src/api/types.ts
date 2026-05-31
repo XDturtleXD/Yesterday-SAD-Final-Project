@@ -64,9 +64,21 @@ export type ApiProjectMember = {
   updated_at: string
 }
 
+export type ApiPiece = {
+  id: string
+  project_id: string
+  title: string
+  composer: string | null
+  sort_order: number
+  created_by: string
+  created_at: string
+  updated_at: string
+}
+
 export type ApiScore = {
   id: string
   project_id: string
+  piece_id?: string
   section_id: string
   title: string
   storage_bucket: string
@@ -75,6 +87,7 @@ export type ApiScore = {
   original_filename: string | null
   mime_type: string | null
   file_size_bytes: number | null
+  xml_content?: string | null
   created_by: string
   created_at: string
   updated_at: string

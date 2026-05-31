@@ -10,11 +10,11 @@ import { cn } from '../utils/cn'
 import { BranchesPanel } from './project/BranchesPanel'
 import { FullScorePanel } from './project/FullScorePanel'
 import { MembersPanel } from './project/MembersPanel'
-import { ScoresPanel } from './project/ScoresPanel'
+import { PiecesPanel } from './project/PiecesPanel'
 import { VersionsPanel } from './project/VersionsPanel'
-import { ArrowLeft, GitBranch, MailPlus } from 'lucide-react'
+import { ArrowLeft, Edit3, GitBranch, MailPlus } from 'lucide-react'
 
-type TabKey = 'overview' | 'scores' | 'members' | 'branches' | 'versions' | 'fullscore'
+type TabKey = 'overview' | 'pieces' | 'members' | 'branches' | 'versions' | 'fullscore'
 
 export function ProjectDetailPage() {
   const { projectId } = useParams()
@@ -23,7 +23,9 @@ export function ProjectDetailPage() {
   const currentUser = useRequiredUser()
   const navigate = useNavigate()
   const [sp] = useSearchParams()
-  const tab = (sp.get('tab') as TabKey) || 'overview'
+  const tabParam = sp.get('tab')
+  const tab: TabKey =
+    tabParam === 'scores' ? 'pieces' : ((tabParam as TabKey) || 'overview')
   const [inviteOpen, setInviteOpen] = useState(false)
   const [inviteCode, setInviteCode] = useState('')
   const [inviteLoading, setInviteLoading] = useState(false)
@@ -38,6 +40,7 @@ export function ProjectDetailPage() {
     // re-triggering every time `projects` state changes (which would cause a loop).
     const already = getProject(projectId)
     if (already?.detailLoaded) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setLoading(false)
       return
     }
@@ -142,6 +145,10 @@ export function ProjectDetailPage() {
         </div>
 
         <div className="flex flex-wrap gap-2">
+          <Button variant="secondary" onClick={() => navigate(`/projects/${project.id}/edit`)}>
+            <Edit3 className="size-4" />
+            Edit
+          </Button>
           <Button variant="secondary" onClick={() => setInviteOpen(true)} disabled={!canInvite}>
             <MailPlus className="size-4" />
             Invite member
@@ -164,7 +171,7 @@ export function ProjectDetailPage() {
             )}
 
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <QuickLink title="Scores" desc="Open parts and MusicXML editing." to={`?tab=scores`} />
+              <QuickLink title="曲目與分譜" desc="建立曲目並為各聲部上傳分譜。" to={`?tab=pieces`} />
               <QuickLink title="Members" desc="Roles and sections." to={`?tab=members`} />
               <QuickLink title="Branches" desc="Switch and merge versions." to={`?tab=branches`} />
               <QuickLink title="Full score" desc="Preview combined parts." to={`?tab=fullscore`} />
@@ -195,7 +202,7 @@ export function ProjectDetailPage() {
         </div>
       )}
 
-      {tab === 'scores' && <ScoresPanel project={project} />}
+      {tab === 'pieces' && <PiecesPanel project={project} />}
       {tab === 'members' && <MembersPanel project={project} />}
       {tab === 'branches' && <BranchesPanel project={project} />}
       {tab === 'versions' && <VersionsPanel project={project} />}
@@ -277,7 +284,7 @@ function InviteCodeLoader({
 function Tabs({ tab, projectId }: { tab: TabKey; projectId: string }) {
   const items: Array<{ key: TabKey; label: string }> = [
     { key: 'overview', label: 'Overview' },
-    { key: 'scores', label: 'Scores' },
+    { key: 'pieces', label: '曲目與分譜' },
     { key: 'members', label: 'Members' },
     { key: 'branches', label: 'Branches' },
     { key: 'versions', label: 'Versions' },

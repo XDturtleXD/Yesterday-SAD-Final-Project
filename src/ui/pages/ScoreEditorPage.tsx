@@ -96,7 +96,7 @@ export function ScoreEditorPage() {
           <div className="flex flex-wrap items-center gap-2">
             <Button
               variant="secondary"
-              onClick={() => navigate(`/projects/${project.id}?tab=scores`)}
+              onClick={() => navigate(`/projects/${project.id}?tab=pieces`)}
             >
               <ArrowLeft className="size-4" />
               Back to score list
@@ -105,7 +105,7 @@ export function ScoreEditorPage() {
               variant="secondary"
               onClick={() => {
                 addToast({ title: 'Changes discarded (simulated)' })
-                navigate(`/projects/${project.id}?tab=scores`)
+                navigate(`/projects/${project.id}?tab=pieces`)
               }}
             >
               <X className="size-4" />

@@ -17,23 +17,29 @@ export function deleteScore(scoreId: string) {
   })
 }
 
+/** Multipart upload — supports PDF (triggers OMR conversion) and MusicXML/XML */
 export async function uploadProjectScoreFile(
   projectId: string,
   input: {
     file: File
     title: string
-    pieceTitle: string
-    pieceComposer?: string
     sectionId: string
+    pieceId?: string
+    pieceTitle?: string
+    pieceComposer?: string
     preprocessMode?: string
   },
 ): Promise<ApiScore | ApiConversionStart> {
   const form = new FormData()
   form.set('file', input.file)
   form.set('title', input.title)
-  form.set('pieceTitle', input.pieceTitle)
-  if (input.pieceComposer) form.set('pieceComposer', input.pieceComposer)
   form.set('sectionId', input.sectionId)
+  if (input.pieceId) {
+    form.set('pieceId', input.pieceId)
+  } else {
+    form.set('pieceTitle', input.pieceTitle ?? '')
+    if (input.pieceComposer) form.set('pieceComposer', input.pieceComposer)
+  }
   if (input.preprocessMode) form.set('preprocessMode', input.preprocessMode)
 
   const headers = new Headers()
@@ -62,4 +68,30 @@ export async function uploadProjectScoreFile(
   }
 
   return body.data
+}
+
+/** JSON upload — inline xmlContent or storagePath (no PDF conversion) */
+export function uploadProjectScore(
+  projectId: string,
+  input: {
+    pieceId?: string
+    piece?: {
+      title: string
+      composer?: string
+    }
+    sectionId: string
+    title: string
+    fileType: 'musicxml' | 'xml' | 'mxl'
+    xmlContent?: string
+    storagePath?: string
+    storageBucket?: string
+    originalFilename?: string
+    mimeType?: string
+    fileSizeBytes?: number
+  },
+) {
+  return apiRequest<ApiScore>(`/projects/${projectId}/scores`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
 }

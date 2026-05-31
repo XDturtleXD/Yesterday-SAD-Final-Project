@@ -1,13 +1,14 @@
 import type {
   ApiBranch,
   ApiCommit,
+  ApiPiece,
   ApiProject,
   ApiProjectMemberRecord,
   ApiScore,
   ApiScoreVersion,
   ApiSection,
 } from './types'
-import type { Branch, Commit, Project, ProjectMember, Score, ScoreVersion, Section } from '../types'
+import type { Branch, Commit, Piece, Project, ProjectMember, Score, ScoreVersion, Section } from '../types'
 
 export function mapSection(s: ApiSection): Section {
   return {
@@ -32,10 +33,23 @@ export function mapProjectMember(m: ApiProjectMemberRecord): ProjectMember {
   }
 }
 
+export function mapPiece(p: ApiPiece): Piece {
+  return {
+    id: p.id,
+    projectId: p.project_id,
+    title: p.title,
+    composer: p.composer ?? undefined,
+    sortOrder: p.sort_order,
+    createdAt: p.created_at,
+    source: 'api',
+  }
+}
+
 export function mapScore(s: ApiScore): Score {
   return {
     id: s.id,
     projectId: s.project_id,
+    pieceId: s.piece_id,
     sectionId: s.section_id,
     title: s.title,
     storageBucket: s.storage_bucket,
@@ -44,6 +58,7 @@ export function mapScore(s: ApiScore): Score {
     originalFilename: s.original_filename ?? undefined,
     mimeType: s.mime_type ?? undefined,
     fileSizeBytes: s.file_size_bytes ?? undefined,
+    xmlContent: s.xml_content ?? undefined,
     createdBy: s.created_by,
     createdAt: s.created_at,
     updatedAt: s.updated_at,
@@ -100,6 +115,7 @@ export function mapProjectSummary(p: ApiProject): Project {
     createdAt: p.created_at,
     updatedAt: p.updated_at,
     members: [],
+    pieces: [],
     scores: [],
     branches: [],
     currentBranchId: '',

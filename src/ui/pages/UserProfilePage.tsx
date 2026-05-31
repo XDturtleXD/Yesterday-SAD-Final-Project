@@ -20,6 +20,7 @@ export function UserProfilePage() {
   const currentUser = useRequiredUser()
   const { user: authUser, updateProfile } = useAuth()
 
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const profileUser = useMemo(() => {
     if (!userId) return undefined
     if (userId === currentUser.id) return currentUser

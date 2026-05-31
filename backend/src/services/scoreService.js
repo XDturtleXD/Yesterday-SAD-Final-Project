@@ -2,7 +2,7 @@ const supabase = require("../config/supabase");
 const AppError = require("../utils/appError");
 
 const SCORE_COLUMNS =
-  "id, project_id, section_id, title, storage_bucket, storage_path, file_type, original_filename, mime_type, file_size_bytes, created_by, created_at, updated_at";
+  "id, project_id, piece_id, section_id, title, storage_bucket, storage_path, file_type, original_filename, mime_type, file_size_bytes, created_by, created_at, updated_at";
 
 // Columns returned by upload (includes piece_id and xml_content presence).
 const SCORE_COLUMNS_WITH_CONTENT =
@@ -77,7 +77,7 @@ const getScoreById = async (scoreId) => {
 
   const { data, error } = await supabase
     .from("scores")
-    .select(SCORE_COLUMNS)
+    .select(SCORE_COLUMNS_WITH_CONTENT)
     .eq("id", scoreId)
     .maybeSingle();
 

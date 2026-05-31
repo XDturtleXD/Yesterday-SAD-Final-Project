@@ -32,6 +32,7 @@ export type ProjectMember = {
 export type Score = {
   id: string
   projectId: string
+  pieceId?: string
   sectionId: string
   title: string
   storageBucket: string
@@ -40,6 +41,7 @@ export type Score = {
   originalFilename?: string
   mimeType?: string
   fileSizeBytes?: number
+  xmlContent?: string
   createdBy: string
   createdAt: string
   updatedAt: string
@@ -88,6 +90,7 @@ export type Project = {
   createdAt: string
   updatedAt: string
   members: ProjectMember[]
+  pieces: Piece[]
   scores: Score[]
   branches: Branch[]
   currentBranchId: string
@@ -95,4 +98,41 @@ export type Project = {
   commits: Commit[]
   detailLoaded?: boolean
   detailLoading?: boolean
+}
+
+export type Piece = {
+  id: string
+  projectId: string
+  title: string
+  composer?: string
+  sortOrder: number
+  createdAt: string
+  source: 'api'
+}
+
+export type PieceScoreUpload = {
+  id: string
+  projectId: string
+  pieceId: string
+  sectionId: string
+  scoreId?: string
+  filename: string
+  fileType: 'musicxml' | 'xml' | 'mxl'
+  fileSizeBytes?: number
+  uploadedAt: string
+  uploadedByUserId: string
+  uploadedByName: string
+  source: 'api' | 'frontend-mock'
+}
+
+export type MemberInviteDraft = {
+  id: string
+  projectId: string
+  sectionId: string
+  sectionName: string
+  targetRole: 'principal' | 'member'
+  inviteCode: string
+  createdByUserId: string
+  createdAt: string
+  source: 'api-token-with-frontend-metadata'
 }

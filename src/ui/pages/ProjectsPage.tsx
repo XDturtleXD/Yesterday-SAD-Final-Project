@@ -6,7 +6,6 @@ import { Badge } from '../primitives/Badge'
 import { Button } from '../primitives/Button'
 import { Card } from '../primitives/Card'
 import { Modal } from '../primitives/Modal'
-import { CreateProjectModal } from './modals/CreateProjectModal'
 import { Copy, FolderPlus, LogIn, Music2 } from 'lucide-react'
 
 export function ProjectsPage() {
@@ -22,7 +21,6 @@ export function ProjectsPage() {
   } = useAppState()
   const currentUser = useRequiredUser()
   const navigate = useNavigate()
-  const [createOpen, setCreateOpen] = useState(false)
   const [joinOpen, setJoinOpen] = useState(false)
   const [inviteCode, setInviteCode] = useState('')
   const [joinSectionId, setJoinSectionId] = useState('')
@@ -51,7 +49,7 @@ export function ProjectsPage() {
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button onClick={() => setCreateOpen(true)}>
+          <Button onClick={() => navigate('/projects/new')}>
             <FolderPlus className="size-4" />
             Create project
           </Button>
@@ -149,8 +147,6 @@ export function ProjectsPage() {
           )
         })}
       </div>
-
-      <CreateProjectModal open={createOpen} onClose={() => setCreateOpen(false)} />
 
       <Modal
         title="使用邀請碼加入專案"

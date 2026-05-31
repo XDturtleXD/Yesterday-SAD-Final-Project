@@ -3,6 +3,7 @@ const multer = require("multer");
 const authMiddleware = require("../middlewares/authMiddleware");
 const projectPermissionMiddleware = require("../middlewares/projectPermissionMiddleware");
 const projectController = require("../controllers/projectController");
+const pieceController = require("../controllers/pieceController");
 const scoreController = require("../controllers/scoreController");
 const conversionController = require("../controllers/conversionController");
 
@@ -21,6 +22,26 @@ router.get("/", projectController.getProjects);
 router.get("/:projectId", projectController.getProjectById);
 router.get("/:projectId/members", projectController.getProjectMembers);
 router.post("/:projectId/invite-code", projectController.createInviteCode);
+router.get(
+  "/:projectId/pieces",
+  projectPermissionMiddleware("params"),
+  pieceController.getProjectPieces,
+);
+router.post(
+  "/:projectId/pieces",
+  projectPermissionMiddleware("params"),
+  pieceController.createProjectPiece,
+);
+router.patch(
+  "/:projectId/pieces/reorder",
+  projectPermissionMiddleware("params"),
+  pieceController.reorderProjectPieces,
+);
+router.delete(
+  "/:projectId/pieces/:pieceId",
+  projectPermissionMiddleware("params"),
+  pieceController.deleteProjectPiece,
+);
 router.get(
   "/:projectId/scores",
   projectPermissionMiddleware("params"),

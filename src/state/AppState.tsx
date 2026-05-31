@@ -3,16 +3,27 @@ import * as historyApi from '../api/history'
 import {
   mapBranch,
   mapCommit,
+  mapPiece,
   mapProjectMember,
   mapProjectSummary,
   mapScore,
   mapSection,
 } from '../api/mappers'
+import * as piecesApi from '../api/pieces'
 import * as projectsApi from '../api/projects'
 import * as scoresApi from '../api/scores'
 import * as sectionsApi from '../api/sections'
 import type { ApiBranch, ApiScore, ApiUser } from '../api/types'
-import type { Commit, Project, ProjectMember, Score, Section, User } from '../types'
+import type {
+  Commit,
+  MemberInviteDraft,
+  Piece,
+  Project,
+  ProjectMember,
+  Score,
+  Section,
+  User,
+} from '../types'
 
 type Toast = { id: string; title: string; message?: string }
 
@@ -35,14 +46,27 @@ type AppState = {
   getProject: (id: string) => Project | undefined
   getScore: (projectId: string, scoreId: string) => Score | undefined
   getMemberDisplayName: (userId: string) => string
+  getPieces: (projectId: string) => Piece[]
+  getPieceScore: (projectId: string, pieceId: string, sectionId: string) => Score | undefined
+  getMemberInvites: (projectId: string) => MemberInviteDraft[]
 
   createProject: (input: {
     name: string
     description: string
     sectionId: string
   }) => Promise<Project>
+  updateProjectDraft: (projectId: string, input: { name: string; description: string }) => void
+  createPiece: (projectId: string, input: { title: string; composer?: string }) => Promise<Piece>
+  deletePiece: (projectId: string, pieceId: string) => Promise<void>
+  movePiece: (projectId: string, pieceId: string, direction: 'up' | 'down') => Promise<void>
+  deleteProjectScore: (projectId: string, scoreId: string) => Promise<void>
   joinProject: (input: { inviteCode: string; sectionId: string }) => Promise<void>
   createInviteCode: (projectId: string) => Promise<string>
+  createMemberInvite: (
+    projectId: string,
+    input: { sectionId: string; targetRole: 'principal' | 'member' },
+  ) => Promise<MemberInviteDraft>
+  removeProjectMemberMock: (projectId: string, memberId: string) => void
 
   addToast: (t: Omit<Toast, 'id'>) => void
   dismissToast: (id: string) => void
@@ -51,6 +75,7 @@ type AppState = {
   switchBranch: (projectId: string, branchId: string) => Promise<void>
   deleteBranch: (projectId: string, branchId: string) => Promise<void>
   mergeBranch: (projectId: string, fromBranchId: string, intoBranchId: string) => Promise<void>
+  createCommit: (projectId: string, message: string) => Promise<void>
 }
 
 const Ctx = createContext<AppState | null>(null)
@@ -84,6 +109,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [sectionsLoading, setSectionsLoading] = useState(false)
   const [toasts, setToasts] = useState<Toast[]>([])
   const [nameCache, setNameCache] = useState<Record<string, string>>({})
+  const [invitesByProjectId, setInvitesByProjectId] = useState<Record<string, MemberInviteDraft[]>>({})
 
   // Stable refs so callbacks don't need projects/nameCache as deps
   const projectsRef = useRef(projects)
@@ -152,11 +178,12 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       )
 
       try {
-        const [projectRes, membersRes, scoresRes, branchesRes] = await Promise.allSettled([
+        const [projectRes, membersRes, scoresRes, branchesRes, piecesRes] = await Promise.allSettled([
           projectsApi.getProject(projectId),
           projectsApi.listProjectMembers(projectId),
           scoresApi.listProjectScores(projectId),
           historyApi.listBranches(projectId),
+          piecesApi.listProjectPieces(projectId),
         ])
 
         if (projectRes.status === 'rejected') throw projectRes.reason
@@ -167,11 +194,13 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         const scoreRows: ApiScore[] = scoresRes.status === 'fulfilled' ? scoresRes.value : []
         const branchRows: ApiBranch[] =
           branchesRes.status === 'fulfilled' ? branchesRes.value : []
+        const pieceRows = piecesRes.status === 'fulfilled' ? piecesRes.value : []
 
         const members = memberRows.map(mapProjectMember)
         rememberNames(members)
 
         const scores = scoreRows.map(mapScore)
+        const pieces = pieceRows.map(mapPiece)
         const branches = branchRows.map(mapBranch)
         const defaultBranch = branches.find((b) => b.isDefault) ?? branches[0]
         const currentBranchId = defaultBranch?.id ?? ''
@@ -207,6 +236,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           createdAt: projectRow.created_at,
           updatedAt: projectRow.updated_at,
           members,
+          pieces,
           scores,
           branches,
           currentBranchId,
@@ -273,6 +303,15 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       getScore: (projectId, scoreId) =>
         projects.find((p) => p.id === projectId)?.scores.find((s) => s.id === scoreId),
       getMemberDisplayName: (userId) => nameCache[userId] ?? userId,
+      getPieces: (projectId) => {
+        const project = projects.find((p) => p.id === projectId)
+        return [...(project?.pieces ?? [])].sort((a, b) => a.sortOrder - b.sortOrder)
+      },
+      getPieceScore: (projectId, pieceId, sectionId) =>
+        projects
+          .find((p) => p.id === projectId)
+          ?.scores.find((s) => s.pieceId === pieceId && s.sectionId === sectionId),
+      getMemberInvites: (projectId) => invitesByProjectId[projectId] ?? [],
 
       createProject: async (input) => {
         const created = await projectsApi.createProject({
@@ -290,6 +329,93 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         return loaded ?? project
       },
 
+      updateProjectDraft: (projectId, input) => {
+        // TODO API contract: PATCH /api/projects/:projectId
+        // Request: { name: string, description?: string }
+        // Response: ApiResponse<ApiProject>
+        setProjects((prev) =>
+          prev.map((p) =>
+            p.id === projectId
+              ? {
+                  ...p,
+                  name: input.name,
+                  description: input.description,
+                  updatedAt: new Date().toISOString(),
+                }
+              : p,
+          ),
+        )
+        setToasts((prev) => [
+          ...prev,
+          { id: id('t'), title: '專案資料已暫存', message: '目前尚未寫回後端' },
+        ])
+      },
+
+      createPiece: async (projectId, input) => {
+        const created = await piecesApi.createProjectPiece(projectId, {
+          title: input.title.trim(),
+          composer: input.composer?.trim() || undefined,
+        })
+        const piece = mapPiece(created)
+        setProjects((prev) =>
+          prev.map((p) =>
+            p.id === projectId
+              ? {
+                  ...p,
+                  pieces: [...p.pieces, piece].sort((a, b) => a.sortOrder - b.sortOrder),
+                }
+              : p,
+          ),
+        )
+        return piece
+      },
+
+      deletePiece: async (projectId, pieceId) => {
+        await piecesApi.deleteProjectPiece(projectId, pieceId)
+        setProjects((prev) =>
+          prev.map((p) =>
+            p.id === projectId
+              ? {
+                  ...p,
+                  pieces: p.pieces.filter((piece) => piece.id !== pieceId),
+                  scores: p.scores.filter((score) => score.pieceId !== pieceId),
+                }
+              : p,
+          ),
+        )
+      },
+
+      movePiece: async (projectId, pieceId, direction) => {
+        const project = projects.find((p) => p.id === projectId)
+        if (!project) return
+
+        const pieces = [...project.pieces].sort((a, b) => a.sortOrder - b.sortOrder)
+        const index = pieces.findIndex((piece) => piece.id === pieceId)
+        const swapWith = direction === 'up' ? index - 1 : index + 1
+        if (index < 0 || swapWith < 0 || swapWith >= pieces.length) return
+
+        const next = [...pieces]
+        ;[next[index], next[swapWith]] = [next[swapWith], next[index]]
+        const orderedPieceIds = next.map((piece) => piece.id)
+
+        const reordered = await piecesApi.reorderProjectPieces(projectId, orderedPieceIds)
+        const mapped = reordered.map(mapPiece)
+        setProjects((prev) =>
+          prev.map((p) => (p.id === projectId ? { ...p, pieces: mapped } : p)),
+        )
+      },
+
+      deleteProjectScore: async (projectId, scoreId) => {
+        await scoresApi.deleteScore(scoreId)
+        setProjects((prev) =>
+          prev.map((p) =>
+            p.id === projectId
+              ? { ...p, scores: p.scores.filter((score) => score.id !== scoreId) }
+              : p,
+          ),
+        )
+      },
+
       joinProject: async (input) => {
         await projectsApi.joinByInviteCode(input)
         await refreshProjects()
@@ -302,6 +428,50 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       createInviteCode: async (projectId) => {
         const result = await projectsApi.createInviteCode(projectId)
         return result.inviteCode
+      },
+
+      createMemberInvite: async (projectId, input) => {
+        const section = sections.find((s) => s.id === input.sectionId)
+        if (!section || !currentUser) throw new Error('Invalid invite metadata')
+
+        const result = await projectsApi.createInviteCode(projectId)
+        const invite: MemberInviteDraft = {
+          id: id('invite'),
+          projectId,
+          sectionId: input.sectionId,
+          sectionName: section.name,
+          targetRole: input.targetRole,
+          inviteCode: result.inviteCode,
+          createdByUserId: currentUser.id,
+          createdAt: new Date().toISOString(),
+          source: 'api-token-with-frontend-metadata',
+        }
+        // TODO API contract: POST /api/projects/:projectId/invites
+        // Request: { targetRole: 'principal' | 'member', sectionId: string, expiresIn?: string }
+        // Response: ApiResponse<{ id, inviteCode, targetRole, sectionId, expiresAt }>
+        // Current backend returns only a generic inviteCode, so role/section intent is stored in frontend state.
+        setInvitesByProjectId((prev) => ({
+          ...prev,
+          [projectId]: [invite, ...(prev[projectId] ?? [])],
+        }))
+        return invite
+      },
+
+      removeProjectMemberMock: (projectId, memberId) => {
+        // TODO API contract: DELETE /api/projects/:projectId/members/:memberId
+        // Request: path params only, no body
+        // Response: ApiResponse<{ id: string }>
+        setProjects((prev) =>
+          prev.map((p) =>
+            p.id === projectId
+              ? { ...p, members: p.members.filter((member) => member.id !== memberId) }
+              : p,
+          ),
+        )
+        setToasts((prev) => [
+          ...prev,
+          { id: id('t'), title: '成員已從畫面移除', message: '目前尚未寫回後端' },
+        ])
       },
 
       addToast: (t) => setToasts((prev) => [...prev, { ...t, id: id('t') }]),
@@ -387,6 +557,40 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         })
         await loadProjectDetail(projectId)
       },
+
+      createCommit: async (projectId, message) => {
+        const project = projectsRef.current.find((p) => p.id === projectId)
+        if (!project) throw new Error('Project not found')
+        const branchId = project.currentBranchId
+        if (!branchId) throw new Error('No active branch')
+
+        const scoreSnapshots = project.scores.map((s) => ({
+          scoreId: s.id,
+          storagePath: s.storagePath,
+          fileType: s.fileType,
+          storageBucket: s.storageBucket,
+          originalFilename: s.originalFilename,
+          mimeType: s.mimeType,
+          fileSizeBytes: s.fileSizeBytes,
+        }))
+
+        const branch = project.branches.find((b) => b.id === branchId)
+        const branchName = branch?.name ?? project.currentBranchName
+
+        const detail = await historyApi.createCommit(projectId, branchId, {
+          message,
+          scoreSnapshots,
+        })
+
+        const newCommit = mapCommit(detail, branchName)
+        setProjects((prev) =>
+          prev.map((p) =>
+            p.id === projectId
+              ? { ...p, commits: [newCommit, ...p.commits] }
+              : p,
+          ),
+        )
+      },
     }),
     [
       currentUser,
@@ -401,18 +605,21 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       loadSections,
       loadProjectDetail,
       nameCache,
+      invitesByProjectId,
     ],
   )
 
   return <Ctx.Provider value={api}>{children}</Ctx.Provider>
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAppState() {
   const v = useContext(Ctx)
   if (!v) throw new Error('useAppState must be used within AppStateProvider')
   return v
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useRequiredUser() {
   const { currentUser } = useAppState()
   return currentUser ?? emptyUser

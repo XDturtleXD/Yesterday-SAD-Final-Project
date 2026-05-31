@@ -48,9 +48,10 @@ export function importConversion(
   jobId: string,
   input: {
     title: string
-    pieceTitle: string
-    pieceComposer?: string
     sectionId: string
+    pieceId?: string
+    pieceTitle?: string
+    pieceComposer?: string
     originalFilename?: string
   },
 ) {

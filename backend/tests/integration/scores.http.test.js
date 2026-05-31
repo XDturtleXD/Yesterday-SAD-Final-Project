@@ -92,6 +92,40 @@ test("POST /scores/upload: concertmaster uploads a MusicXML file", async () => {
   assert.equal(body.data.file_type, "musicxml");
 });
 
+test("POST /scores/upload: concertmaster uploads an MXL file", async () => {
+  const JSZip = require("jszip");
+  const { owner, projectId } = await setupScenario();
+  const baseURL = await harness.baseURLPromise;
+  const zip = new JSZip();
+  zip.file(
+    "score.musicxml",
+    '<?xml version="1.0"?><score-partwise version="4.0"></score-partwise>',
+  );
+  const mxlBuffer = await zip.generateAsync({ type: "nodebuffer" });
+
+  const form = new FormData();
+  form.set(
+    "file",
+    new Blob([mxlBuffer], { type: "application/vnd.recordare.musicxml" }),
+    "violin.mxl",
+  );
+  form.set("sectionId", SECTION_FIRST_VIOLIN);
+  form.set("title", "Violin I MXL");
+  form.set("pieceTitle", "Test Piece");
+
+  const res = await fetch(`${baseURL}/api/projects/${projectId}/scores/upload`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${owner.token}` },
+    body: form,
+  });
+  const body = await res.json();
+
+  assert.equal(res.status, 201);
+  assert.equal(body.success, true);
+  assert.equal(body.data.original_filename, "violin.mxl");
+  assert.equal(body.data.file_type, "mxl");
+});
+
 test("POST /scores/upload: rejects non-MusicXML XML content", async () => {
   const { owner, projectId } = await setupScenario();
   const baseURL = await harness.baseURLPromise;

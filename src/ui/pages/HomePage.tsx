@@ -1,17 +1,15 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAppState, useRequiredUser } from '../../state/AppState'
 import { Card } from '../primitives/Card'
 import { Button } from '../primitives/Button'
 import { Badge } from '../primitives/Badge'
-import { CreateProjectModal } from './modals/CreateProjectModal'
 import { FolderKanban, Plus, Music2 } from 'lucide-react'
 
 export function HomePage() {
   const { projects, projectsLoading } = useAppState()
   const currentUser = useRequiredUser()
   const navigate = useNavigate()
-  const [createOpen, setCreateOpen] = useState(false)
 
   const preview = useMemo(() => projects.slice(0, 3), [projects])
 
@@ -35,7 +33,7 @@ export function HomePage() {
               <FolderKanban className="size-4" />
               View projects
             </Button>
-            <Button variant="secondary" onClick={() => setCreateOpen(true)}>
+            <Button variant="secondary" onClick={() => navigate('/projects/new')}>
               <Plus className="size-4" />
               Create project
             </Button>
@@ -63,7 +61,7 @@ export function HomePage() {
               建立新專案，或使用邀請碼加入既有樂團。
             </div>
             <div className="mt-4">
-              <Button onClick={() => setCreateOpen(true)}>
+              <Button onClick={() => navigate('/projects/new')}>
                 <Plus className="size-4" />
                 Create project
               </Button>
@@ -91,7 +89,6 @@ export function HomePage() {
         )}
       </section>
 
-      <CreateProjectModal open={createOpen} onClose={() => setCreateOpen(false)} />
     </div>
   )
 }
