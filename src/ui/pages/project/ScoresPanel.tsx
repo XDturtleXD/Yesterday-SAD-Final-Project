@@ -73,8 +73,12 @@ export function ScoresPanel({ project }: { project: Project }) {
     }
   }, [conversionJob, conversionStatus?.status, uploadOpen])
 
+  const conversionDone = conversionStatus?.status === 'done' && Boolean(convertedXml)
+  const conversionInProgress =
+    Boolean(conversionJob) && !conversionDone && conversionStatus?.status !== 'error'
+
   const closeUpload = () => {
-    if (uploading || importing) return
+    if (uploading || importing || conversionInProgress) return
     resetUpload()
   }
 
@@ -206,7 +210,6 @@ export function ScoresPanel({ project }: { project: Project }) {
       : 'MusicXML'
     : 'No file selected'
   const isPdf = file?.name.toLowerCase().endsWith('.pdf') ?? false
-  const conversionDone = conversionStatus?.status === 'done' && Boolean(convertedXml)
   const showConversionStatus = conversionStatus && !conversionDone
   const selectedFileStatus = isPdf ? 'PDF · ready to convert' : 'MusicXML · ready to upload'
   const convertedFilename = file?.name.replace(/\.pdf$/i, '.musicxml') || 'Converted.musicxml'
@@ -287,7 +290,7 @@ export function ScoresPanel({ project }: { project: Project }) {
               type="button"
               variant="secondary"
               onClick={closeUpload}
-              disabled={uploading || importing}
+              disabled={uploading || importing || conversionInProgress}
             >
               Cancel
             </Button>

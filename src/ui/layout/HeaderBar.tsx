@@ -12,11 +12,7 @@ export function HeaderBar() {
 
   return (
     <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/90 backdrop-blur">
-      <div className="flex items-center justify-between gap-4 px-6 py-3">
-        <div className="min-w-0">
-          <div className="truncate text-sm font-semibold text-slate-900">Yesterday</div>
-        </div>
-
+      <div className="flex items-center justify-end gap-4 px-6 py-3">
         <div className="flex items-center gap-2 sm:gap-3">
           <Button variant="ghost" onClick={() => navigate('/projects')}>
             <FolderKanban className="size-4" />

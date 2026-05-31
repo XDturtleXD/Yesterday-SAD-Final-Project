@@ -28,6 +28,15 @@ def _audiveris_bin() -> Path:
     return DEFAULT_AUDIVERIS_BIN
 
 
+def _audiveris_env() -> dict[str, str]:
+    env = os.environ.copy()
+    headless_option = "-Djava.awt.headless=true"
+    existing_options = env.get("JAVA_TOOL_OPTIONS", "").strip()
+    if headless_option not in existing_options.split():
+        env["JAVA_TOOL_OPTIONS"] = f"{existing_options} {headless_option}".strip()
+    return env
+
+
 class AudiverisEngine(BaseEngine):
     name = "audiveris"
     timeout_seconds = 600
@@ -71,6 +80,7 @@ class AudiverisEngine(BaseEngine):
             completed = subprocess.run(
                 command,
                 capture_output=True,
+                env=_audiveris_env(),
                 text=True,
                 timeout=self.timeout_seconds,
                 check=False,
