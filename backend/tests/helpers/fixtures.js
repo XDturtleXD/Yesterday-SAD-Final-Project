@@ -66,7 +66,14 @@ const nextUserId = () => {
 // something OTHER than the auth path itself.
 const seedUserWithToken = (
   fake,
-  { id, email, name = "Test User", systemRole = "user", googleSub = null } = {},
+  {
+    id,
+    email,
+    name = "Test User",
+    systemRole = "user",
+    googleSub = null,
+    avatarUrl = null,
+  } = {},
 ) => {
   const userId = id || nextUserId();
   const row = {
@@ -76,7 +83,7 @@ const seedUserWithToken = (
     password_hash: BCRYPT_PASSWORD123,
     google_sub: googleSub,
     system_role: systemRole,
-    avatar_url: null,
+    avatar_url: avatarUrl,
     intro: null,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),

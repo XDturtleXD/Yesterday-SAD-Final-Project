@@ -24,6 +24,7 @@ export function mapProjectMember(m: ApiProjectMemberRecord): ProjectMember {
     userId: m.user_id,
     userName: m.user_name,
     userEmail: m.user_email,
+    avatarUrl: m.user_avatar_url ?? undefined,
     sectionId: m.section_id,
     sectionCode: m.section_code,
     sectionName: m.section_name,

@@ -284,7 +284,26 @@ const listProjectMembers = async (projectId, requestUser) => {
     throw new AppError("Failed to fetch project members", 500, error);
   }
 
-  return data || [];
+  const members = data || [];
+  const userIds = [...new Set(members.map((member) => member.user_id).filter(Boolean))];
+  if (userIds.length === 0) {
+    return members;
+  }
+
+  const { data: users, error: avatarError } = await supabase
+    .from("users")
+    .select("id, avatar_url")
+    .in("id", userIds);
+
+  if (avatarError) {
+    throw new AppError("Failed to fetch member avatars", 500, avatarError);
+  }
+
+  const avatarByUserId = new Map((users || []).map((user) => [user.id, user.avatar_url]));
+  return members.map((member) => ({
+    ...member,
+    user_avatar_url: avatarByUserId.get(member.user_id) || null,
+  }));
 };
 
 module.exports = {

@@ -200,3 +200,61 @@ test("GET /api/projects/:projectId: owner can read their own project", async () 
   assert.equal(body.data.id, projectId);
   assert.equal(body.data.name, "P2");
 });
+
+test("GET /api/projects/:projectId/members: includes member avatar URLs", async () => {
+  const avatarUrl = "https://example.test/malcolm.png";
+  const { token, user } = seedUserWithToken(fake, {
+    email: "malcolm@example.test",
+    name: "Malcolm",
+    avatarUrl,
+  });
+  const now = new Date().toISOString();
+  const projectId = "P-MEMBER-AVATAR";
+
+  fake.seedRows("projects", [
+    {
+      id: projectId,
+      name: "Avatar Project",
+      description: null,
+      created_by: user.id,
+      created_at: now,
+      updated_at: now,
+    },
+  ]);
+  fake.seedRows("project_members", [
+    {
+      id: "PM-MEMBER-AVATAR",
+      project_id: projectId,
+      user_id: user.id,
+      section_id: SECTION_FIRST_VIOLIN,
+      role: "concertmaster",
+      created_at: now,
+      updated_at: now,
+    },
+  ]);
+  fake.seedRows("project_member_details", [
+    {
+      project_member_id: "PM-MEMBER-AVATAR",
+      project_id: projectId,
+      user_id: user.id,
+      user_name: user.name,
+      user_email: user.email,
+      section_id: SECTION_FIRST_VIOLIN,
+      section_code: "first_violin",
+      section_name: "小提琴第一部",
+      role: "concertmaster",
+      created_at: now,
+      updated_at: now,
+    },
+  ]);
+
+  const { status, body } = await harness.request(
+    "GET",
+    `/api/projects/${projectId}/members`,
+    { token },
+  );
+
+  assert.equal(status, 200);
+  assert.equal(body.data.length, 1);
+  assert.equal(body.data[0].user_avatar_url, avatarUrl);
+});
