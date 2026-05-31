@@ -183,6 +183,40 @@ test("POST /scores/upload: PDF upload starts a conversion job", async () => {
   }
 });
 
+test("POST /scores/upload: reports a clear error when OMR service is unavailable", async () => {
+  const { owner, projectId } = await setupScenario();
+  const baseURL = await harness.baseURLPromise;
+  const originalFetch = global.fetch;
+  global.fetch = async (url, options) => {
+    if (String(url).startsWith("http://127.0.0.1:8000/") && options?.method === "POST") {
+      throw new TypeError("fetch failed");
+    }
+    return originalFetch(url, options);
+  };
+
+  try {
+    const form = new FormData();
+    form.set("file", new Blob(["%PDF-1.7"], { type: "application/pdf" }), "part.pdf");
+    form.set("sectionId", SECTION_FIRST_VIOLIN);
+    form.set("title", "Violin I");
+    form.set("pieceTitle", "PDF Piece");
+
+    const res = await fetch(`${baseURL}/api/projects/${projectId}/scores/upload`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${owner.token}` },
+      body: form,
+    });
+    const body = await res.json();
+
+    assert.equal(res.status, 502);
+    assert.equal(body.success, false);
+    assert.match(body.message, /Conversion service is unavailable/);
+    assert.match(body.message, /npm run dev:all/);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
 test("POST /scores: 401 without token", async () => {
   const { projectId } = await setupScenario();
   const { status } = await harness.request("POST", `/api/projects/${projectId}/scores`, {
