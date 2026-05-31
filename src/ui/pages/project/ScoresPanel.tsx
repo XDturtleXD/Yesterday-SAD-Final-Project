@@ -206,7 +206,8 @@ export function ScoresPanel({ project }: { project: Project }) {
       : 'MusicXML'
     : 'No file selected'
   const isPdf = file?.name.toLowerCase().endsWith('.pdf') ?? false
-  const conversionDone = conversionStatus?.status === 'done' && convertedXml
+  const conversionDone = conversionStatus?.status === 'done' && Boolean(convertedXml)
+  const showConversionStatus = conversionStatus && !conversionDone
   const selectedFileStatus = isPdf ? 'PDF · ready to convert' : 'MusicXML · ready to upload'
   const convertedFilename = file?.name.replace(/\.pdf$/i, '.musicxml') || 'Converted.musicxml'
 
@@ -278,7 +279,8 @@ export function ScoresPanel({ project }: { project: Project }) {
         title="Upload score"
         open={uploadOpen}
         onClose={closeUpload}
-        maxWidthClassName="max-w-2xl"
+        maxWidthClassName="h-[min(640px,calc(100vh-2rem))] max-w-2xl"
+        bodyClassName="flex-1"
         footer={
           <div className="flex justify-end gap-2">
             <Button
@@ -454,7 +456,7 @@ export function ScoresPanel({ project }: { project: Project }) {
             </div>
           )}
 
-          {conversionStatus && (
+          {showConversionStatus && (
             <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
               <div className="font-medium">PDF conversion: {conversionStatus.status}</div>
               <div className="mt-1 text-xs text-sky-800">
