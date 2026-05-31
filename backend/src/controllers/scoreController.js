@@ -113,9 +113,19 @@ const uploadScoreFile = async (req, res, next) => {
   }
 };
 
+const deleteScore = async (req, res, next) => {
+  try {
+    const deleted = await scoreService.deleteScore(req.score, req.projectMembership);
+    return sendSuccess(res, deleted, "Score deleted successfully");
+  } catch (error) {
+    return next(error);
+  }
+};
+
 module.exports = {
   getProjectScores,
   getScoreById,
   uploadScore,
   uploadScoreFile,
+  deleteScore,
 };

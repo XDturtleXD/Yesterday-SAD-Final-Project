@@ -13,5 +13,11 @@ router.get(
   projectPermissionMiddleware("score"),
   scoreController.getScoreById
 );
+router.delete(
+  "/:scoreId",
+  loadScoreMiddleware,
+  projectPermissionMiddleware("score"),
+  scoreController.deleteScore
+);
 
 module.exports = router;

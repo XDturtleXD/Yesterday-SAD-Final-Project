@@ -11,6 +11,12 @@ export function getScore(scoreId: string) {
   return apiRequest<ApiScore>(`/scores/${scoreId}`)
 }
 
+export function deleteScore(scoreId: string) {
+  return apiRequest<ApiScore>(`/scores/${scoreId}`, {
+    method: 'DELETE',
+  })
+}
+
 export async function uploadProjectScoreFile(
   projectId: string,
   input: {

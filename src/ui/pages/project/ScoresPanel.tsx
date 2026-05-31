@@ -9,7 +9,7 @@ import { Badge } from '../../primitives/Badge'
 import { Button } from '../../primitives/Button'
 import { Card } from '../../primitives/Card'
 import { Modal } from '../../primitives/Modal'
-import { FileUp, Edit3, Music2, Upload } from 'lucide-react'
+import { FileUp, Edit3, Music2, Trash2, Upload } from 'lucide-react'
 
 export function ScoresPanel({ project }: { project: Project }) {
   const navigate = useNavigate()
@@ -28,6 +28,7 @@ export function ScoresPanel({ project }: { project: Project }) {
     useState<conversionsApi.ApiConversionStatus | null>(null)
   const [convertedXml, setConvertedXml] = useState('')
   const [importing, setImporting] = useState(false)
+  const [deletingScoreId, setDeletingScoreId] = useState<string | null>(null)
 
   const currentMembership = useMemo(
     () => project.members.find((member) => member.userId === currentUser?.id),
@@ -180,6 +181,25 @@ export function ScoresPanel({ project }: { project: Project }) {
     }
   }
 
+  const deleteImportedScore = async (scoreId: string, scoreTitle: string) => {
+    const confirmed = window.confirm(`Delete "${scoreTitle}" from this project?`)
+    if (!confirmed) return
+
+    setDeletingScoreId(scoreId)
+    try {
+      await scoresApi.deleteScore(scoreId)
+      addToast({ title: 'Score deleted', message: scoreTitle })
+      await loadProjectDetail(project.id, { force: true })
+    } catch (error) {
+      addToast({
+        title: 'Delete failed',
+        message: error instanceof Error ? error.message : 'Could not delete score',
+      })
+    } finally {
+      setDeletingScoreId(null)
+    }
+  }
+
   const selectedFileType = file
     ? file.name.toLowerCase().endsWith('.pdf')
       ? 'PDF'
@@ -187,6 +207,8 @@ export function ScoresPanel({ project }: { project: Project }) {
     : 'No file selected'
   const isPdf = file?.name.toLowerCase().endsWith('.pdf') ?? false
   const conversionDone = conversionStatus?.status === 'done' && convertedXml
+  const selectedFileStatus = isPdf ? 'PDF · ready to convert' : 'MusicXML · ready to upload'
+  const convertedFilename = file?.name.replace(/\.pdf$/i, '.musicxml') || 'Converted.musicxml'
 
   return (
     <div className="space-y-4">
@@ -236,6 +258,15 @@ export function ScoresPanel({ project }: { project: Project }) {
                 >
                   <Edit3 className="size-4" />
                   Open editor
+                </Button>
+                <Button
+                  size="sm"
+                  variant="danger"
+                  disabled={deletingScoreId === s.id}
+                  onClick={() => void deleteImportedScore(s.id, s.title)}
+                >
+                  <Trash2 className="size-4" />
+                  {deletingScoreId === s.id ? 'Deleting...' : 'Delete'}
                 </Button>
               </div>
             </Card>
@@ -295,20 +326,38 @@ export function ScoresPanel({ project }: { project: Project }) {
             <label
               htmlFor="score-file"
               className={[
-                'mt-1 flex min-h-12 cursor-pointer items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm transition',
+                'mt-1 flex min-h-24 cursor-pointer items-center justify-between gap-4 rounded-lg border px-4 py-4 text-sm transition',
                 file
-                  ? 'border-slate-300 bg-white text-slate-900'
-                  : 'border-slate-200 bg-slate-50 text-slate-500 hover:border-slate-300 hover:bg-slate-100',
+                  ? 'border-slate-300 bg-white text-slate-900 shadow-sm'
+                  : 'border-dashed border-slate-300 bg-slate-50 text-slate-600 hover:border-slate-400 hover:bg-slate-100',
                 conversionJob ? 'cursor-not-allowed opacity-60' : '',
               ].join(' ')}
             >
-              <span className="flex min-w-0 items-center gap-2">
-                <FileUp className="size-4 shrink-0 text-slate-500" />
-                <span className="truncate" title={file?.name}>
-                  {file?.name || 'No file selected'}
+              <span className="flex min-w-0 items-center gap-3">
+                <span
+                  className={[
+                    'grid size-10 shrink-0 place-items-center rounded-md border',
+                    file
+                      ? 'border-slate-200 bg-slate-50 text-slate-600'
+                      : 'border-slate-300 bg-white text-slate-500',
+                  ].join(' ')}
+                >
+                  <FileUp className="size-5" />
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate font-medium text-slate-900" title={file?.name}>
+                    {file?.name || 'Choose a PDF, XML, or MusicXML file'}
+                  </span>
+                  <span className="mt-0.5 block text-xs text-slate-500">
+                    {file ? selectedFileStatus : 'Click to browse from your computer'}
+                  </span>
                 </span>
               </span>
-              {!file && <span className="shrink-0 font-medium text-slate-600">Choose file</span>}
+              {!file && (
+                <span className="shrink-0 rounded-md border border-slate-300 bg-white px-3 py-1.5 font-medium text-slate-700 shadow-sm">
+                  Choose file
+                </span>
+              )}
             </label>
             <div className="mt-1 text-xs text-slate-500">
               Detected file type: <span className="font-medium">{selectedFileType}</span>
@@ -420,12 +469,11 @@ export function ScoresPanel({ project }: { project: Project }) {
           )}
 
           {convertedXml && (
-            <div>
-              <div className="text-sm font-medium text-slate-800">Converted MusicXML preview</div>
-              <pre className="mt-1 max-h-56 overflow-auto rounded-md border border-slate-200 bg-slate-950 p-3 text-xs text-slate-100">
-                {convertedXml.slice(0, 4000)}
-                {convertedXml.length > 4000 ? '\n...' : ''}
-              </pre>
+            <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-3 text-sm text-emerald-900">
+              <div className="font-medium">Conversion complete</div>
+              <div className="mt-1 text-emerald-800">
+                {convertedFilename} is ready to import.
+              </div>
             </div>
           )}
         </form>

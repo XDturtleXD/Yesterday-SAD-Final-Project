@@ -296,6 +296,76 @@ test("GET /projects/:projectId/scores: returns uploaded scores", async () => {
   assert.deepEqual(titles, ["Vln 1", "Vln 2"]);
 });
 
+test("DELETE /scores/:scoreId: concertmaster deletes a score", async () => {
+  const { owner, projectId } = await setupScenario();
+  const upload = await harness.request("POST", `/api/projects/${projectId}/scores`, {
+    token: owner.token,
+    body: {
+      sectionId: SECTION_FIRST_VIOLIN,
+      title: "Delete me",
+      piece: { title: "Disposable" },
+      xmlContent: "<x/>",
+    },
+  });
+  const scoreId = upload.body.data.id;
+
+  const deleted = await harness.request("DELETE", `/api/scores/${scoreId}`, {
+    token: owner.token,
+  });
+  assert.equal(deleted.status, 200);
+  assert.equal(deleted.body.data.id, scoreId);
+
+  const refetch = await harness.request("GET", `/api/scores/${scoreId}`, {
+    token: owner.token,
+  });
+  assert.equal(refetch.status, 404);
+});
+
+test("DELETE /scores/:scoreId: principal can delete own section only", async () => {
+  const { owner, projectId } = await setupScenario();
+  const principal = seedUserWithToken(fake, { email: "delete-principal@example.test" });
+  fake.seedRows("project_members", [
+    {
+      id: "pm-delete-principal",
+      project_id: projectId,
+      user_id: principal.user.id,
+      section_id: SECTION_SECOND_VIOLIN,
+      role: "principal",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    },
+  ]);
+
+  const own = await harness.request("POST", `/api/projects/${projectId}/scores`, {
+    token: owner.token,
+    body: {
+      sectionId: SECTION_SECOND_VIOLIN,
+      title: "Own section",
+      piece: { title: "Delete principal piece" },
+      xmlContent: "<x/>",
+    },
+  });
+  const other = await harness.request("POST", `/api/projects/${projectId}/scores`, {
+    token: owner.token,
+    body: {
+      sectionId: SECTION_FIRST_VIOLIN,
+      title: "Other section",
+      piece: { title: "Delete principal piece" },
+      xmlContent: "<x/>",
+    },
+  });
+
+  const ownDelete = await harness.request("DELETE", `/api/scores/${own.body.data.id}`, {
+    token: principal.token,
+  });
+  assert.equal(ownDelete.status, 200);
+
+  const otherDelete = await harness.request("DELETE", `/api/scores/${other.body.data.id}`, {
+    token: principal.token,
+  });
+  assert.equal(otherDelete.status, 403);
+});
+
 test("GET /scores/:scoreId: 403 when scope-section principal opens another section's score", async () => {
   const { owner, projectId } = await setupScenario();
   const upload = await harness.request(
