@@ -5,37 +5,39 @@ import { Badge } from '../../primitives/Badge'
 import { Button } from '../../primitives/Button'
 import { Card } from '../../primitives/Card'
 import { Modal } from '../../primitives/Modal'
+import { useTranslation } from '../../../i18n'
 import { memberSectionLabel } from '../../../utils/sectionLabels'
 
 export function FullScorePanel({ project }: { project: Project }) {
   const { addToast } = useAppState()
+  const { language, t } = useTranslation()
   const [generated, setGenerated] = useState(false)
   const [exportOpen, setExportOpen] = useState<null | 'musescore' | 'pdf'>(null)
 
   const sections = useMemo(() => {
-    const set = new Set(project.members.map((m) => memberSectionLabel(m)))
+    const set = new Set(project.members.map((m) => memberSectionLabel(m, language)))
     return Array.from(set)
-  }, [project.members])
+  }, [language, project.members])
 
   return (
     <div className="space-y-4">
       <div>
-        <div className="text-sm font-semibold text-slate-900">Full score generation (planned)</div>
+        <div className="text-sm font-semibold text-slate-900">{t('fullScore.title')}</div>
         <div className="mt-1 text-sm text-slate-600">
-          Demonstrates combining selected part versions into a full score. This is visual-only in the prototype.
+          {t('fullScore.description')}
         </div>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="p-4 lg:col-span-1">
-          <div className="text-sm font-semibold text-slate-900">Selected versions</div>
+          <div className="text-sm font-semibold text-slate-900">{t('fullScore.selectedVersions')}</div>
           <div className="mt-1 text-sm text-slate-600">
-            Choose which version to apply per instrument (mock).
+            {t('fullScore.selectedVersionsDescription')}
           </div>
 
           <div className="mt-4 space-y-2">
             {sections.length === 0 ? (
-              <div className="text-sm text-slate-500">No sections with scores yet.</div>
+              <div className="text-sm text-slate-500">{t('fullScore.noSections')}</div>
             ) : (
               sections.map((i) => (
                 <div
@@ -44,9 +46,9 @@ export function FullScorePanel({ project }: { project: Project }) {
                 >
                   <div className="text-sm font-medium text-slate-900">{i}</div>
                   <select className="h-8 rounded-md border border-slate-200 bg-white px-2 text-sm">
-                    <option>current</option>
-                    <option>previous commit</option>
-                    <option>custom pick</option>
+                    <option>{t('fullScore.current')}</option>
+                    <option>{t('fullScore.previousCommit')}</option>
+                    <option>{t('fullScore.customPick')}</option>
                   </select>
                 </div>
               ))
@@ -54,10 +56,10 @@ export function FullScorePanel({ project }: { project: Project }) {
           </div>
 
           <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-            <div className="font-medium">Consistency warnings</div>
+            <div className="font-medium">{t('fullScore.warnings')}</div>
             <ul className="mt-1 list-disc pl-5 text-amber-900/90">
-              <li>Markings differ between Violin and Cello in measures 12–14.</li>
-              <li>Suggested auto-fill available for repeated passages.</li>
+              <li>{t('fullScore.warningOne')}</li>
+              <li>{t('fullScore.warningTwo')}</li>
             </ul>
           </div>
 
@@ -65,16 +67,16 @@ export function FullScorePanel({ project }: { project: Project }) {
             <Button
               onClick={() => {
                 setGenerated(true)
-                addToast({ title: 'Full score generated (simulated)' })
+                addToast({ title: t('fullScore.generatedToast') })
               }}
             >
-              Auto-generate full score
+              {t('fullScore.generate')}
             </Button>
             <Button
               variant="secondary"
-              onClick={() => addToast({ title: 'Version applied (simulated)', message: 'Selections saved locally (visual only).' })}
+              onClick={() => addToast({ title: t('fullScore.versionAppliedToast'), message: t('fullScore.versionAppliedMessage') })}
             >
-              Choose version to apply
+              {t('fullScore.chooseVersion')}
             </Button>
           </div>
         </Card>
@@ -82,17 +84,17 @@ export function FullScorePanel({ project }: { project: Project }) {
         <Card className="p-4 lg:col-span-2">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <div className="text-sm font-semibold text-slate-900">Full score preview</div>
+              <div className="text-sm font-semibold text-slate-900">{t('fullScore.preview')}</div>
               <div className="mt-1 text-sm text-slate-600">
-                Placeholder panel for combined score rendering.
+                {t('fullScore.previewDescription')}
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
               <Button variant="secondary" onClick={() => setExportOpen('musescore')}>
-                Export MuseScore
+                {t('fullScore.exportMuseScore')}
               </Button>
               <Button variant="secondary" onClick={() => setExportOpen('pdf')}>
-                Export PDF
+                {t('fullScore.exportPdf')}
               </Button>
             </div>
           </div>
@@ -100,23 +102,29 @@ export function FullScorePanel({ project }: { project: Project }) {
           <div className="mt-4 rounded-xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-4">
             {!generated ? (
               <div className="rounded-lg border border-dashed border-slate-300 bg-white p-6 text-center">
-                <div className="text-sm font-semibold text-slate-900">Not generated yet</div>
+                <div className="text-sm font-semibold text-slate-900">{t('fullScore.notGenerated')}</div>
                 <div className="mt-1 text-sm text-slate-600">
-                  Click “Auto-generate full score” to populate a mock preview.
+                  {t('fullScore.notGeneratedDescription')}
                 </div>
               </div>
             ) : (
               <div className="space-y-3">
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge tone="success">Generated</Badge>
-                  <Badge tone="info">Branch: {project.currentBranchName}</Badge>
+                  <Badge tone="success">{t('fullScore.generated')}</Badge>
+                  <Badge tone="info">{t('common.branch')}: {project.currentBranchName}</Badge>
                 </div>
                 <div className="grid gap-3 md:grid-cols-2">
-                  <MockSystemStaff title="Strings" lines={['Violin', 'Viola', 'Cello']} />
-                  <MockSystemStaff title="Winds" lines={['Flute', 'Clarinet', 'Trumpet']} />
+                  <MockSystemStaff
+                    title={t('fullScore.strings')}
+                    lines={[t('fullScore.violin'), t('fullScore.viola'), t('fullScore.cello')]}
+                  />
+                  <MockSystemStaff
+                    title={t('fullScore.winds')}
+                    lines={[t('fullScore.flute'), t('fullScore.clarinet'), t('fullScore.trumpet')]}
+                  />
                 </div>
                 <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-700">
-                  Preview note: real score rendering is out of scope. This box shows where a combined score would display.
+                  {t('fullScore.previewNote')}
                 </div>
               </div>
             )}
@@ -125,35 +133,35 @@ export function FullScorePanel({ project }: { project: Project }) {
       </div>
 
       <Modal
-        title={`Export ${exportOpen ?? ''} (simulated)`}
+        title={`${t('common.export')} ${exportOpen ?? ''}`}
         open={!!exportOpen}
         onClose={() => setExportOpen(null)}
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setExportOpen(null)}>
-              Cancel
+              {t('common.cancel')}
             </Button>
             <Button
               onClick={() => {
-                addToast({ title: 'Export complete (simulated)', message: exportOpen === 'musescore' ? '.mscz created' : '.pdf created' })
+                addToast({ title: t('fullScore.exportComplete'), message: exportOpen === 'musescore' ? '.mscz created' : '.pdf created' })
                 setExportOpen(null)
               }}
             >
-              Export
+              {t('common.export')}
             </Button>
           </div>
         }
       >
         <div className="text-sm text-slate-600">
-          No real file export is performed. This shows where export actions would live.
+          {t('fullScore.exportDescription')}
         </div>
         {exportOpen === 'musescore' ? (
           <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
-            MuseScore is the primary output format for the prototype.
+            {t('fullScore.museScoreDescription')}
           </div>
         ) : (
           <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
-            PDF export is shown as available/planned; actual generation is deferred.
+            {t('fullScore.pdfDescription')}
           </div>
         )}
       </Modal>

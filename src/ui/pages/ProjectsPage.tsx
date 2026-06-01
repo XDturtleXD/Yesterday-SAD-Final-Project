@@ -6,6 +6,7 @@ import { Badge } from '../primitives/Badge'
 import { Button } from '../primitives/Button'
 import { Card } from '../primitives/Card'
 import { Modal } from '../primitives/Modal'
+import { memberRoleLabel, roleLabel, useTranslation } from '../../i18n'
 import { memberSectionLabel, sectionLabel } from '../../utils/sectionLabels'
 import { Copy, FolderPlus, LogIn, Music2 } from 'lucide-react'
 
@@ -21,6 +22,7 @@ export function ProjectsPage() {
     addToast,
   } = useAppState()
   const currentUser = useRequiredUser()
+  const { language, t } = useTranslation()
   const navigate = useNavigate()
   const [joinOpen, setJoinOpen] = useState(false)
   const [inviteCode, setInviteCode] = useState('')
@@ -44,28 +46,28 @@ export function ProjectsPage() {
     <div className="space-y-5">
       <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">
-          <div className="text-xl font-semibold text-slate-950">Projects</div>
+          <div className="text-xl font-semibold text-slate-950">{t('projects.title')}</div>
           <div className="mt-1 text-sm text-slate-600">
-            {projectsLoading ? 'Loading...' : `${projects.length} workspaces`}
+            {projectsLoading ? t('common.loading') : `${projects.length} ${t('projects.workspaces')}`}
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button onClick={() => navigate('/projects/new')}>
             <FolderPlus className="size-4" />
-            Create project
+            {t('projects.create')}
           </Button>
           <Button variant="secondary" onClick={() => setJoinOpen(true)}>
             <LogIn className="size-4" />
-            Join by code
+            {t('projects.joinByCode')}
           </Button>
         </div>
       </div>
 
       {!projectsLoading && projects.length === 0 && (
         <Card className="p-6">
-          <div className="text-sm font-semibold text-slate-900">No projects yet</div>
+          <div className="text-sm font-semibold text-slate-900">{t('projects.noProjectsTitle')}</div>
           <div className="mt-1 text-sm text-slate-600">
-            Create a project or join an existing ensemble with an invite code.
+            {t('projects.noProjectsDescription')}
           </div>
         </Card>
       )}
@@ -73,8 +75,12 @@ export function ProjectsPage() {
       <div className="grid gap-3 lg:grid-cols-2">
         {projects.map((p) => {
           const myMember = p.members.find((m) => m.userId === currentUser.id)
-          const myRole = myMember?.role ?? (currentUser.role === 'admin' ? 'admin' : '—')
-          const mySection = myMember ? memberSectionLabel(myMember) : '—'
+          const myRole = myMember
+            ? memberRoleLabel(myMember.role, language)
+            : currentUser.role === 'admin'
+              ? roleLabel(currentUser.role, language)
+              : '—'
+          const mySection = myMember ? memberSectionLabel(myMember, language) : '—'
           const lastCommit = latestCommit(p)
           const lastAuthor = lastCommit
             ? getMemberDisplayName(lastCommit.authorUserId)
@@ -91,23 +97,23 @@ export function ProjectsPage() {
                     <div className="min-w-0">
                       <div className="truncate text-sm font-semibold text-slate-950">{p.name}</div>
                       <div className="text-xs text-slate-500">
-                        Updated {p.updatedAt.slice(0, 10)}
+                        {t('common.updated')} {p.updatedAt.slice(0, 10)}
                       </div>
                     </div>
                   </div>
                   <div className="mt-1 line-clamp-2 text-sm text-slate-600">{p.description}</div>
                   <div className="mt-3 text-xs text-slate-500">
                     {myRole} · {mySection}
-                    {p.detailLoaded ? ` · ${p.scores.length} scores` : ''}
+                    {p.detailLoaded ? ` · ${p.scores.length} ${t('projects.scores')}` : ''}
                   </div>
                 </div>
-                {p.detailLoaded && <Badge>{p.members.length} members</Badge>}
+                {p.detailLoaded && <Badge>{p.members.length} {t('projects.members')}</Badge>}
               </div>
 
               {lastCommit && (
                 <details className="mt-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
                   <summary className="cursor-pointer font-medium text-slate-700">
-                    Latest update
+                    {t('projects.latestUpdate')}
                   </summary>
                   <div className="mt-2">
                     <span className="font-medium text-slate-800">{lastCommit.message}</span>
@@ -119,7 +125,7 @@ export function ProjectsPage() {
 
               <div className="mt-4 flex flex-wrap gap-2">
                 <Button size="sm" onClick={() => navigate(`/projects/${p.id}`)}>
-                  Open project
+                  {t('projects.openProject')}
                 </Button>
                 {myMember &&
                   (myMember.role === 'concertmaster' || myMember.role === 'principal') && (
@@ -130,17 +136,17 @@ export function ProjectsPage() {
                         try {
                           const code = await createInviteCode(p.id)
                           await navigator.clipboard.writeText(code)
-                          addToast({ title: 'Invite code copied', message: 'Copied to clipboard.' })
+                          addToast({ title: t('projects.inviteCopied'), message: t('projects.copiedToClipboard') })
                         } catch (err) {
                           addToast({
-                            title: 'Could not create invite code',
-                            message: err instanceof ApiError ? err.message : 'Please try again later.',
+                            title: t('projects.inviteCreateFailed'),
+                            message: err instanceof ApiError ? err.message : t('projects.tryAgainLater'),
                           })
                         }
                       }}
                     >
                       <Copy className="size-4" />
-                      Copy invite
+                      {t('projects.copyInvite')}
                     </Button>
                   )}
               </div>
@@ -150,13 +156,13 @@ export function ProjectsPage() {
       </div>
 
       <Modal
-        title="Join project by invite code"
+        title={t('projects.joinTitle')}
         open={joinOpen}
         onClose={() => setJoinOpen(false)}
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setJoinOpen(false)} disabled={joinLoading}>
-              Cancel
+              {t('common.cancel')}
             </Button>
             <Button
               disabled={joinLoading || !inviteCode.trim() || !joinSectionId}
@@ -171,24 +177,24 @@ export function ProjectsPage() {
                   setJoinOpen(false)
                   setInviteCode('')
                 } catch (err) {
-                  setJoinError(err instanceof ApiError ? err.message : 'Failed to join project')
+                  setJoinError(err instanceof ApiError ? err.message : t('projects.joinFailed'))
                 } finally {
                   setJoinLoading(false)
                 }
               }}
             >
-              {joinLoading ? 'Joining...' : 'Join'}
+              {joinLoading ? t('projects.joining') : t('projects.join')}
             </Button>
           </div>
         }
       >
         <div className="text-sm text-slate-600">
-          Enter the invite code from your principal or manager, then choose your section.
+          {t('projects.joinDescription')}
         </div>
         <input
           value={inviteCode}
           onChange={(e) => setInviteCode(e.target.value)}
-          placeholder="Paste invite code"
+          placeholder={t('projects.invitePlaceholder')}
           className="mt-3 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
         />
         <select
@@ -198,7 +204,7 @@ export function ProjectsPage() {
         >
           {sections.map((s) => (
             <option key={s.id} value={s.id}>
-              {sectionLabel(s)}
+              {sectionLabel(s, language)}
             </option>
           ))}
         </select>

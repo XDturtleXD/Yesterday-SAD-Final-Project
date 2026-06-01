@@ -1,5 +1,6 @@
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../../auth/AuthContext'
+import { useTranslation } from '../../i18n'
 import { Button } from '../primitives/Button'
 import { Card } from '../primitives/Card'
 import {
@@ -11,52 +12,51 @@ import {
   Sparkles,
 } from 'lucide-react'
 
-const features = [
-  {
-    icon: FolderKanban,
-    title: 'Project and member management',
-    description: 'Create ensemble projects, invite teammates, and assign roles, sections, and permissions.',
-  },
-  {
-    icon: Music2,
-    title: 'Score viewing and editing',
-    description: 'Open MusicXML scores in the browser with a live viewing and editing workflow.',
-  },
-  {
-    icon: GitBranch,
-    title: 'Branch-based collaboration',
-    description: 'Manage rehearsal versions with branches, track changes, and merge updates. Beta.',
-  },
-  {
-    icon: Sparkles,
-    title: 'Practice progress tracking',
-    description: 'Mark practiced passages and keep individual and ensemble progress visible.',
-  },
-]
-
-const steps = [
-  { step: '1', title: 'Create a project', description: 'Set up the ensemble workspace and invite members.' },
-  { step: '2', title: 'Upload scores', description: 'Import MusicXML or PDF part files.' },
-  { step: '3', title: 'Collaborate', description: 'Edit on branches, merge changes, and stay in sync.' },
-]
-
 export function LandingPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { isAuthenticated } = useAuth()
+  const { t } = useTranslation()
 
   const redirect = searchParams.get('redirect')
   const loginPath = redirect
     ? `/login?redirect=${encodeURIComponent(redirect)}`
     : '/login'
+  const features = [
+    {
+      icon: FolderKanban,
+      title: t('landing.featureProjectsTitle'),
+      description: t('landing.featureProjectsDescription'),
+    },
+    {
+      icon: Music2,
+      title: t('landing.featureScoresTitle'),
+      description: t('landing.featureScoresDescription'),
+    },
+    {
+      icon: GitBranch,
+      title: t('landing.featureBranchesTitle'),
+      description: t('landing.featureBranchesDescription'),
+    },
+    {
+      icon: Sparkles,
+      title: t('landing.featurePracticeTitle'),
+      description: t('landing.featurePracticeDescription'),
+    },
+  ]
+  const steps = [
+    { step: '1', title: t('landing.stepCreateTitle'), description: t('landing.stepCreateDescription') },
+    { step: '2', title: t('landing.stepUploadTitle'), description: t('landing.stepUploadDescription') },
+    { step: '3', title: t('landing.stepCollaborateTitle'), description: t('landing.stepCollaborateDescription') },
+  ]
 
   return (
     <div className="min-h-dvh">
       {redirect && !isAuthenticated && (
         <div className="border-b border-sky-200 bg-sky-50 px-4 py-2 text-center text-sm text-sky-900">
-          Sign in to continue to your workspace.{' '}
+          {t('landing.signInToContinue')}{' '}
           <Link to={loginPath} className="font-medium underline">
-            Go to sign in
+            {t('landing.goToSignIn')}
           </Link>
         </div>
       )}
@@ -71,12 +71,12 @@ export function LandingPage() {
           <div className="flex items-center gap-2">
             {isAuthenticated ? (
               <Button onClick={() => navigate('/dashboard')}>
-                Enter workspace
+                {t('landing.enterWorkspace')}
                 <ArrowRight className="size-4" />
               </Button>
             ) : (
               <Button onClick={() => navigate(isAuthenticated ? '/dashboard' : loginPath)}>
-                Sign in
+                {t('landing.signIn')}
               </Button>
             )}
           </div>
@@ -87,17 +87,17 @@ export function LandingPage() {
         <div className="mx-auto max-w-3xl text-center">
           <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-sm text-sky-800">
             <Users className="size-3.5" />
-            Ensemble score collaboration workspace
+            {t('landing.badge')}
           </div>
           <h1 className="text-4xl font-semibold tracking-tight text-slate-950 sm:text-5xl">
-            Make ensemble score management simpler
+            {t('landing.title')}
           </h1>
           <p className="mt-4 text-lg text-slate-600">
-            Yesterday is a score collaboration platform for ensembles. Manage parts, track versions, and coordinate members so every rehearsal runs smoother.
+            {t('landing.description')}
           </p>
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             <Button onClick={() => navigate(isAuthenticated ? '/dashboard' : loginPath)}>
-              Get started
+              {t('landing.getStarted')}
               <ArrowRight className="size-4" />
             </Button>
             <Button
@@ -106,7 +106,7 @@ export function LandingPage() {
                 document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })
               }
             >
-              Learn more
+              {t('landing.learnMore')}
             </Button>
           </div>
         </div>
@@ -115,8 +115,8 @@ export function LandingPage() {
       <section id="features" className="border-t border-slate-200 bg-white py-16 sm:py-20">
         <div className="mx-auto max-w-6xl px-4 sm:px-6">
           <div className="mb-10 text-center">
-            <h2 className="text-2xl font-semibold text-slate-950">Features</h2>
-            <p className="mt-2 text-slate-600">Everything from project setup to score collaboration in one place.</p>
+            <h2 className="text-2xl font-semibold text-slate-950">{t('landing.features')}</h2>
+            <p className="mt-2 text-slate-600">{t('landing.featuresDescription')}</p>
           </div>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {features.map((feature) => (
@@ -135,8 +135,8 @@ export function LandingPage() {
       <section className="border-t border-slate-200 py-16 sm:py-20">
         <div className="mx-auto max-w-6xl px-4 sm:px-6">
           <div className="mb-10 text-center">
-            <h2 className="text-2xl font-semibold text-slate-950">Workflow</h2>
-            <p className="mt-2 text-slate-600">Start an ensemble project in three steps.</p>
+            <h2 className="text-2xl font-semibold text-slate-950">{t('landing.workflow')}</h2>
+            <p className="mt-2 text-slate-600">{t('landing.workflowDescription')}</p>
           </div>
           <div className="grid gap-6 sm:grid-cols-3">
             {steps.map((item) => (
@@ -154,17 +154,17 @@ export function LandingPage() {
 
       <section className="border-t border-slate-200 bg-slate-950 py-16 text-white sm:py-20">
         <div className="mx-auto max-w-6xl px-4 text-center sm:px-6">
-          <h2 className="text-2xl font-semibold">Ready to begin?</h2>
-          <p className="mt-2 text-slate-300">Create an account and start using the Yesterday workspace.</p>
+          <h2 className="text-2xl font-semibold">{t('landing.ready')}</h2>
+          <p className="mt-2 text-slate-300">{t('landing.readyDescription')}</p>
           <div className="mt-6">
             {isAuthenticated ? (
               <Button variant="secondary" onClick={() => navigate('/dashboard')}>
-                Enter workspace
+                {t('landing.enterWorkspace')}
                 <ArrowRight className="size-4" />
               </Button>
             ) : (
               <Link to={loginPath}>
-                <Button variant="secondary">Sign up / Sign in</Button>
+                <Button variant="secondary">{t('landing.signUpSignIn')}</Button>
               </Link>
             )}
           </div>
@@ -172,7 +172,7 @@ export function LandingPage() {
       </section>
 
       <footer className="border-t border-slate-200 bg-white py-6 text-center text-sm text-slate-500">
-        Yesterday — Ensemble score workspace
+        {t('landing.footer')}
       </footer>
     </div>
   )

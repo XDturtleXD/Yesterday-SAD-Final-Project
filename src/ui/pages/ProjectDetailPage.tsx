@@ -7,6 +7,7 @@ import { Button } from '../primitives/Button'
 import { Card } from '../primitives/Card'
 import { Modal } from '../primitives/Modal'
 import { cn } from '../utils/cn'
+import { memberRoleLabel, roleLabel, useTranslation } from '../../i18n'
 import { memberSectionLabel } from '../../utils/sectionLabels'
 import { BranchesPanel } from './project/BranchesPanel'
 import { FullScorePanel } from './project/FullScorePanel'
@@ -22,6 +23,7 @@ export function ProjectDetailPage() {
   const { getProject, loadProjectDetail, getMemberDisplayName, createInviteCode, addToast } =
     useAppState()
   const currentUser = useRequiredUser()
+  const { language, t } = useTranslation()
   const navigate = useNavigate()
   const [sp] = useSearchParams()
   const tabParam = sp.get('tab')
@@ -61,8 +63,12 @@ export function ProjectDetailPage() {
     () => project?.members.find((m) => m.userId === currentUser.id),
     [project, currentUser.id],
   )
-  const myRole = myMember?.role ?? (currentUser.role === 'admin' ? 'admin' : 'viewer')
-  const mySection = myMember ? memberSectionLabel(myMember) : '—'
+  const myRole = myMember
+    ? memberRoleLabel(myMember.role, language)
+    : currentUser.role === 'admin'
+      ? roleLabel(currentUser.role, language)
+      : '—'
+  const mySection = myMember ? memberSectionLabel(myMember, language) : '—'
   const currentCommit = project?.commits.find(
     (c) => c.id === project.branches.find((b) => b.id === project.currentBranchId)?.headCommitId,
   )
@@ -75,7 +81,7 @@ export function ProjectDetailPage() {
   if (loading || project?.detailLoading) {
     return (
       <Card className="p-6">
-        <div className="text-sm text-slate-600">Loading project...</div>
+        <div className="text-sm text-slate-600">{t('project.loading')}</div>
       </Card>
     )
   }
@@ -84,12 +90,12 @@ export function ProjectDetailPage() {
     return (
       <Card className="p-6">
         <div className="text-sm font-semibold text-slate-900">
-          {accessDenied ? 'You do not have access to this project' : 'Project not found'}
+          {accessDenied ? t('project.noAccess') : t('project.notFound')}
         </div>
         <div className="mt-1 text-sm text-slate-600">
-          Go back to the{' '}
+          {t('project.goBackTo')}{' '}
           <Link className="underline" to="/projects">
-            project list
+            {t('project.projectList')}
           </Link>
           .
         </div>
@@ -102,11 +108,11 @@ export function ProjectDetailPage() {
   if (!project.detailLoaded) {
     return (
       <Card className="p-6">
-        <div className="text-sm font-semibold text-slate-900">Failed to load project</div>
-        <div className="mt-1 text-sm text-slate-600">Could not load project details. Refresh the page and try again.</div>
+        <div className="text-sm font-semibold text-slate-900">{t('project.failedLoad')}</div>
+        <div className="mt-1 text-sm text-slate-600">{t('project.failedLoadDescription')}</div>
         <div className="mt-3 flex gap-2">
-          <Button onClick={() => window.location.reload()}>Refresh</Button>
-          <Button variant="secondary" onClick={() => navigate('/projects')}>Back to list</Button>
+          <Button onClick={() => window.location.reload()}>{t('project.refresh')}</Button>
+          <Button variant="secondary" onClick={() => navigate('/projects')}>{t('project.backToList')}</Button>
         </div>
       </Card>
     )
@@ -115,11 +121,11 @@ export function ProjectDetailPage() {
   if (!myMember && currentUser.role !== 'admin') {
     return (
       <Card className="p-6">
-        <div className="text-sm font-semibold text-slate-900">You are not a member of this project</div>
+        <div className="text-sm font-semibold text-slate-900">{t('project.notMember')}</div>
         <div className="mt-1 text-sm text-slate-600">
-          Go back to the{' '}
+          {t('project.goBackTo')}{' '}
           <Link className="underline" to="/projects">
-            project list
+            {t('project.projectList')}
           </Link>
           .
         </div>
@@ -140,7 +146,7 @@ export function ProjectDetailPage() {
           </div>
           <div className="mt-1 text-sm text-slate-600">{project.description}</div>
           <div className="mt-2 text-xs text-slate-500">
-            {project.members.length} members · {project.scores.length} scores · {myRole}
+            {project.members.length} {t('projects.members')} · {project.scores.length} {t('projects.scores')} · {myRole}
             {mySection !== '—' ? ` · ${mySection}` : ''}
           </div>
         </div>
@@ -148,15 +154,15 @@ export function ProjectDetailPage() {
         <div className="flex flex-wrap gap-2">
           <Button variant="secondary" onClick={() => navigate(`/projects/${project.id}/edit`)}>
             <Edit3 className="size-4" />
-            Edit
+            {t('common.edit')}
           </Button>
           <Button variant="secondary" onClick={() => setInviteOpen(true)} disabled={!canInvite}>
             <MailPlus className="size-4" />
-            Invite member
+            {t('project.inviteMember')}
           </Button>
           <Button variant="ghost" onClick={() => navigate('/projects')}>
             <ArrowLeft className="size-4" />
-            Projects
+            {t('projects.title')}
           </Button>
         </div>
       </div>
@@ -166,21 +172,21 @@ export function ProjectDetailPage() {
       {tab === 'overview' && (
         <div className="grid gap-4 lg:grid-cols-3">
           <Card className="p-4 lg:col-span-2">
-            <div className="text-sm font-semibold text-slate-950">Overview</div>
+            <div className="text-sm font-semibold text-slate-950">{t('project.overview')}</div>
             {currentCommit && (
-              <div className="mt-1 text-sm text-slate-600">Latest: {currentCommit.message}</div>
+              <div className="mt-1 text-sm text-slate-600">{t('project.latest')}: {currentCommit.message}</div>
             )}
 
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <QuickLink title="Pieces & Parts" desc="Create pieces and upload section parts." to={`?tab=pieces`} />
-              <QuickLink title="Members" desc="Roles and sections." to={`?tab=members`} />
-              <QuickLink title="Branches" desc="Switch and merge versions." to={`?tab=branches`} />
-              <QuickLink title="Full score" desc="Preview combined parts." to={`?tab=fullscore`} />
+              <QuickLink title={t('quick.pieces.title')} desc={t('quick.pieces.desc')} to={`?tab=pieces`} />
+              <QuickLink title={t('tabs.members')} desc={t('quick.members.desc')} to={`?tab=members`} />
+              <QuickLink title={t('tabs.branches')} desc={t('quick.branches.desc')} to={`?tab=branches`} />
+              <QuickLink title={t('quick.fullScore.title')} desc={t('quick.fullScore.desc')} to={`?tab=fullscore`} />
             </div>
           </Card>
 
           <Card className="p-4">
-            <div className="text-sm font-semibold text-slate-950">Recent commits</div>
+            <div className="text-sm font-semibold text-slate-950">{t('project.recentCommits')}</div>
             <div className="mt-3 space-y-2">
               {project.commits.slice(0, 3).map((c) => (
                 <div key={c.id} className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
@@ -191,12 +197,12 @@ export function ProjectDetailPage() {
                 </div>
               ))}
               {project.commits.length === 0 && (
-                <div className="text-sm text-slate-500">No commit history yet</div>
+                <div className="text-sm text-slate-500">{t('project.noCommitHistory')}</div>
               )}
             </div>
             <div className="mt-3">
               <Button variant="ghost" onClick={() => navigate(`?tab=versions`)}>
-                View version history
+                {t('project.viewVersionHistory')}
               </Button>
             </div>
           </Card>
@@ -210,35 +216,35 @@ export function ProjectDetailPage() {
       {tab === 'fullscore' && <FullScorePanel project={project} />}
 
       <Modal
-        title="Invite member"
+        title={t('project.inviteMember')}
         open={inviteOpen}
         onClose={() => setInviteOpen(false)}
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setInviteOpen(false)}>
-              Close
+              {t('common.close')}
             </Button>
             <Button
               disabled={inviteLoading || !inviteCode}
               onClick={async () => {
                 try {
                   await navigator.clipboard.writeText(inviteCode)
-                  addToast({ title: 'Invite code copied', message: 'Share it with a teammate to let them join.' })
+                  addToast({ title: t('project.inviteCodeCopied'), message: t('project.inviteCodeCopiedMessage') })
                 } catch {
-                  addToast({ title: 'Copy failed', message: 'Select and copy the invite code manually.' })
+                  addToast({ title: t('project.copyFailed'), message: t('project.copyFailedMessage') })
                 }
               }}
             >
-              Copy code
+              {t('common.copyCode')}
             </Button>
           </div>
         }
       >
         <div className="text-sm text-slate-600">
-          Share this invite code with a teammate. After signing in, they can join from the Projects page with "Join by code".
+          {t('project.inviteDescription')}
         </div>
         {inviteLoading ? (
-          <div className="mt-3 text-sm text-slate-500">Generating invite code...</div>
+          <div className="mt-3 text-sm text-slate-500">{t('project.generatingInvite')}</div>
         ) : (
           <textarea
             readOnly
@@ -283,13 +289,14 @@ function InviteCodeLoader({
 }
 
 function Tabs({ tab, projectId }: { tab: TabKey; projectId: string }) {
+  const { t } = useTranslation()
   const items: Array<{ key: TabKey; label: string }> = [
-    { key: 'overview', label: 'Overview' },
-    { key: 'pieces', label: 'Pieces & Parts' },
-    { key: 'members', label: 'Members' },
-    { key: 'branches', label: 'Branches' },
-    { key: 'versions', label: 'Versions' },
-    { key: 'fullscore', label: 'Full Score Preview' },
+    { key: 'overview', label: t('tabs.overview') },
+    { key: 'pieces', label: t('tabs.pieces') },
+    { key: 'members', label: t('tabs.members') },
+    { key: 'branches', label: t('tabs.branches') },
+    { key: 'versions', label: t('tabs.versions') },
+    { key: 'fullscore', label: t('tabs.fullScore') },
   ]
 
   return (

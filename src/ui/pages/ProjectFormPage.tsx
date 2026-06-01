@@ -4,6 +4,7 @@ import { ApiError } from '../../api/client'
 import { useAppState } from '../../state/AppState'
 import { Button } from '../primitives/Button'
 import { Card } from '../primitives/Card'
+import { useTranslation } from '../../i18n'
 import { sectionLabel } from '../../utils/sectionLabels'
 import { ArrowLeft, Save } from 'lucide-react'
 
@@ -21,6 +22,7 @@ export function ProjectFormPage({ mode }: { mode: 'create' | 'edit' }) {
     sectionsLoading,
     updateProjectDraft,
   } = useAppState()
+  const { language, t } = useTranslation()
   const navigate = useNavigate()
   const project = projectId ? getProject(projectId) : undefined
 
@@ -59,11 +61,11 @@ export function ProjectFormPage({ mode }: { mode: 'create' | 'edit' }) {
   async function submit() {
     setError('')
     if (!name.trim()) {
-      setError('Project name is required')
+      setError(t('project.nameRequired'))
       return
     }
     if (!isEdit && !sectionId) {
-      setError('Choose the manager section before creating a project')
+      setError(t('project.managerSectionRequired'))
       return
     }
 
@@ -86,7 +88,7 @@ export function ProjectFormPage({ mode }: { mode: 'create' | 'edit' }) {
       })
       navigate(`/projects/${created.id}?tab=pieces`)
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Save failed. Please try again later.')
+      setError(err instanceof ApiError ? err.message : t('project.saveFailed'))
     } finally {
       setLoading(false)
     }
@@ -97,44 +99,44 @@ export function ProjectFormPage({ mode }: { mode: 'create' | 'edit' }) {
       <div className="flex items-center justify-between gap-3">
         <div>
           <div className="text-xl font-semibold text-slate-950">
-            {isEdit ? 'Edit performance project' : 'Create performance project'}
+            {isEdit ? t('project.editPerformanceProject') : t('project.createPerformanceProject')}
           </div>
           <div className="mt-1 text-sm text-slate-600">
-            A project represents one performance. The creator becomes the manager for now.
+            {t('project.formDescription')}
           </div>
         </div>
         <Button variant="ghost" onClick={() => navigate(isEdit && projectId ? `/projects/${projectId}` : '/projects')}>
           <ArrowLeft className="size-4" />
-          Back
+          {t('common.back')}
         </Button>
       </div>
 
       <Card className="p-5">
         <div className="grid gap-4">
           <div>
-            <label className="text-sm font-medium text-slate-800">Project name</label>
+            <label className="text-sm font-medium text-slate-800">{t('project.name')}</label>
             <input
               value={name}
               onChange={(event) => setName(event.target.value)}
-              placeholder="2026 Spring Concert"
+              placeholder={t('project.namePlaceholder')}
               className={inputClassName}
             />
           </div>
 
           <div>
-            <label className="text-sm font-medium text-slate-800">Description</label>
+            <label className="text-sm font-medium text-slate-800">{t('project.description')}</label>
             <textarea
               value={description}
               onChange={(event) => setDescription(event.target.value)}
               rows={4}
-              placeholder="Performance date, venue, or rehearsal notes"
+              placeholder={t('project.descriptionPlaceholder')}
               className="mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
             />
           </div>
 
           {!isEdit && (
             <div>
-              <label className="text-sm font-medium text-slate-800">Manager section</label>
+              <label className="text-sm font-medium text-slate-800">{t('project.managerSection')}</label>
               <select
                 value={sectionId}
                 onChange={(event) => setSectionId(event.target.value)}
@@ -143,12 +145,12 @@ export function ProjectFormPage({ mode }: { mode: 'create' | 'edit' }) {
               >
                 {sections.map((section) => (
                   <option key={section.id} value={section.id}>
-                    {sectionLabel(section)}
+                    {sectionLabel(section, language)}
                   </option>
                 ))}
               </select>
               <div className="mt-1 text-xs text-slate-500">
-                The backend currently stores this role as concertmaster. You will be added to the project automatically.
+                {t('project.managerSectionHelp')}
               </div>
             </div>
           )}
@@ -156,7 +158,7 @@ export function ProjectFormPage({ mode }: { mode: 'create' | 'edit' }) {
           {isEdit && (
             <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
               {/* TODO API contract: PATCH /api/projects/:projectId request { name, description } response ApiProject */}
-              Editing projects is not implemented in the backend yet. This page only updates the current frontend session.
+              {t('project.editBackendPending')}
             </div>
           )}
 
@@ -169,7 +171,7 @@ export function ProjectFormPage({ mode }: { mode: 'create' | 'edit' }) {
           <div className="flex justify-end">
             <Button disabled={loading || !canSubmit} onClick={submit}>
               <Save className="size-4" />
-              {loading ? 'Saving...' : 'Save project'}
+              {loading ? t('common.saving') : t('project.saveProject')}
             </Button>
           </div>
         </div>

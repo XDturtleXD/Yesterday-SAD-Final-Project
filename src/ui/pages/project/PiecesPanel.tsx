@@ -5,6 +5,7 @@ import { useAppState, useRequiredUser } from '../../../state/AppState'
 import { Badge } from '../../primitives/Badge'
 import { Button } from '../../primitives/Button'
 import { Card } from '../../primitives/Card'
+import { useTranslation } from '../../../i18n'
 import { sectionLabel } from '../../../utils/sectionLabels'
 import { cn } from '../../utils/cn'
 import { PieceSectionUploadModal } from './PieceSectionUploadModal'
@@ -61,6 +62,7 @@ export function PiecesPanel({ project }: { project: Project }) {
   } = useAppState()
   const navigate = useNavigate()
   const currentUser = useRequiredUser()
+  const { language, t } = useTranslation()
 
   const pieces = getPieces(project.id)
   const [title, setTitle] = useState('')
@@ -112,11 +114,11 @@ export function PiecesPanel({ project }: { project: Project }) {
     setError('')
     const normalizedTitle = title.trim()
     if (!normalizedTitle) {
-      setError('Piece title is required')
+      setError(t('pieces.titleRequired'))
       return
     }
     if (pieces.some((piece) => piece.title.toLowerCase() === normalizedTitle.toLowerCase())) {
-      setError('This piece already exists')
+      setError(t('pieces.alreadyExists'))
       return
     }
 
@@ -130,7 +132,7 @@ export function PiecesPanel({ project }: { project: Project }) {
       setComposer('')
       setExpandedPieceId(piece.id)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create piece')
+      setError(err instanceof Error ? err.message : t('pieces.createFailed'))
     } finally {
       setCreating(false)
     }
@@ -139,7 +141,7 @@ export function PiecesPanel({ project }: { project: Project }) {
   async function handleDeletePiece(pieceId: string) {
     const piece = pieces.find((p) => p.id === pieceId)
     if (!piece) return
-    const confirmed = window.confirm(`Delete "${piece.title}" and all section scores?`)
+    const confirmed = window.confirm(`${t('common.delete')} "${piece.title}" ${t('pieces.deleteConfirmSuffix')}`)
     if (!confirmed) return
     await deletePiece(project.id, pieceId)
     if (expandedPieceId === pieceId) setExpandedPieceId(null)
@@ -160,7 +162,7 @@ export function PiecesPanel({ project }: { project: Project }) {
   async function submitRenamePiece(piece: Piece) {
     const normalizedTitle = renameTitle.trim()
     if (!normalizedTitle) {
-      setError('Piece title is required')
+      setError(t('pieces.titleRequired'))
       return
     }
     if (normalizedTitle === piece.title) {
@@ -174,7 +176,7 @@ export function PiecesPanel({ project }: { project: Project }) {
           candidate.title.toLowerCase() === normalizedTitle.toLowerCase(),
       )
     ) {
-      setError('This piece already exists')
+      setError(t('pieces.alreadyExists'))
       return
     }
 
@@ -184,14 +186,14 @@ export function PiecesPanel({ project }: { project: Project }) {
       await updatePiece(project.id, piece.id, { title: normalizedTitle })
       cancelRenamePiece()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to rename piece')
+      setError(err instanceof Error ? err.message : t('pieces.renameFailed'))
     } finally {
       setSavingRenameId(null)
     }
   }
 
   async function handleDeleteScore(scoreId: string, scoreTitle: string) {
-    const confirmed = window.confirm(`Delete "${scoreTitle}"?`)
+    const confirmed = window.confirm(`${t('common.delete')} "${scoreTitle}"?`)
     if (!confirmed) return
     setDeletingScoreId(scoreId)
     try {
@@ -207,7 +209,7 @@ export function PiecesPanel({ project }: { project: Project }) {
     try {
       await movePiece(project.id, pieceId, direction)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to reorder pieces')
+      setError(err instanceof Error ? err.message : t('pieces.reorderFailed'))
     } finally {
       setReordering(false)
     }
@@ -242,7 +244,7 @@ export function PiecesPanel({ project }: { project: Project }) {
     try {
       await reorderPieces(project.id, nextOrder)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to reorder pieces')
+      setError(err instanceof Error ? err.message : t('pieces.reorderFailed'))
     } finally {
       setDragPieceOrder(null)
       setReordering(false)
@@ -274,37 +276,37 @@ export function PiecesPanel({ project }: { project: Project }) {
   return (
     <div className="space-y-4">
       <div>
-        <div className="text-sm font-semibold text-slate-900">Pieces & Parts</div>
+        <div className="text-sm font-semibold text-slate-900">{t('pieces.title')}</div>
         <div className="mt-1 text-sm text-slate-600">
-          Create performance pieces first, then expand a piece to upload PDF, MusicXML, XML, or MXL parts for each section.
+          {t('pieces.description')}
         </div>
       </div>
 
       <Card className="p-4">
-        <div className="text-sm font-semibold text-slate-950">Add performance piece</div>
+        <div className="text-sm font-semibold text-slate-950">{t('pieces.addPerformancePiece')}</div>
         <div className="mt-4 grid gap-3 md:grid-cols-[1fr_1fr_auto]">
           <input
             value={title}
             onChange={(event) => setTitle(event.target.value)}
             disabled={!isManager || creating}
-            placeholder="Piece title, e.g. Dvorak Symphony No. 9"
+            placeholder={t('pieces.titlePlaceholder')}
             className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm"
           />
           <input
             value={composer}
             onChange={(event) => setComposer(event.target.value)}
             disabled={!isManager || creating}
-            placeholder="Composer (optional)"
+            placeholder={t('pieces.composerPlaceholder')}
             className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm"
           />
           <Button disabled={!isManager || creating} onClick={() => void submitPiece()}>
             <Plus className="size-4" />
-            {creating ? 'Adding...' : 'Add piece'}
+            {creating ? t('pieces.adding') : t('pieces.add')}
           </Button>
         </div>
         {!isManager && (
           <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-            Only managers can add, delete, or reorder pieces.
+            {t('pieces.managerOnly')}
           </div>
         )}
         {error && (
@@ -316,14 +318,14 @@ export function PiecesPanel({ project }: { project: Project }) {
 
       {sectionsLoading && (
         <Card className="p-6">
-          <div className="text-sm text-slate-600">Loading sections...</div>
+          <div className="text-sm text-slate-600">{t('pieces.loadingSections')}</div>
         </Card>
       )}
 
       {!sectionsLoading && pieces.length === 0 && (
         <Card className="p-6">
-          <div className="text-sm font-semibold text-slate-900">No pieces yet</div>
-          <div className="mt-1 text-sm text-slate-600">Add a performance piece, then expand it to upload section parts.</div>
+          <div className="text-sm font-semibold text-slate-900">{t('pieces.noPiecesTitle')}</div>
+          <div className="mt-1 text-sm text-slate-600">{t('pieces.noPiecesDescription')}</div>
         </Card>
       )}
 
@@ -358,8 +360,8 @@ export function PiecesPanel({ project }: { project: Project }) {
                     onDragStart={(event) => handlePieceDragStart(event, piece.id)}
                     onDragEnd={handlePieceDragEnd}
                     className="grid size-9 shrink-0 cursor-grab place-items-center rounded-md text-slate-400 transition hover:bg-white hover:text-slate-700 active:cursor-grabbing"
-                    aria-label={`Drag ${piece.title} to reorder`}
-                    title="Drag to reorder"
+                    aria-label={`${t('pieces.dragToReorder')}: ${piece.title}`}
+                    title={t('pieces.dragToReorder')}
                   >
                     <GripVertical className="size-5" />
                   </button>
@@ -369,7 +371,7 @@ export function PiecesPanel({ project }: { project: Project }) {
                     type="button"
                     className="text-slate-500"
                     onClick={() => setExpandedPieceId(expanded ? null : piece.id)}
-                    aria-label={expanded ? `Collapse ${piece.title}` : `Expand ${piece.title}`}
+                    aria-label={`${expanded ? t('pieces.collapse') : t('pieces.expand')} ${piece.title}`}
                   >
                     {expanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
                   </button>
@@ -377,7 +379,7 @@ export function PiecesPanel({ project }: { project: Project }) {
                     type="button"
                     className="grid size-9 shrink-0 place-items-center rounded-md bg-white text-slate-700 shadow-sm"
                     onClick={() => setExpandedPieceId(expanded ? null : piece.id)}
-                    aria-label={expanded ? `Collapse ${piece.title}` : `Expand ${piece.title}`}
+                    aria-label={`${expanded ? t('pieces.collapse') : t('pieces.expand')} ${piece.title}`}
                   >
                     <Music2 className="size-4" />
                   </button>
@@ -401,7 +403,7 @@ export function PiecesPanel({ project }: { project: Project }) {
                           }}
                           disabled={savingRenameId === piece.id}
                           className="h-9 min-w-0 flex-1 rounded-md border border-sky-300 bg-white px-3 text-sm font-semibold text-slate-950 shadow-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
-                          aria-label={`Rename ${piece.title}`}
+                          aria-label={`${t('pieces.renameAria')} ${piece.title}`}
                         />
                         <div className="flex shrink-0 items-center gap-2">
                           <button
@@ -409,7 +411,7 @@ export function PiecesPanel({ project }: { project: Project }) {
                             disabled={savingRenameId === piece.id}
                             className="h-8 rounded-md bg-slate-900 px-3 text-xs font-medium text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                           >
-                            {savingRenameId === piece.id ? 'Saving...' : 'Save'}
+                            {savingRenameId === piece.id ? t('common.saving') : t('common.save')}
                           </button>
                           <button
                             type="button"
@@ -417,7 +419,7 @@ export function PiecesPanel({ project }: { project: Project }) {
                             className="h-8 rounded-md border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                             onClick={cancelRenamePiece}
                           >
-                            Cancel
+                            {t('common.cancel')}
                           </button>
                         </div>
                       </form>
@@ -430,14 +432,14 @@ export function PiecesPanel({ project }: { project: Project }) {
                         <div className="truncate text-sm font-semibold text-slate-950">
                           {index + 1}. {piece.title}
                         </div>
-                        <div className="text-xs text-slate-500">{piece.composer || 'Composer not set'}</div>
+                        <div className="text-xs text-slate-500">{piece.composer || t('pieces.composerNotSet')}</div>
                       </button>
                     )}
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge>
-                    {uploadedCount}/{sections.length} sections
+                    {uploadedCount}/{sections.length} {t('pieces.sections')}
                   </Badge>
                   {isManager && (
                     <>
@@ -462,10 +464,10 @@ export function PiecesPanel({ project }: { project: Project }) {
                           size="sm"
                           variant="secondary"
                           disabled={reordering || renamingPieceId === piece.id}
-                          onClick={() =>
+                        onClick={() =>
                             setPieceMenuId((current) => (current === piece.id ? null : piece.id))
                           }
-                          aria-label={`Open actions for ${piece.title}`}
+                          aria-label={`${t('pieces.openActions')} ${piece.title}`}
                           aria-haspopup="menu"
                           aria-expanded={pieceMenuId === piece.id}
                         >
@@ -483,7 +485,7 @@ export function PiecesPanel({ project }: { project: Project }) {
                               onClick={() => startRenamePiece(piece)}
                             >
                               <Pencil className="size-4" />
-                              Rename
+                              {t('common.rename')}
                             </button>
                             <button
                               type="button"
@@ -495,7 +497,7 @@ export function PiecesPanel({ project }: { project: Project }) {
                               }}
                             >
                               <Trash2 className="size-4" />
-                              Delete
+                              {t('common.delete')}
                             </button>
                           </div>
                         )}
@@ -516,18 +518,18 @@ export function PiecesPanel({ project }: { project: Project }) {
                         className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
                       >
                         <div className="min-w-0">
-                          <div className="text-sm font-medium text-slate-900">{sectionLabel(section)}</div>
+                          <div className="text-sm font-medium text-slate-900">{sectionLabel(section, language)}</div>
                           {score ? (
                             <div className="mt-1 text-xs text-slate-500">
                               {score.originalFilename || score.title} ·{' '}
                               {score.updatedAt.slice(0, 16).replace('T', ' ')}
                             </div>
                           ) : (
-                            <div className="mt-1 text-xs text-slate-500">Not uploaded yet</div>
+                            <div className="mt-1 text-xs text-slate-500">{t('pieces.notUploaded')}</div>
                           )}
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
-                          {score ? <Badge tone="success">Ready</Badge> : <Badge>Empty</Badge>}
+                          {score ? <Badge tone="success">{t('pieces.ready')}</Badge> : <Badge>{t('pieces.empty')}</Badge>}
                           {score && (
                             <>
                               <Button
@@ -540,15 +542,15 @@ export function PiecesPanel({ project }: { project: Project }) {
                                 }
                               >
                                 <ExternalLink className="size-4" />
-                                Open
+                                {t('common.open')}
                               </Button>
                               <button
                                 type="button"
                                 className="inline-flex size-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-50"
                                 disabled={deletingScoreId === score.id}
                                 onClick={() => void handleDeleteScore(score.id, score.title)}
-                                aria-label={`Delete ${score.title}`}
-                                title="Delete score"
+                                aria-label={`${t('pieces.deleteScoreTitle')} ${score.title}`}
+                                title={t('pieces.deleteScoreTitle')}
                               >
                                 <Trash2 className="size-4" />
                               </button>
@@ -562,7 +564,7 @@ export function PiecesPanel({ project }: { project: Project }) {
                               onClick={() => setUploadTarget({ piece, section })}
                             >
                               <Upload className="size-4" />
-                              Upload
+                              {t('common.upload')}
                             </Button>
                           )}
                         </div>
@@ -578,9 +580,9 @@ export function PiecesPanel({ project }: { project: Project }) {
 
       {!isManager && myMember?.role !== 'principal' && (
         <Card className="p-4">
-          <div className="text-sm font-semibold text-slate-900">Upload permissions</div>
+          <div className="text-sm font-semibold text-slate-900">{t('pieces.uploadPermissions')}</div>
           <div className="mt-1 text-sm text-slate-600">
-            Managers can upload every section. Principals can upload their own section. Members cannot upload scores.
+            {t('pieces.uploadPermissionsDescription')}
           </div>
         </Card>
       )}

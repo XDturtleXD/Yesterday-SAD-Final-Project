@@ -5,6 +5,7 @@ import { ApiError } from '../../api/client'
 import { useAuth } from '../../auth/AuthContext'
 import { GOOGLE_CLIENT_ID } from '../../config/env'
 import { useAppState } from '../../state/AppState'
+import { useTranslation } from '../../i18n'
 import { Card } from '../primitives/Card'
 import { Button } from '../primitives/Button'
 import { LogIn, Music2, UserPlus } from 'lucide-react'
@@ -17,6 +18,7 @@ const inputClassName =
 export function LoginPage() {
   const { login, register, googleLogin } = useAuth()
   const { addToast } = useAppState()
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const redirect = searchParams.get('redirect') || '/dashboard'
@@ -31,7 +33,7 @@ export function LoginPage() {
   const [confirmPassword, setConfirmPassword] = useState('')
 
   const handleSuccess = () => {
-    addToast({ title: 'Signed in', message: 'Welcome back.' })
+    addToast({ title: t('auth.signedIn'), message: t('auth.welcomeBack') })
     navigate(decodeURIComponent(redirect), { replace: true })
   }
 
@@ -40,21 +42,21 @@ export function LoginPage() {
     setError('')
 
     if (!email.trim() || !password) {
-      setError('Email and password are required')
+      setError(t('auth.emailPasswordRequired'))
       return
     }
 
     if (tab === 'register') {
       if (!name.trim()) {
-        setError('Name is required')
+        setError(t('auth.nameRequired'))
         return
       }
       if (password !== confirmPassword) {
-        setError('Passwords do not match')
+        setError(t('auth.passwordMismatch'))
         return
       }
       if (password.length < 6) {
-        setError('Password must be at least 6 characters')
+        setError(t('auth.passwordTooShort'))
         return
       }
     }
@@ -72,8 +74,8 @@ export function LoginPage() {
         err instanceof ApiError
           ? err.message
           : tab === 'login'
-            ? 'Sign in failed. Please try again later.'
-            : 'Sign up failed. Please try again later.'
+            ? t('auth.signInFailed')
+            : t('auth.signUpFailed')
       setError(message)
     } finally {
       setLoading(false)
@@ -82,7 +84,7 @@ export function LoginPage() {
 
   const handleGoogleSuccess = async (response: CredentialResponse) => {
     if (!response.credential) {
-      setError('Google sign-in failed. No credential was returned.')
+      setError(t('auth.googleNoCredential'))
       return
     }
 
@@ -92,7 +94,7 @@ export function LoginPage() {
       await googleLogin(response.credential)
       handleSuccess()
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Google sign-in failed. Please try again later.')
+      setError(err instanceof ApiError ? err.message : t('auth.googleFailed'))
     } finally {
       setLoading(false)
     }
@@ -124,7 +126,7 @@ export function LoginPage() {
             }`}
           >
             <LogIn className="size-4" />
-            Log in
+            {t('auth.logIn')}
           </button>
           <button
             type="button"
@@ -139,14 +141,14 @@ export function LoginPage() {
             }`}
           >
             <UserPlus className="size-4" />
-            Sign up
+            {t('auth.signUp')}
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {tab === 'register' && (
             <div>
-              <label className="text-sm font-medium text-slate-800">Name</label>
+              <label className="text-sm font-medium text-slate-800">{t('auth.name')}</label>
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -158,7 +160,7 @@ export function LoginPage() {
           )}
 
           <div>
-            <label className="text-sm font-medium text-slate-800">Email</label>
+            <label className="text-sm font-medium text-slate-800">{t('auth.email')}</label>
             <input
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -170,7 +172,7 @@ export function LoginPage() {
           </div>
 
           <div>
-            <label className="text-sm font-medium text-slate-800">Password</label>
+            <label className="text-sm font-medium text-slate-800">{t('auth.password')}</label>
             <input
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -183,7 +185,7 @@ export function LoginPage() {
 
           {tab === 'register' && (
             <div>
-              <label className="text-sm font-medium text-slate-800">Confirm password</label>
+              <label className="text-sm font-medium text-slate-800">{t('auth.confirmPassword')}</label>
               <input
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
@@ -202,7 +204,7 @@ export function LoginPage() {
           )}
 
           <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? 'Working...' : tab === 'login' ? 'Log in' : 'Create account'}
+            {loading ? t('auth.working') : tab === 'login' ? t('auth.logIn') : t('auth.createAccount')}
           </Button>
         </form>
 
@@ -213,13 +215,13 @@ export function LoginPage() {
                 <div className="w-full border-t border-slate-200" />
               </div>
               <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-white px-2 text-slate-500">or</span>
+                <span className="bg-white px-2 text-slate-500">{t('auth.or')}</span>
               </div>
             </div>
             <div className="flex justify-center">
               <GoogleLogin
                 onSuccess={handleGoogleSuccess}
-                onError={() => setError('Google sign-in failed')}
+                onError={() => setError(t('auth.googleFailedShort'))}
                 theme="outline"
                 size="large"
                 text={tab === 'login' ? 'signin_with' : 'signup_with'}
@@ -233,7 +235,7 @@ export function LoginPage() {
 
       <p className="mt-4 text-center text-sm text-slate-600">
         <Link to="/" className="text-sky-700 hover:underline">
-          Back to home
+          {t('common.backHome')}
         </Link>
       </p>
     </div>

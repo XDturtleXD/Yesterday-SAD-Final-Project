@@ -7,6 +7,7 @@ import {
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import * as scoresApi from '../../api/scores'
 import { useAppState } from '../../state/AppState'
+import { useTranslation } from '../../i18n'
 import type { Score } from '../../types'
 import { Badge } from '../primitives/Badge'
 import { Button } from '../primitives/Button'
@@ -681,6 +682,7 @@ export function ScoreMusicXmlPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
   const { getProject, loadProjectDetail, addToast } = useAppState()
+  const { language, t } = useTranslation()
 
   useEffect(() => {
     if (projectId) loadProjectDetail(projectId)
@@ -769,7 +771,7 @@ export function ScoreMusicXmlPage() {
           if (xmlUrl) {
             const response = await fetch(xmlUrl)
             if (!response.ok) {
-              throw new Error(`Failed to load MusicXML (${response.status})`)
+              throw new Error(`${t('scoreEditor.loadMusicXmlFailed')} (${response.status})`)
             }
             xml = await response.text()
           } else if (activeScore?.xmlContent) {
@@ -777,9 +779,7 @@ export function ScoreMusicXmlPage() {
           } else {
             const apiScore = await scoresApi.getScore(scoreId)
             if (!apiScore.xml_content) {
-              throw new Error(
-                'This score does not have inline XML content. The file may be stored in external storage.',
-              )
+              throw new Error(t('scoreEditor.noInlineXml'))
             }
             xml = apiScore.xml_content
           }
@@ -817,7 +817,7 @@ export function ScoreMusicXmlPage() {
       } catch (err) {
         if (cancelled) return
         setStatus('error')
-        setError(err instanceof Error ? err.message : 'Unable to render MusicXML')
+        setError(language === 'en' && err instanceof Error ? err.message : t('scoreEditor.renderFailed'))
       }
     }
 
@@ -864,7 +864,7 @@ export function ScoreMusicXmlPage() {
       } catch (err) {
         if (cancelled) return
         setStatus('error')
-        setError(err instanceof Error ? err.message : 'Unable to update MusicXML')
+        setError(language === 'en' && err instanceof Error ? err.message : t('scoreEditor.updateFailed'))
       }
     }
 
@@ -907,10 +907,10 @@ export function ScoreMusicXmlPage() {
     return (
       <div className="p-6">
         <Card className="p-6">
-          <div className="text-sm font-semibold text-slate-900">MusicXML score not found</div>
+          <div className="text-sm font-semibold text-slate-900">{t('scoreEditor.musicXmlNotFound')}</div>
           <div className="mt-2">
             <Button variant="secondary" onClick={() => navigate('/projects')}>
-              Back to projects
+              {t('scoreEditor.backToProjects')}
             </Button>
           </div>
         </Card>
@@ -1005,13 +1005,13 @@ export function ScoreMusicXmlPage() {
 
     const graphicalNote = getClickedGraphicalNote(event)
     if (!graphicalNote) {
-      addToast({ title: 'No note selected', message: 'Click closer to a notehead.' })
+      addToast({ title: t('scoreEditor.noNoteSelected'), message: t('scoreEditor.clickCloserToNote') })
       return
     }
 
     const ref = getEditableRefFromGraphicalNote(graphicalNote, scoreId)
     if (!ref) {
-      addToast({ title: 'This note cannot be edited yet' })
+      addToast({ title: t('scoreEditor.noteCannotBeEditedYet') })
       return
     }
 
@@ -1053,8 +1053,8 @@ export function ScoreMusicXmlPage() {
       addToast({ title })
     } catch (err) {
       addToast({
-        title: 'Edit failed',
-        message: err instanceof Error ? err.message : 'Unable to update MusicXML.',
+        title: t('scoreEditor.editFailed'),
+        message: language === 'en' && err instanceof Error ? err.message : t('scoreEditor.updateFailed'),
       })
     }
   }
@@ -1063,7 +1063,7 @@ function applyDynamic(mark: DynamicMark) {
   if (!selectedNote) return
   const ref = selectedNote
   applyXmlOperation(
-    `Dynamic ${mark} applied`,
+    t('scoreEditor.dynamicApplied'),
     (xml) => replaceDynamic(xml, ref, mark),
     () => previewDynamic(ref, mark),
   )
@@ -1073,7 +1073,7 @@ function applyBowing(mark: BowingMark) {
   if (!selectedNote) return
   const ref = selectedNote
   applyXmlOperation(
-    mark === 'up-bow' ? 'Up-bow applied' : 'Down-bow applied',
+    mark === 'up-bow' ? t('scoreEditor.upBowApplied') : t('scoreEditor.downBowApplied'),
     (xml) => replaceBowing(xml, ref, mark),
     () => previewBowing(ref, mark),
   )
@@ -1083,7 +1083,7 @@ function eraseSelectedMarkings() {
   if (!selectedNote) return
   const ref = selectedNote
   applyXmlOperation(
-    'Selected markings erased',
+    t('scoreEditor.selectedMarkingsErased'),
     (xml) => eraseSupportedMarkings(xml, ref),
     () => previewErase(ref),
   )
@@ -1095,23 +1095,23 @@ function eraseSelectedMarkings() {
     setMode('slur')
     if (selectedNote) {
       setSlurDraft({ start: selectedNote })
-      addToast({ title: 'Slur start selected', message: 'Click the ending note.' })
+      addToast({ title: t('scoreEditor.slurStartSelected'), message: t('scoreEditor.clickEndingNote') })
       return
     }
     setSlurDraft(null)
-    addToast({ title: 'Select slur start', message: 'Click the first note.' })
+    addToast({ title: t('scoreEditor.selectSlurStart'), message: t('scoreEditor.clickFirstNote') })
   }
 
   function handleSlurNoteClick(ref: EditableNoteRef) {
     if (!slurDraft) {
       setSlurDraft({ start: ref })
-      addToast({ title: 'Slur start selected', message: 'Click the ending note.' })
+      addToast({ title: t('scoreEditor.slurStartSelected'), message: t('scoreEditor.clickEndingNote') })
       return
     }
 
     const start = slurDraft.start
     applyXmlOperation(
-      'Slur applied',
+      t('scoreEditor.slurApplied'),
       (xml) => addSlur(xml, start, ref),
       () => previewSlur(start, ref),
     )
@@ -1134,7 +1134,7 @@ function eraseSelectedMarkings() {
       },
     }))
     setSlurDraft(null)
-    addToast({ title: 'Undo' })
+    addToast({ title: t('scoreEditor.undoToast') })
   }
 
   function redoXmlEdit() {
@@ -1152,7 +1152,7 @@ function eraseSelectedMarkings() {
       },
     }))
     setSlurDraft(null)
-    addToast({ title: 'Redo' })
+    addToast({ title: t('scoreEditor.redoToast') })
   }
 
   function resetWorkingXml() {
@@ -1162,7 +1162,7 @@ function eraseSelectedMarkings() {
     setSelectedNote(null)
     setSlurDraft(null)
     setMode('select')
-    addToast({ title: 'Score reset to original MusicXML' })
+    addToast({ title: t('scoreEditor.resetToast') })
   }
 
   function exportWorkingXml() {
@@ -1187,13 +1187,13 @@ function eraseSelectedMarkings() {
                 onClick={() => navigate(`/projects/${project.id}?tab=pieces`)}
               >
                 <ArrowLeft className="size-4" />
-                Pieces & Parts
+                {t('scoreEditor.piecesBack')}
               </Button>
               <div className="truncate text-sm font-semibold text-slate-950">
                 {xmlEntry.title}
               </div>
               <Badge tone={isModified ? 'warn' : 'neutral'}>
-                {isModified ? `${history.past.length} edits` : 'Original'}
+                {isModified ? `${history.past.length} ${t('scoreEditor.edits')}` : t('common.original')}
               </Badge>
             </div>
             <div className="mt-1 text-xs text-slate-500">
@@ -1206,7 +1206,7 @@ function eraseSelectedMarkings() {
               value={scoreId}
               onChange={(event) => changeScore(event.target.value)}
               className="h-9 max-w-full rounded-md border border-slate-200 bg-white px-3 text-sm shadow-sm xl:max-w-96"
-              aria-label="Score part"
+              aria-label={t('scoreEditor.scorePart')}
             >
               {availableScores.map((s) => (
                 <option key={s.id} value={s.id}>
@@ -1216,11 +1216,11 @@ function eraseSelectedMarkings() {
             </select>
             <Button variant="secondary" onClick={exportWorkingXml} disabled={!workingXml}>
               <Download className="size-4" />
-              Export
+              {t('common.export')}
             </Button>
             <Button variant="secondary" onClick={() => setSummaryOpen(true)}>
               <Save className="size-4" />
-              Summary
+              {t('common.summary')}
             </Button>
           </div>
         </div>
@@ -1231,7 +1231,7 @@ function eraseSelectedMarkings() {
           <ToolButton
             active={mode === 'select'}
             icon={<MousePointer2 className="size-4" />}
-            label="Select"
+            label={t('scoreEditor.select')}
             onClick={() => {
               setMode('select')
               setSlurDraft(null)
@@ -1240,7 +1240,7 @@ function eraseSelectedMarkings() {
           <ToolButton
             active={mode === 'pan'}
             icon={<Hand className="size-4" />}
-            label="Pan"
+            label={t('scoreEditor.pan')}
             onClick={() => {
               setMode('pan')
               setSlurDraft(null)
@@ -1253,7 +1253,7 @@ function eraseSelectedMarkings() {
             {DYNAMICS.map((mark) => (
               <SymbolButton
                 key={mark}
-                title={`Apply ${mark}`}
+                title={`${t('scoreEditor.apply')} ${mark}`}
                 disabled={!selectedNote}
                 onClick={() => applyDynamic(mark)}
               >
@@ -1266,28 +1266,28 @@ function eraseSelectedMarkings() {
 
           <div className="flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 p-1 shadow-inner">
             <SymbolButton
-              title="Apply down-bow"
+              title={t('scoreEditor.applyDownBow')}
               disabled={!selectedNote}
               onClick={() => applyBowing('down-bow')}
             >
               <DownBowIcon />
             </SymbolButton>
             <SymbolButton
-              title="Apply up-bow"
+              title={t('scoreEditor.applyUpBow')}
               disabled={!selectedNote}
               onClick={() => applyBowing('up-bow')}
             >
               <UpBowIcon />
             </SymbolButton>
             <SymbolButton
-              title="Create slur"
+              title={t('scoreEditor.createSlur')}
               active={mode === 'slur'}
               onClick={startSlurMode}
             >
               <SlurIcon />
             </SymbolButton>
             <SymbolButton
-              title="Erase dynamics, bowing, and slurs on selected note"
+              title={t('scoreEditor.eraseSelected')}
               disabled={!selectedNote}
               onClick={eraseSelectedMarkings}
             >
@@ -1297,31 +1297,31 @@ function eraseSelectedMarkings() {
 
           <Divider />
 
-          <IconButton title="Zoom out" onClick={() => setZoom((value) => Math.max(60, value - 10))}>
+          <IconButton title={t('scoreEditor.zoomOut')} onClick={() => setZoom((value) => Math.max(60, value - 10))}>
             <ZoomOut className="size-4" />
           </IconButton>
           <div className="min-w-14 text-center text-sm font-medium text-slate-700">{zoom}%</div>
-          <IconButton title="Zoom in" onClick={() => setZoom((value) => Math.min(180, value + 10))}>
+          <IconButton title={t('scoreEditor.zoomIn')} onClick={() => setZoom((value) => Math.min(180, value + 10))}>
             <ZoomIn className="size-4" />
           </IconButton>
-          <IconButton title="Reset view" onClick={resetView}>
+          <IconButton title={t('scoreEditor.resetView')} onClick={resetView}>
             <Maximize2 className="size-4" />
           </IconButton>
 
           <Divider />
 
-          <IconButton title="Undo" disabled={!history.past.length} onClick={undoXmlEdit}>
+          <IconButton title={t('scoreEditor.undo')} disabled={!history.past.length} onClick={undoXmlEdit}>
             <Undo2 className="size-4" />
           </IconButton>
-          <IconButton title="Redo" disabled={!history.future.length} onClick={redoXmlEdit}>
+          <IconButton title={t('scoreEditor.redo')} disabled={!history.future.length} onClick={redoXmlEdit}>
             <Redo2 className="size-4" />
           </IconButton>
-          <IconButton title="Reset score" disabled={!isModified} onClick={resetWorkingXml}>
+          <IconButton title={t('scoreEditor.resetScore')} disabled={!isModified} onClick={resetWorkingXml}>
             <RotateCcw className="size-4" />
           </IconButton>
 
           <details className="ml-auto rounded-md border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-600">
-            <summary className="cursor-pointer font-medium text-slate-700">View</summary>
+            <summary className="cursor-pointer font-medium text-slate-700">{t('scoreEditor.view')}</summary>
             <div className="mt-2 flex flex-wrap gap-3">
               <label className="flex items-center gap-2">
                 <input
@@ -1329,7 +1329,7 @@ function eraseSelectedMarkings() {
                   checked={showMeasureNumbers}
                   onChange={(event) => setShowMeasureNumbers(event.target.checked)}
                 />
-                Measures
+                {t('scoreEditor.measures')}
               </label>
               <label className="flex items-center gap-2">
                 <input
@@ -1337,7 +1337,7 @@ function eraseSelectedMarkings() {
                   checked={showPartNames}
                   onChange={(event) => setShowPartNames(event.target.checked)}
                 />
-                Parts
+                {t('scoreEditor.parts')}
               </label>
               <label className="flex items-center gap-2">
                 <input
@@ -1345,7 +1345,7 @@ function eraseSelectedMarkings() {
                   checked={compactLayout}
                   onChange={(event) => setCompactLayout(event.target.checked)}
                 />
-                Compact
+                {t('scoreEditor.compact')}
               </label>
             </div>
           </details>
@@ -1354,35 +1354,39 @@ function eraseSelectedMarkings() {
 
       <div className="flex min-h-0 flex-1">
         <aside className="hidden w-64 shrink-0 border-r border-slate-200 bg-white p-4 lg:block">
-          <div className="text-sm font-semibold text-slate-950">Selection</div>
+          <div className="text-sm font-semibold text-slate-950">{t('scoreEditor.selection')}</div>
           <div className="mt-3 grid gap-3">
             <div>
-              <div className="text-xs font-medium text-slate-500">Note</div>
+              <div className="text-xs font-medium text-slate-500">{t('scoreEditor.note')}</div>
               <div className="mt-1 text-sm font-medium text-slate-900">
                 {noteLabel(selectedNote)}
               </div>
             </div>
             <div>
-              <div className="text-xs font-medium text-slate-500">Mode</div>
+              <div className="text-xs font-medium text-slate-500">{t('scoreEditor.mode')}</div>
               <div className="mt-1 text-sm font-medium text-slate-900">
-                {mode === 'slur' ? 'Slur endpoint selection' : mode}
+                {mode === 'slur'
+                  ? t('scoreEditor.slurEndpointSelection')
+                  : mode === 'pan'
+                    ? t('scoreEditor.pan')
+                    : t('scoreEditor.select')}
               </div>
             </div>
             {slurDraft && (
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                <div className="text-xs font-medium text-slate-500">Slur start</div>
+                <div className="text-xs font-medium text-slate-500">{t('scoreEditor.slurStart')}</div>
                 <div className="mt-1 text-sm text-slate-700">
                   {noteLabel(slurDraft.start)}
                 </div>
               </div>
             )}
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-              <div className="text-xs font-medium text-slate-500">Changes</div>
+              <div className="text-xs font-medium text-slate-500">{t('scoreEditor.changes')}</div>
               <div className="mt-1 flex flex-wrap gap-2">
                 <Badge tone={isModified ? 'warn' : 'neutral'}>
-                  {history.past.length} edits
+                  {history.past.length} {t('scoreEditor.edits')}
                 </Badge>
-                {!!history.future.length && <Badge>Redo: {history.future.length}</Badge>}
+                {!!history.future.length && <Badge>{t('scoreEditor.redo')}: {history.future.length}</Badge>}
               </div>
             </div>
           </div>
@@ -1399,7 +1403,7 @@ function eraseSelectedMarkings() {
             <div className="score-editor-paper mx-auto min-h-full w-fit min-w-[760px] rounded-lg border border-slate-200 bg-white p-6 shadow-[0_8px_30px_rgba(15,23,42,0.08)]">
               {status === 'loading' && (
                 <div className="flex h-64 items-center justify-center text-sm text-slate-500">
-                  Rendering MusicXML...
+                  {t('scoreEditor.rendering')}
                 </div>
               )}
               {status === 'error' && (
@@ -1420,19 +1424,19 @@ function eraseSelectedMarkings() {
       </div>
 
       <Modal
-        title="MusicXML edit summary"
+        title={t('scoreEditor.summaryTitle')}
         open={summaryOpen}
         onClose={() => setSummaryOpen(false)}
         footer={
           <div className="flex flex-wrap justify-end gap-2">
             <Button variant="secondary" onClick={() => setSummaryOpen(false)}>
-              Close
+              {t('common.close')}
             </Button>
             <Button variant="secondary" disabled={!isModified} onClick={resetWorkingXml}>
-              Reset score
+              {t('scoreEditor.resetScore')}
             </Button>
             <Button onClick={exportWorkingXml} disabled={!workingXml}>
-              Export XML
+              {t('scoreEditor.exportXml')}
             </Button>
           </div>
         }
@@ -1440,20 +1444,20 @@ function eraseSelectedMarkings() {
         <div className="grid gap-3 text-sm text-slate-700">
           <div className="flex flex-wrap gap-2">
             <Badge tone={isModified ? 'warn' : 'neutral'}>
-              {isModified ? 'Unsaved browser edit' : 'No changes'}
+              {isModified ? t('scoreEditor.unsavedEdit') : t('scoreEditor.noChanges')}
             </Badge>
-            <Badge>{history.past.length} edits in history</Badge>
-            <Badge>{history.future.length} redo steps</Badge>
+            <Badge>{history.past.length} {t('scoreEditor.editsInHistory')}</Badge>
+            <Badge>{history.future.length} {t('scoreEditor.redoSteps')}</Badge>
           </div>
           <div>
-            Current score: <span className="font-medium text-slate-900">{xmlEntry.title}</span>
+            {t('scoreEditor.currentScore')}: <span className="font-medium text-slate-900">{xmlEntry.title}</span>
           </div>
           <div>
-            Selected note: <span className="font-medium text-slate-900">{noteLabel(selectedNote)}</span>
+            {t('scoreEditor.selectedNote')}: <span className="font-medium text-slate-900">{noteLabel(selectedNote)}</span>
           </div>
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
             {/* Prototype: edits mutate only in-memory MusicXML for this browser session. No backend persistence or file write is performed yet. */}
-            The exported XML contains the current in-memory edits. Closing or refreshing the page clears them.
+            {t('scoreEditor.exportHelp')}
           </div>
         </div>
       </Modal>

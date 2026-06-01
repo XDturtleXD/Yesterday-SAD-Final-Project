@@ -2,12 +2,14 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ApiError } from '../../../api/client'
 import { useAppState } from '../../../state/AppState'
+import { useTranslation } from '../../../i18n'
 import { sectionLabel } from '../../../utils/sectionLabels'
 import { Button } from '../../primitives/Button'
 import { Modal } from '../../primitives/Modal'
 
 export function CreateProjectModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { createProject, loadSections, sections, sectionsLoading } = useAppState()
+  const { language, t } = useTranslation()
   const navigate = useNavigate()
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
@@ -27,13 +29,13 @@ export function CreateProjectModal({ open, onClose }: { open: boolean; onClose: 
 
   return (
     <Modal
-      title="Create project"
+      title={t('projects.create')}
       open={open}
       onClose={onClose}
       footer={
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose} disabled={loading}>
-            Cancel
+            {t('common.cancel')}
           </Button>
           <Button
             disabled={loading || !name.trim() || !sectionId}
@@ -49,30 +51,30 @@ export function CreateProjectModal({ open, onClose }: { open: boolean; onClose: 
                 onClose()
                 navigate(`/projects/${p.id}`)
               } catch (err) {
-                setError(err instanceof ApiError ? err.message : 'Failed to create project')
+                setError(err instanceof ApiError ? err.message : t('project.createFailed'))
               } finally {
                 setLoading(false)
               }
             }}
           >
-            {loading ? 'Creating...' : 'Create'}
+            {loading ? t('common.creating') : t('common.create')}
           </Button>
         </div>
       }
     >
       <div className="grid gap-4">
         <div>
-          <div className="text-sm font-medium text-slate-800">Project name</div>
+          <div className="text-sm font-medium text-slate-800">{t('project.name')}</div>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="String Ensemble Final Concert"
+            placeholder={t('project.namePlaceholder')}
             className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
           />
         </div>
 
         <div>
-          <div className="text-sm font-medium text-slate-800">Description</div>
+          <div className="text-sm font-medium text-slate-800">{t('project.description')}</div>
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
@@ -82,7 +84,7 @@ export function CreateProjectModal({ open, onClose }: { open: boolean; onClose: 
         </div>
 
         <div>
-          <div className="text-sm font-medium text-slate-800">Your section</div>
+          <div className="text-sm font-medium text-slate-800">{t('profile.section')}</div>
           <select
             value={sectionId}
             onChange={(e) => setSectionId(e.target.value)}
@@ -91,12 +93,12 @@ export function CreateProjectModal({ open, onClose }: { open: boolean; onClose: 
           >
             {sections.map((s) => (
               <option key={s.id} value={s.id}>
-                {sectionLabel(s)}
+                {sectionLabel(s, language)}
               </option>
             ))}
           </select>
           <div className="mt-1 text-xs text-slate-500">
-            The creator will automatically become the manager for this section.
+            {t('project.managerSectionHelp')}
           </div>
         </div>
 
