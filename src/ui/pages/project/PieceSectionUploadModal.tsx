@@ -146,6 +146,10 @@ export function PieceSectionUploadModal({
         title: title.trim(),
         sectionId: section.id,
         pieceId: piece.id,
+        pieceTitle: piece.title,
+        pieceComposer: piece.composer,
+        sectionTitle: section.name,
+        partName: section.name,
         originalFilename: conversionJob.originalFilename.replace(/\.pdf$/i, '.musicxml'),
       })
       await onUploaded()

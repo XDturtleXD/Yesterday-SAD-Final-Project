@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import re
 import shutil
 import zipfile
 from dataclasses import dataclass
@@ -12,6 +13,79 @@ class MergeOutcome:
     merged: bool
     message: str
     output_file: Path
+
+
+BAD_MUSICXML_TITLES = {"", "music21", "music21 fragment"}
+
+
+def _xml_escape_text(value: str) -> str:
+    return (
+        value.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    )
+
+
+def _is_bad_musicxml_title(value: str) -> bool:
+    return re.sub(r"\s+", " ", value).strip().lower() in BAD_MUSICXML_TITLES
+
+
+def _insert_movement_title(xml: str, title: str) -> str:
+    escaped_title = _xml_escape_text(title)
+    score_match = re.search(r"<score-(?:partwise|timewise)\b[^>]*>", xml)
+    if not score_match:
+        return xml
+
+    insert_at = score_match.end()
+    return f"{xml[:insert_at]}\n  <movement-title>{escaped_title}</movement-title>{xml[insert_at:]}"
+
+
+def sanitize_musicxml_title(output_file: Path, title: str | None = None) -> None:
+    xml = output_file.read_text(encoding="utf-8")
+    normalized_title = title.strip() if title else None
+    found_bad_title = False
+
+    def sanitize_tag(match: re.Match[str]) -> str:
+        nonlocal found_bad_title
+        tag_name = match.group("tag")
+        value = match.group("value")
+        if not _is_bad_musicxml_title(value):
+            return match.group(0)
+
+        found_bad_title = True
+        if normalized_title:
+            if tag_name.lower() == "credit-words":
+                return ""
+            return f"{match.group('open')}{_xml_escape_text(normalized_title)}{match.group('close')}"
+        return ""
+
+    tag_pattern = re.compile(
+        r"(?P<open><(?P<tag>movement-title|work-title|credit-words)\b[^>]*>)"
+        r"(?P<value>.*?)"
+        r"(?P<close></(?P=tag)>)",
+        re.IGNORECASE | re.DOTALL,
+    )
+    sanitized = tag_pattern.sub(sanitize_tag, xml)
+    sanitized = re.sub(
+        r"<creator\b[^>]*type=[\"']composer[\"'][^>]*>.*?</creator>",
+        lambda match: (
+            ""
+            if _is_bad_musicxml_title(re.sub(r"<[^>]+>", "", match.group(0)))
+            else match.group(0)
+        ),
+        sanitized,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+
+    if (
+        normalized_title
+        and "<movement-title" not in sanitized.lower()
+        and "<work-title" not in sanitized.lower()
+    ):
+        sanitized = _insert_movement_title(sanitized, normalized_title)
+
+    if sanitized != xml or found_bad_title:
+        output_file.write_text(sanitized, encoding="utf-8")
 
 
 def _copy_first_page(input_files: list[Path], output_file: Path, message: str) -> MergeOutcome:
@@ -100,6 +174,7 @@ def merge_musicxml_files(input_files: list[Path], output_file: Path) -> MergeOut
             raise RuntimeError("No measures were appended during merge")
 
         combined_score.write("musicxml", fp=str(output_file))
+        sanitize_musicxml_title(output_file)
         return MergeOutcome(
             merged=True,
             message="Merged multi-page MusicXML with music21",

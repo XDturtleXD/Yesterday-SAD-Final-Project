@@ -10,7 +10,14 @@ from engines.base import BaseEngine, EngineResult
 from utils.musicxml_utils import extract_musicxml_from_mxl
 
 
-DEFAULT_AUDIVERIS_BIN = Path("/Applications/Audiveris.app/Contents/MacOS/Audiveris")
+DEFAULT_AUDIVERIS_BIN = Path("/opt/audiveris/bin/Audiveris")
+
+
+class AudiverisError(RuntimeError):
+    def __init__(self, message: str, stdout: str = "", stderr: str = "") -> None:
+        super().__init__(message)
+        self.stdout = stdout
+        self.stderr = stderr
 
 
 def _to_text(value: str | bytes | None) -> str:
@@ -37,75 +44,136 @@ def _audiveris_env() -> dict[str, str]:
     return env
 
 
+def run_audiveris(input_path: str, output_dir: str, timeout_seconds: int = 600) -> str:
+    musicxml_path, _, _ = _run_audiveris(input_path, output_dir, timeout_seconds)
+    return musicxml_path
+
+
+def _run_audiveris(
+    input_path: str,
+    output_dir: str,
+    timeout_seconds: int = 600,
+) -> tuple[str, str, str]:
+    source_path = Path(input_path)
+    target_dir = Path(output_dir)
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    audiveris_bin = _audiveris_bin()
+    if not audiveris_bin.exists():
+        raise AudiverisError(
+            "Audiveris is not installed or AUDIVERIS_BIN points to a missing file. "
+            f"Tried audiveris_bin: {audiveris_bin}"
+        )
+    if not audiveris_bin.is_file():
+        raise AudiverisError(
+            f"Audiveris path is not a file. Tried audiveris_bin: {audiveris_bin}"
+        )
+
+    command = [
+        str(audiveris_bin),
+        "-batch",
+        "-export",
+        "-output",
+        str(target_dir),
+        str(source_path),
+    ]
+
+    try:
+        completed = subprocess.run(
+            command,
+            capture_output=True,
+            env=_audiveris_env(),
+            text=True,
+            timeout=timeout_seconds,
+            check=False,
+        )
+    except FileNotFoundError as exc:
+        raise AudiverisError(
+            f"Audiveris executable could not be run. Tried audiveris_bin: {audiveris_bin}"
+        ) from exc
+    except subprocess.TimeoutExpired as exc:
+        raise AudiverisError(
+            f"Audiveris timed out after {timeout_seconds} seconds. "
+            f"Tried audiveris_bin: {audiveris_bin}",
+            stdout=_to_text(exc.stdout),
+            stderr=_to_text(exc.stderr),
+        ) from exc
+    except Exception as exc:
+        raise AudiverisError(
+            f"Audiveris failed before completion: {exc}. "
+            f"Tried audiveris_bin: {audiveris_bin}"
+        ) from exc
+
+    stdout = _to_text(completed.stdout)
+    stderr = _to_text(completed.stderr)
+    if completed.returncode != 0:
+        raise AudiverisError(
+            f"Audiveris exited with return code {completed.returncode}. "
+            f"Tried audiveris_bin: {audiveris_bin}",
+            stdout=stdout,
+            stderr=stderr,
+        )
+
+    exported_path = _find_audiveris_output(target_dir, source_path.parent)
+    if exported_path is None:
+        raise AudiverisError(
+            "Audiveris completed but no .musicxml, .mxl, or .xml file was found. "
+            f"Tried audiveris_bin: {audiveris_bin}",
+            stdout=stdout,
+            stderr=stderr,
+        )
+
+    normalized_path = target_dir / f"{source_path.stem}.musicxml"
+    if exported_path.suffix.lower() == ".mxl":
+        try:
+            extract_musicxml_from_mxl(exported_path, normalized_path)
+        except Exception as exc:
+            raise AudiverisError(
+                f"Audiveris output could not be normalized: {exc}. "
+                f"Tried audiveris_bin: {audiveris_bin}",
+                stdout=stdout,
+                stderr=stderr,
+            ) from exc
+        return str(normalized_path), stdout, stderr
+    if exported_path != normalized_path:
+        try:
+            shutil.copyfile(exported_path, normalized_path)
+        except Exception as exc:
+            raise AudiverisError(
+                f"Audiveris output could not be normalized: {exc}. "
+                f"Tried audiveris_bin: {audiveris_bin}",
+                stdout=stdout,
+                stderr=stderr,
+            ) from exc
+        return str(normalized_path), stdout, stderr
+    return str(exported_path), stdout, stderr
+
+
 class AudiverisEngine(BaseEngine):
     name = "audiveris"
     timeout_seconds = 600
 
     def run(self, image_path: Path, output_dir: Path) -> EngineResult:
-        output_dir.mkdir(parents=True, exist_ok=True)
-        audiveris_bin = _audiveris_bin()
-        if not audiveris_bin.exists():
+        try:
+            musicxml_path_raw, stdout, stderr = _run_audiveris(
+                str(image_path),
+                str(output_dir),
+                timeout_seconds=self.timeout_seconds,
+            )
+            musicxml_path = Path(musicxml_path_raw)
+        except AudiverisError as exc:
             return EngineResult(
                 engine_name=self.name,
                 success=False,
                 musicxml_path=None,
-                stdout="",
-                stderr="",
-                error_message=(
-                    "Audiveris is not installed or AUDIVERIS_BIN points to a missing file. "
-                    f"Tried audiveris_bin: {audiveris_bin}"
-                ),
+                stdout=exc.stdout,
+                stderr=exc.stderr,
+                error_message=str(exc),
             )
-        if not audiveris_bin.is_file():
-            return EngineResult(
-                engine_name=self.name,
-                success=False,
-                musicxml_path=None,
-                stdout="",
-                stderr="",
-                error_message=f"Audiveris path is not a file. Tried audiveris_bin: {audiveris_bin}",
-            )
-
-        command = [
-            str(audiveris_bin),
-            "-batch",
-            "-export",
-            "-output",
-            str(output_dir),
-            str(image_path),
-        ]
-        command = [str(part) for part in command]
 
         try:
-            completed = subprocess.run(
-                command,
-                capture_output=True,
-                env=_audiveris_env(),
-                text=True,
-                timeout=self.timeout_seconds,
-                check=False,
-            )
-        except FileNotFoundError:
-            return EngineResult(
-                engine_name=self.name,
-                success=False,
-                musicxml_path=None,
-                stdout="",
-                stderr="",
-                error_message=f"Audiveris executable could not be run. Tried audiveris_bin: {audiveris_bin}",
-            )
-        except subprocess.TimeoutExpired as exc:
-            return EngineResult(
-                engine_name=self.name,
-                success=False,
-                musicxml_path=None,
-                stdout=_to_text(exc.stdout),
-                stderr=_to_text(exc.stderr),
-                error_message=(
-                    f"Audiveris timed out after {self.timeout_seconds} seconds. "
-                    f"Tried audiveris_bin: {audiveris_bin}"
-                ),
-            )
+            if not musicxml_path.exists():
+                raise FileNotFoundError(musicxml_path)
         except Exception as exc:
             return EngineResult(
                 engine_name=self.name,
@@ -113,64 +181,18 @@ class AudiverisEngine(BaseEngine):
                 musicxml_path=None,
                 stdout="",
                 stderr="",
-                error_message=(
-                    f"Audiveris failed before completion: {exc}. "
-                    f"Tried audiveris_bin: {audiveris_bin}"
-                ),
-            )
-
-        if completed.returncode != 0:
-            return EngineResult(
-                engine_name=self.name,
-                success=False,
-                musicxml_path=None,
-                stdout=_to_text(completed.stdout),
-                stderr=_to_text(completed.stderr),
-                error_message=(
-                    f"Audiveris exited with return code {completed.returncode}. "
-                    f"Tried audiveris_bin: {audiveris_bin}"
-                ),
-            )
-
-        exported_path = _find_audiveris_output(output_dir, image_path.parent)
-        if exported_path is None:
-            return EngineResult(
-                engine_name=self.name,
-                success=False,
-                musicxml_path=None,
-                stdout=_to_text(completed.stdout),
-                stderr=_to_text(completed.stderr),
-                error_message=(
-                    "Audiveris completed but no .musicxml, .mxl, or .xml file was found. "
-                    f"Tried audiveris_bin: {audiveris_bin}"
-                ),
-            )
-
-        normalized_path = output_dir / f"{image_path.stem}.musicxml"
-        try:
-            if exported_path.suffix.lower() == ".mxl":
-                extract_musicxml_from_mxl(exported_path, normalized_path)
-            elif exported_path != normalized_path:
-                shutil.copyfile(exported_path, normalized_path)
-        except Exception as exc:
-            return EngineResult(
-                engine_name=self.name,
-                success=False,
-                musicxml_path=None,
-                stdout=_to_text(completed.stdout),
-                stderr=_to_text(completed.stderr),
                 error_message=(
                     f"Audiveris output could not be normalized: {exc}. "
-                    f"Tried audiveris_bin: {audiveris_bin}"
+                    f"Tried audiveris_bin: {_audiveris_bin()}"
                 ),
             )
 
         return EngineResult(
             engine_name=self.name,
             success=True,
-            musicxml_path=normalized_path,
-            stdout=_to_text(completed.stdout),
-            stderr=_to_text(completed.stderr),
+            musicxml_path=musicxml_path,
+            stdout=stdout,
+            stderr=stderr,
             error_message=None,
         )
 

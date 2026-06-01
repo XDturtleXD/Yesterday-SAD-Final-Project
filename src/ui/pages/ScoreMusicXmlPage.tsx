@@ -765,14 +765,14 @@ export function ScoreMusicXmlPage() {
       try {
         let xml = workingXmlByScoreId[scoreId]
         if (!xml) {
-          const xmlUrl = resolveXmlUrl(activeScore)
+          const xmlUrl = activeScore ? resolveXmlUrl(activeScore) : null
           if (xmlUrl) {
             const response = await fetch(xmlUrl)
             if (!response.ok) {
               throw new Error(`Failed to load MusicXML (${response.status})`)
             }
             xml = await response.text()
-          } else if (activeScore.xmlContent) {
+          } else if (activeScore?.xmlContent) {
             xml = activeScore.xmlContent
           } else {
             const apiScore = await scoresApi.getScore(scoreId)
@@ -1059,27 +1059,37 @@ export function ScoreMusicXmlPage() {
     }
   }
 
-  function applyDynamic(mark: DynamicMark) {
-    if (!selectedNote) return
-    applyXmlOperation(`Dynamic ${mark} applied`, (xml) => replaceDynamic(xml, selectedNote, mark))
-  }
+function applyDynamic(mark: DynamicMark) {
+  if (!selectedNote) return
+  const ref = selectedNote
+  applyXmlOperation(
+    `Dynamic ${mark} applied`,
+    (xml) => replaceDynamic(xml, ref, mark),
+    () => previewDynamic(ref, mark),
+  )
+}
 
-  function applyBowing(mark: BowingMark) {
-    if (!selectedNote) return
-    applyXmlOperation(
-      mark === 'up-bow' ? 'Up-bow applied' : 'Down-bow applied',
-      (xml) => replaceBowing(xml, selectedNote, mark),
-    )
-  }
+function applyBowing(mark: BowingMark) {
+  if (!selectedNote) return
+  const ref = selectedNote
+  applyXmlOperation(
+    mark === 'up-bow' ? 'Up-bow applied' : 'Down-bow applied',
+    (xml) => replaceBowing(xml, ref, mark),
+    () => previewBowing(ref, mark),
+  )
+}
 
-  function eraseSelectedMarkings() {
-    if (!selectedNote) return
-    applyXmlOperation('Selected markings erased', (xml) =>
-      eraseSupportedMarkings(xml, selectedNote),
-    )
-    setSlurDraft(null)
-    setMode('select')
-  }
+function eraseSelectedMarkings() {
+  if (!selectedNote) return
+  const ref = selectedNote
+  applyXmlOperation(
+    'Selected markings erased',
+    (xml) => eraseSupportedMarkings(xml, ref),
+    () => previewErase(ref),
+  )
+  setSlurDraft(null)
+  setMode('select')
+}
 
   function startSlurMode() {
     setMode('slur')
@@ -1099,7 +1109,12 @@ export function ScoreMusicXmlPage() {
       return
     }
 
-    applyXmlOperation('Slur applied', (xml) => addSlur(xml, slurDraft.start, ref))
+    const start = slurDraft.start
+    applyXmlOperation(
+      'Slur applied',
+      (xml) => addSlur(xml, start, ref),
+      () => previewSlur(start, ref),
+    )
     setSlurDraft(null)
     setMode('select')
   }

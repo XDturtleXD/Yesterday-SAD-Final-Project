@@ -52,6 +52,9 @@ export function importConversion(
     pieceId?: string
     pieceTitle?: string
     pieceComposer?: string
+    composer?: string
+    sectionTitle?: string
+    partName?: string
     originalFilename?: string
   },
 ) {

@@ -13,6 +13,8 @@ build
 
 # Other workspace + tooling state.
 .git
+!audiveris/.git
+!audiveris/.git/**
 .gitignore
 .vscode
 .idea
@@ -34,5 +36,4 @@ pdf
 
 # Docker self-references.
 Dockerfile
-nginx.conf
 docker-compose.yml
