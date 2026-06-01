@@ -36,6 +36,21 @@ const deleteProjectPiece = async (req, res, next) => {
   }
 };
 
+const updateProjectPiece = async (req, res, next) => {
+  try {
+    const { projectId, pieceId } = req.params;
+    const piece = await pieceService.updatePiece(
+      pieceId,
+      projectId,
+      req.body,
+      req.projectMembership,
+    );
+    return sendSuccess(res, piece, "Piece updated successfully");
+  } catch (error) {
+    return next(error);
+  }
+};
+
 const reorderProjectPieces = async (req, res, next) => {
   try {
     const { projectId } = req.params;
@@ -50,5 +65,6 @@ module.exports = {
   getProjectPieces,
   createProjectPiece,
   deleteProjectPiece,
+  updateProjectPiece,
   reorderProjectPieces,
 };

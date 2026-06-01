@@ -2,7 +2,7 @@ import { NavLink } from 'react-router-dom'
 import { useAuth } from '../../auth/AuthContext'
 import { useRequiredUser } from '../../state/AppState'
 import { cn } from '../utils/cn'
-import { Shield, User, FolderKanban, Home, Music2 } from 'lucide-react'
+import { Shield, User, FolderKanban, Home, Music2, Settings } from 'lucide-react'
 
 export function Sidebar() {
   const currentUser = useRequiredUser()
@@ -38,6 +38,11 @@ export function Sidebar() {
               to={`/users/${currentUser.id}`}
               icon={<User className="size-4" />}
               label="Profile"
+            />
+            <SideLink
+              to="/settings"
+              icon={<Settings className="size-4" />}
+              label="Settings"
             />
             <SideLink
               to="/admin"

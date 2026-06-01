@@ -37,6 +37,11 @@ router.patch(
   projectPermissionMiddleware("params"),
   pieceController.reorderProjectPieces,
 );
+router.patch(
+  "/:projectId/pieces/:pieceId",
+  projectPermissionMiddleware("params"),
+  pieceController.updateProjectPiece,
+);
 router.delete(
   "/:projectId/pieces/:pieceId",
   projectPermissionMiddleware("params"),

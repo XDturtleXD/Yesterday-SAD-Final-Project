@@ -71,6 +71,27 @@ test("DELETE /pieces/:pieceId removes piece", async () => {
   assert.equal(listed.body.data.length, 0);
 });
 
+test("PATCH /pieces/:pieceId renames a piece", async () => {
+  const { owner, projectId } = await setupScenario();
+  const created = await harness.request("POST", `/api/projects/${projectId}/pieces`, {
+    token: owner.token,
+    body: { title: "Old title" },
+  });
+
+  const renamed = await harness.request(
+    "PATCH",
+    `/api/projects/${projectId}/pieces/${created.body.data.id}`,
+    {
+      token: owner.token,
+      body: { title: "New title" },
+    },
+  );
+
+  assert.equal(renamed.status, 200);
+  assert.equal(renamed.body.data.title, "New title");
+  assert.equal(renamed.body.data.sort_order, 1);
+});
+
 test("PATCH /pieces/reorder: concertmaster reorders pieces", async () => {
   const { owner, projectId } = await setupScenario();
   const first = await harness.request("POST", `/api/projects/${projectId}/pieces`, {

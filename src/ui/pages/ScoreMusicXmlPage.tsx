@@ -1187,7 +1187,7 @@ function eraseSelectedMarkings() {
                 onClick={() => navigate(`/projects/${project.id}?tab=pieces`)}
               >
                 <ArrowLeft className="size-4" />
-                曲目與分譜
+                Pieces & Parts
               </Button>
               <div className="truncate text-sm font-semibold text-slate-950">
                 {xmlEntry.title}

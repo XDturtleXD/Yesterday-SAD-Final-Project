@@ -21,6 +21,13 @@ export function deleteProjectPiece(projectId: string, pieceId: string) {
   })
 }
 
+export function updateProjectPiece(projectId: string, pieceId: string, input: { title: string }) {
+  return apiRequest<ApiPiece>(`/projects/${projectId}/pieces/${pieceId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  })
+}
+
 export function reorderProjectPieces(projectId: string, orderedPieceIds: string[]) {
   return apiRequest<ApiPiece[]>(`/projects/${projectId}/pieces/reorder`, {
     method: 'PATCH',

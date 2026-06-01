@@ -126,6 +126,35 @@ const deletePiece = async (pieceId, projectId, membership) => {
   return { id: piece.id };
 };
 
+const updatePiece = async (pieceId, projectId, body, membership) => {
+  ensureSupabaseReady();
+  assertCanManagePieces(membership);
+
+  const title = String(body?.title || "").trim();
+  if (!title) {
+    throw new AppError("title is required", 400);
+  }
+
+  const piece = await getPieceById(pieceId, projectId);
+
+  const { data: updated, error } = await supabase
+    .from("pieces")
+    .update({ title })
+    .eq("id", piece.id)
+    .eq("project_id", projectId)
+    .select(PIECE_COLUMNS)
+    .single();
+
+  if (error) {
+    if (error.code === "23505") {
+      throw new AppError("A piece with this title already exists in the project", 409, error);
+    }
+    throw new AppError("Failed to update piece", 500, error);
+  }
+
+  return updated;
+};
+
 const reorderPieces = async (body, projectId, membership) => {
   ensureSupabaseReady();
   assertCanManagePieces(membership);
@@ -154,17 +183,13 @@ const reorderPieces = async (body, projectId, membership) => {
   }
 
   const updateSortOrders = async (updates) => {
-    const results = await Promise.all(
-      updates.map(({ id, sortOrder }) =>
-        supabase
-          .from("pieces")
-          .update({ sort_order: sortOrder })
-          .eq("id", id)
-          .eq("project_id", projectId),
-      ),
-    );
+    for (const { id, sortOrder } of updates) {
+      const { error } = await supabase
+        .from("pieces")
+        .update({ sort_order: sortOrder })
+        .eq("id", id)
+        .eq("project_id", projectId);
 
-    for (const { error } of results) {
       if (error) {
         throw new AppError("Failed to reorder pieces", 500, error);
       }
@@ -191,6 +216,7 @@ module.exports = {
   listPiecesByProjectId,
   createPiece,
   deletePiece,
+  updatePiece,
   reorderPieces,
   getPieceById,
   canManagePieces,

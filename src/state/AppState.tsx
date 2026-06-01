@@ -27,9 +27,11 @@ import type {
 import { sectionLabel } from '../utils/sectionLabels'
 
 type Toast = { id: string; title: string; message?: string }
+export type LanguagePreference = 'en' | 'zh'
 
 type AppState = {
   currentUser: User | null
+  language: LanguagePreference
   projects: Project[]
   sections: Section[]
   projectsLoading: boolean
@@ -38,6 +40,7 @@ type AppState = {
 
   applyAuthUser: (apiUser: ApiUser) => Promise<void>
   clearAuthUser: () => void
+  setLanguage: (language: LanguagePreference) => void
   refreshProjects: () => Promise<void>
   loadSections: () => Promise<Section[]>
   loadProjectDetail: (
@@ -58,6 +61,7 @@ type AppState = {
   }) => Promise<Project>
   updateProjectDraft: (projectId: string, input: { name: string; description: string }) => void
   createPiece: (projectId: string, input: { title: string; composer?: string }) => Promise<Piece>
+  updatePiece: (projectId: string, pieceId: string, input: { title: string }) => Promise<Piece>
   deletePiece: (projectId: string, pieceId: string) => Promise<void>
   movePiece: (projectId: string, pieceId: string, direction: 'up' | 'down') => Promise<void>
   reorderPieces: (projectId: string, orderedPieceIds: string[]) => Promise<void>
@@ -81,9 +85,15 @@ type AppState = {
 }
 
 const Ctx = createContext<AppState | null>(null)
+const LANGUAGE_STORAGE_KEY = 'yesterday_language_preference'
 
 function id(prefix: string) {
   return `${prefix}-${Math.random().toString(16).slice(2)}`
+}
+
+function readLanguagePreference(): LanguagePreference {
+  if (typeof window === 'undefined') return 'en'
+  return window.localStorage.getItem(LANGUAGE_STORAGE_KEY) === 'zh' ? 'zh' : 'en'
 }
 
 function mapApiUserToUser(apiUser: ApiUser): User {
@@ -105,6 +115,7 @@ const emptyUser: User = {
 
 export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [currentUser, setCurrentUser] = useState<User | null>(null)
+  const [language, setLanguageState] = useState<LanguagePreference>(readLanguagePreference)
   const [projects, setProjects] = useState<Project[]>([])
   const [sections, setSections] = useState<Section[]>([])
   const [projectsLoading, setProjectsLoading] = useState(false)
@@ -286,9 +297,15 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     setNameCache({})
   }, [])
 
+  const setLanguage = useCallback((nextLanguage: LanguagePreference) => {
+    setLanguageState(nextLanguage)
+    window.localStorage.setItem(LANGUAGE_STORAGE_KEY, nextLanguage)
+  }, [])
+
   const api: AppState = useMemo(
     () => ({
       currentUser,
+      language,
       projects,
       sections,
       projectsLoading,
@@ -297,6 +314,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
 
       applyAuthUser,
       clearAuthUser,
+      setLanguage,
       refreshProjects,
       loadSections,
       loadProjectDetail,
@@ -365,6 +383,26 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
               ? {
                   ...p,
                   pieces: [...p.pieces, piece].sort((a, b) => a.sortOrder - b.sortOrder),
+                }
+              : p,
+          ),
+        )
+        return piece
+      },
+
+      updatePiece: async (projectId, pieceId, input) => {
+        const updated = await piecesApi.updateProjectPiece(projectId, pieceId, {
+          title: input.title.trim(),
+        })
+        const piece = mapPiece(updated)
+        setProjects((prev) =>
+          prev.map((p) =>
+            p.id === projectId
+              ? {
+                  ...p,
+                  pieces: p.pieces
+                    .map((existing) => (existing.id === pieceId ? piece : existing))
+                    .sort((a, b) => a.sortOrder - b.sortOrder),
                 }
               : p,
           ),
@@ -604,6 +642,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     }),
     [
       currentUser,
+      language,
       projects,
       sections,
       projectsLoading,
@@ -611,6 +650,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       toasts,
       applyAuthUser,
       clearAuthUser,
+      setLanguage,
       refreshProjects,
       loadSections,
       loadProjectDetail,

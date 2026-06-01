@@ -15,7 +15,9 @@ import {
   ChevronRight,
   ExternalLink,
   GripVertical,
+  MoreHorizontal,
   Music2,
+  Pencil,
   Plus,
   Trash2,
   Upload,
@@ -55,6 +57,7 @@ export function PiecesPanel({ project }: { project: Project }) {
     reorderPieces,
     sections,
     sectionsLoading,
+    updatePiece,
   } = useAppState()
   const navigate = useNavigate()
   const currentUser = useRequiredUser()
@@ -71,6 +74,10 @@ export function PiecesPanel({ project }: { project: Project }) {
   const [draggingPieceId, setDraggingPieceId] = useState<string | null>(null)
   const [dragOverPieceId, setDragOverPieceId] = useState<string | null>(null)
   const [reordering, setReordering] = useState(false)
+  const [pieceMenuId, setPieceMenuId] = useState<string | null>(null)
+  const [renamingPieceId, setRenamingPieceId] = useState<string | null>(null)
+  const [renameTitle, setRenameTitle] = useState('')
+  const [savingRenameId, setSavingRenameId] = useState<string | null>(null)
   const committedDragRef = useRef(false)
 
   const isManager = useMemo(() => {
@@ -136,6 +143,51 @@ export function PiecesPanel({ project }: { project: Project }) {
     if (!confirmed) return
     await deletePiece(project.id, pieceId)
     if (expandedPieceId === pieceId) setExpandedPieceId(null)
+  }
+
+  function startRenamePiece(piece: Piece) {
+    setPieceMenuId(null)
+    setError('')
+    setRenamingPieceId(piece.id)
+    setRenameTitle(piece.title)
+  }
+
+  function cancelRenamePiece() {
+    setRenamingPieceId(null)
+    setRenameTitle('')
+  }
+
+  async function submitRenamePiece(piece: Piece) {
+    const normalizedTitle = renameTitle.trim()
+    if (!normalizedTitle) {
+      setError('Piece title is required')
+      return
+    }
+    if (normalizedTitle === piece.title) {
+      cancelRenamePiece()
+      return
+    }
+    if (
+      pieces.some(
+        (candidate) =>
+          candidate.id !== piece.id &&
+          candidate.title.toLowerCase() === normalizedTitle.toLowerCase(),
+      )
+    ) {
+      setError('This piece already exists')
+      return
+    }
+
+    setSavingRenameId(piece.id)
+    setError('')
+    try {
+      await updatePiece(project.id, piece.id, { title: normalizedTitle })
+      cancelRenamePiece()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to rename piece')
+    } finally {
+      setSavingRenameId(null)
+    }
   }
 
   async function handleDeleteScore(scoreId: string, scoreTitle: string) {
@@ -290,7 +342,8 @@ export function PiecesPanel({ project }: { project: Project }) {
               onDragOver={(event) => handlePieceDragOver(event, piece.id)}
               onDrop={(event) => handlePieceDrop(event, piece.id)}
               className={cn(
-                'overflow-hidden transition-all duration-200 ease-out',
+                'transition-all duration-200 ease-out',
+                pieceMenuId === piece.id ? 'overflow-visible' : 'overflow-hidden',
                 isManager && 'group',
                 isDragging && 'scale-[0.995] opacity-60 shadow-lg',
                 isDragTarget && 'ring-2 ring-sky-300 ring-offset-2',
@@ -311,24 +364,77 @@ export function PiecesPanel({ project }: { project: Project }) {
                     <GripVertical className="size-5" />
                   </button>
                 )}
-                <button
-                  type="button"
-                  className="flex min-w-0 flex-1 items-center gap-3 text-left"
-                  onClick={() => setExpandedPieceId(expanded ? null : piece.id)}
-                >
-                  <span className="text-slate-500">
+                <div className="flex min-w-0 flex-1 items-center gap-3 text-left">
+                  <button
+                    type="button"
+                    className="text-slate-500"
+                    onClick={() => setExpandedPieceId(expanded ? null : piece.id)}
+                    aria-label={expanded ? `Collapse ${piece.title}` : `Expand ${piece.title}`}
+                  >
                     {expanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
-                  </span>
-                  <div className="grid size-9 place-items-center rounded-md bg-white text-slate-700 shadow-sm">
+                  </button>
+                  <button
+                    type="button"
+                    className="grid size-9 shrink-0 place-items-center rounded-md bg-white text-slate-700 shadow-sm"
+                    onClick={() => setExpandedPieceId(expanded ? null : piece.id)}
+                    aria-label={expanded ? `Collapse ${piece.title}` : `Expand ${piece.title}`}
+                  >
                     <Music2 className="size-4" />
+                  </button>
+                  <div className="min-w-0 flex-1">
+                    {renamingPieceId === piece.id ? (
+                      <form
+                        className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center"
+                        onSubmit={(event) => {
+                          event.preventDefault()
+                          void submitRenamePiece(piece)
+                        }}
+                      >
+                        <input
+                          autoFocus
+                          value={renameTitle}
+                          onChange={(event) => setRenameTitle(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Escape') {
+                              cancelRenamePiece()
+                            }
+                          }}
+                          disabled={savingRenameId === piece.id}
+                          className="h-9 min-w-0 flex-1 rounded-md border border-sky-300 bg-white px-3 text-sm font-semibold text-slate-950 shadow-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+                          aria-label={`Rename ${piece.title}`}
+                        />
+                        <div className="flex shrink-0 items-center gap-2">
+                          <button
+                            type="submit"
+                            disabled={savingRenameId === piece.id}
+                            className="h-8 rounded-md bg-slate-900 px-3 text-xs font-medium text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {savingRenameId === piece.id ? 'Saving...' : 'Save'}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={savingRenameId === piece.id}
+                            className="h-8 rounded-md border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            onClick={cancelRenamePiece}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </form>
+                    ) : (
+                      <button
+                        type="button"
+                        className="block min-w-0 text-left"
+                        onClick={() => setExpandedPieceId(expanded ? null : piece.id)}
+                      >
+                        <div className="truncate text-sm font-semibold text-slate-950">
+                          {index + 1}. {piece.title}
+                        </div>
+                        <div className="text-xs text-slate-500">{piece.composer || 'Composer not set'}</div>
+                      </button>
+                    )}
                   </div>
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-semibold text-slate-950">
-                      {index + 1}. {piece.title}
-                    </div>
-                    <div className="text-xs text-slate-500">{piece.composer || 'Composer not set'}</div>
-                  </div>
-                </button>
+                </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge>
                     {uploadedCount}/{sections.length} sections
@@ -351,14 +457,49 @@ export function PiecesPanel({ project }: { project: Project }) {
                       >
                         <ArrowDown className="size-4" />
                       </Button>
-                      <Button
-                        size="sm"
-                        variant="danger"
-                        disabled={reordering}
-                        onClick={() => void handleDeletePiece(piece.id)}
-                      >
-                        <Trash2 className="size-4" />
-                      </Button>
+                      <div className="relative">
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          disabled={reordering || renamingPieceId === piece.id}
+                          onClick={() =>
+                            setPieceMenuId((current) => (current === piece.id ? null : piece.id))
+                          }
+                          aria-label={`Open actions for ${piece.title}`}
+                          aria-haspopup="menu"
+                          aria-expanded={pieceMenuId === piece.id}
+                        >
+                          <MoreHorizontal className="size-4" />
+                        </Button>
+                        {pieceMenuId === piece.id && (
+                          <div
+                            role="menu"
+                            className="absolute right-0 top-full z-20 mt-2 w-36 overflow-hidden rounded-md border border-slate-200 bg-white py-1 shadow-lg"
+                          >
+                            <button
+                              type="button"
+                              role="menuitem"
+                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                              onClick={() => startRenamePiece(piece)}
+                            >
+                              <Pencil className="size-4" />
+                              Rename
+                            </button>
+                            <button
+                              type="button"
+                              role="menuitem"
+                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-rose-700 hover:bg-rose-50"
+                              onClick={() => {
+                                setPieceMenuId(null)
+                                void handleDeletePiece(piece.id)
+                              }}
+                            >
+                              <Trash2 className="size-4" />
+                              Delete
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </>
                   )}
                 </div>
@@ -401,15 +542,16 @@ export function PiecesPanel({ project }: { project: Project }) {
                                 <ExternalLink className="size-4" />
                                 Open
                               </Button>
-                              <Button
-                                size="sm"
-                                variant="danger"
+                              <button
+                                type="button"
+                                className="inline-flex size-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-50"
                                 disabled={deletingScoreId === score.id}
                                 onClick={() => void handleDeleteScore(score.id, score.title)}
+                                aria-label={`Delete ${score.title}`}
+                                title="Delete score"
                               >
                                 <Trash2 className="size-4" />
-                                {deletingScoreId === score.id ? 'Deleting...' : 'Delete'}
-                              </Button>
+                              </button>
                             </>
                           )}
                           {!score && (
