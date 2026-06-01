@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../auth/AuthContext'
 import { useRequiredUser } from '../../state/AppState'
+import { useTranslation } from '../../i18n'
 import { Avatar } from '../primitives/Avatar'
 import { Button } from '../primitives/Button'
 import { LogOut } from 'lucide-react'
@@ -9,9 +10,10 @@ export function HeaderBar() {
   const currentUser = useRequiredUser()
   const { logout } = useAuth()
   const navigate = useNavigate()
+  const { t } = useTranslation()
 
   return (
-    <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/90 backdrop-blur">
+    <header className="app-header sticky top-0 z-10 border-b border-slate-200 bg-white/90 backdrop-blur">
       <div className="flex items-center justify-end gap-4 px-6 py-3">
         <div className="flex items-center gap-2 sm:gap-3">
           <button
@@ -33,7 +35,7 @@ export function HeaderBar() {
             }}
           >
             <LogOut className="size-4" />
-            Logout
+            {t('common.logout')}
           </Button>
         </div>
       </div>

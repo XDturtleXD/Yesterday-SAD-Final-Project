@@ -1176,7 +1176,7 @@ function eraseSelectedMarkings() {
   }
 
   return (
-    <div className="flex h-dvh flex-col bg-[#eef1f4]">
+    <div className="score-editor-page flex h-dvh flex-col bg-[#eef1f4]">
       <header className="border-b border-slate-200 bg-white">
         <div className="flex flex-col gap-3 px-4 py-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="min-w-0">
@@ -1391,12 +1391,12 @@ function eraseSelectedMarkings() {
         <main className="min-w-0 flex-1">
           <div
             className={cn(
-              'relative h-full overflow-auto bg-[#e7ebef] p-4 sm:p-6',
+              'score-editor-canvas relative h-full overflow-auto bg-[#e7ebef] p-4 sm:p-6',
               mode === 'pan' ? 'cursor-grab' : 'cursor-default',
             )}
             onClick={handleScoreClick}
           >
-            <div className="mx-auto min-h-full w-fit min-w-[760px] rounded-lg border border-slate-200 bg-white p-6 shadow-[0_8px_30px_rgba(15,23,42,0.08)]">
+            <div className="score-editor-paper mx-auto min-h-full w-fit min-w-[760px] rounded-lg border border-slate-200 bg-white p-6 shadow-[0_8px_30px_rgba(15,23,42,0.08)]">
               {status === 'loading' && (
                 <div className="flex h-64 items-center justify-center text-sm text-slate-500">
                   Rendering MusicXML...

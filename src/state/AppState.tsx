@@ -28,10 +28,12 @@ import { sectionLabel } from '../utils/sectionLabels'
 
 type Toast = { id: string; title: string; message?: string }
 export type LanguagePreference = 'en' | 'zh'
+export type ColorModePreference = 'light' | 'dark'
 
 type AppState = {
   currentUser: User | null
   language: LanguagePreference
+  colorMode: ColorModePreference
   projects: Project[]
   sections: Section[]
   projectsLoading: boolean
@@ -41,6 +43,7 @@ type AppState = {
   applyAuthUser: (apiUser: ApiUser) => Promise<void>
   clearAuthUser: () => void
   setLanguage: (language: LanguagePreference) => void
+  setColorMode: (colorMode: ColorModePreference) => void
   refreshProjects: () => Promise<void>
   loadSections: () => Promise<Section[]>
   loadProjectDetail: (
@@ -86,6 +89,7 @@ type AppState = {
 
 const Ctx = createContext<AppState | null>(null)
 const LANGUAGE_STORAGE_KEY = 'yesterday_language_preference'
+const COLOR_MODE_STORAGE_KEY = 'yesterday_color_mode_preference'
 
 function id(prefix: string) {
   return `${prefix}-${Math.random().toString(16).slice(2)}`
@@ -94,6 +98,11 @@ function id(prefix: string) {
 function readLanguagePreference(): LanguagePreference {
   if (typeof window === 'undefined') return 'en'
   return window.localStorage.getItem(LANGUAGE_STORAGE_KEY) === 'zh' ? 'zh' : 'en'
+}
+
+function readColorModePreference(): ColorModePreference {
+  if (typeof window === 'undefined') return 'light'
+  return window.localStorage.getItem(COLOR_MODE_STORAGE_KEY) === 'dark' ? 'dark' : 'light'
 }
 
 function mapApiUserToUser(apiUser: ApiUser): User {
@@ -116,6 +125,7 @@ const emptyUser: User = {
 export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [currentUser, setCurrentUser] = useState<User | null>(null)
   const [language, setLanguageState] = useState<LanguagePreference>(readLanguagePreference)
+  const [colorMode, setColorModeState] = useState<ColorModePreference>(readColorModePreference)
   const [projects, setProjects] = useState<Project[]>([])
   const [sections, setSections] = useState<Section[]>([])
   const [projectsLoading, setProjectsLoading] = useState(false)
@@ -302,10 +312,20 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     window.localStorage.setItem(LANGUAGE_STORAGE_KEY, nextLanguage)
   }, [])
 
+  const setColorMode = useCallback((nextColorMode: ColorModePreference) => {
+    setColorModeState(nextColorMode)
+    window.localStorage.setItem(COLOR_MODE_STORAGE_KEY, nextColorMode)
+  }, [])
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = colorMode
+  }, [colorMode])
+
   const api: AppState = useMemo(
     () => ({
       currentUser,
       language,
+      colorMode,
       projects,
       sections,
       projectsLoading,
@@ -315,6 +335,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       applyAuthUser,
       clearAuthUser,
       setLanguage,
+      setColorMode,
       refreshProjects,
       loadSections,
       loadProjectDetail,
@@ -643,6 +664,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     [
       currentUser,
       language,
+      colorMode,
       projects,
       sections,
       projectsLoading,
@@ -651,6 +673,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       applyAuthUser,
       clearAuthUser,
       setLanguage,
+      setColorMode,
       refreshProjects,
       loadSections,
       loadProjectDetail,

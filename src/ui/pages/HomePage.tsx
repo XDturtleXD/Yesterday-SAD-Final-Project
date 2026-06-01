@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAppState, useRequiredUser } from '../../state/AppState'
+import { roleLabel, useTranslation } from '../../i18n'
 import { Card } from '../primitives/Card'
 import { Button } from '../primitives/Button'
 import { Badge } from '../primitives/Badge'
@@ -10,6 +11,7 @@ export function HomePage() {
   const { projects, projectsLoading } = useAppState()
   const currentUser = useRequiredUser()
   const navigate = useNavigate()
+  const { language, t } = useTranslation()
 
   const preview = useMemo(() => projects.slice(0, 3), [projects])
 
@@ -24,46 +26,46 @@ export function HomePage() {
               </div>
               <div>
                 <div className="text-2xl font-semibold text-slate-950">Yesterday</div>
-                <div className="text-sm text-slate-600">Ensemble score workspace.</div>
+                <div className="text-sm text-slate-600">{t('home.description')}</div>
               </div>
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button onClick={() => navigate('/projects')}>
               <FolderKanban className="size-4" />
-              View projects
+              {t('home.viewProjects')}
             </Button>
             <Button variant="secondary" onClick={() => navigate('/projects/new')}>
               <Plus className="size-4" />
-              Create project
+              {t('projects.create')}
             </Button>
           </div>
         </div>
 
         <div className="mt-4 flex flex-wrap gap-2 text-sm text-slate-600">
-          <Badge>{projectsLoading ? '...' : projects.length} projects</Badge>
-          <Badge tone="info">{currentUser.role}</Badge>
+          <Badge>{projectsLoading ? '...' : projects.length} {t('nav.projects')}</Badge>
+          <Badge tone="info">{roleLabel(currentUser.role, language)}</Badge>
         </div>
       </section>
 
       <section className="space-y-3">
         <div className="flex items-center justify-between">
-          <div className="text-sm font-semibold text-slate-900">Recent projects</div>
+          <div className="text-sm font-semibold text-slate-900">{t('home.recentProjects')}</div>
           <Button size="sm" variant="ghost" onClick={() => navigate('/projects')}>
-            All projects
+            {t('home.allProjects')}
           </Button>
         </div>
 
         {projects.length === 0 && !projectsLoading ? (
           <Card className="p-6">
-            <div className="text-sm font-semibold text-slate-900">No projects yet</div>
+            <div className="text-sm font-semibold text-slate-900">{t('projects.noProjectsTitle')}</div>
             <div className="mt-1 text-sm text-slate-600">
-              Create a project or join an existing ensemble with an invite code.
+              {t('projects.noProjectsDescription')}
             </div>
             <div className="mt-4">
               <Button onClick={() => navigate('/projects/new')}>
                 <Plus className="size-4" />
-                Create project
+                {t('projects.create')}
               </Button>
             </div>
           </Card>
@@ -76,11 +78,11 @@ export function HomePage() {
                   <div className="mt-1 line-clamp-2 text-sm text-slate-600">{p.description}</div>
                 </div>
                 <div className="mt-3 text-xs text-slate-500">
-                  Updated {p.updatedAt.slice(0, 10)}
+                  {t('common.updated')} {p.updatedAt.slice(0, 10)}
                 </div>
                 <div className="mt-4">
                   <Button size="sm" onClick={() => navigate(`/projects/${p.id}`)}>
-                    Open
+                    {t('common.open')}
                   </Button>
                 </div>
               </Card>
