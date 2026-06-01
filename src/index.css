@@ -75,7 +75,8 @@ html[data-theme="dark"] .border-slate-300 {
 }
 
 html[data-theme="dark"] .text-slate-950,
-html[data-theme="dark"] .text-slate-900 {
+html[data-theme="dark"] .text-slate-900,
+html[data-theme="dark"] .text-slate-800 {
   color: #f8fafc;
 }
 
