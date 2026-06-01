@@ -733,9 +733,9 @@ export function ScoreMusicXmlPage() {
   const [workingXmlByScoreId, setWorkingXmlByScoreId] = useState<Record<string, string>>({})
   const [historyByScoreId, setHistoryByScoreId] = useState<Record<string, XmlHistory>>({})
 
-  const workingXml = workingXmlByScoreId[activeScoreId]
-  const originalXml = originalXmlByScoreId[activeScoreId]
-  const history = historyByScoreId[activeScoreId] ?? { past: [], future: [] }
+  const workingXml = workingXmlByScoreId[scoreId]
+  const originalXml = originalXmlByScoreId[scoreId]
+  const history = historyByScoreId[scoreId] ?? { past: [], future: [] }
   const isModified = !!workingXml && !!originalXml && workingXml !== originalXml
 
   useEffect(() => {
@@ -747,10 +747,9 @@ export function ScoreMusicXmlPage() {
   }, [zoom])
 
   useEffect(() => {
-    if (!xmlEntry || !containerRef.current || !activeScore) return
+    if (!xmlEntry || !containerRef.current) return
 
     let cancelled = false
-    const score = activeScore
     const container = containerRef.current
     selectedGraphicalNoteRef.current = null
     lastRenderedXmlRef.current = null
@@ -764,19 +763,19 @@ export function ScoreMusicXmlPage() {
       osmdRef.current = null
 
       try {
-        let xml = workingXmlByScoreId[activeScoreId]
+        let xml = workingXmlByScoreId[scoreId]
         if (!xml) {
-          const xmlUrl = resolveXmlUrl(score)
+          const xmlUrl = activeScore ? resolveXmlUrl(activeScore) : null
           if (xmlUrl) {
             const response = await fetch(xmlUrl)
             if (!response.ok) {
               throw new Error(`Failed to load MusicXML (${response.status})`)
             }
             xml = await response.text()
-          } else if (score.xmlContent) {
-            xml = score.xmlContent
+          } else if (activeScore?.xmlContent) {
+            xml = activeScore.xmlContent
           } else {
-            const apiScore = await scoresApi.getScore(activeScoreId)
+            const apiScore = await scoresApi.getScore(scoreId)
             if (!apiScore.xml_content) {
               throw new Error(
                 'This score does not have inline XML content. The file may be stored in external storage.',
@@ -786,11 +785,11 @@ export function ScoreMusicXmlPage() {
           }
           if (cancelled) return
 
-          setOriginalXmlByScoreId((prev) => ({ ...prev, [activeScoreId]: prev[activeScoreId] ?? xml }))
-          setWorkingXmlByScoreId((prev) => ({ ...prev, [activeScoreId]: prev[activeScoreId] ?? xml }))
+          setOriginalXmlByScoreId((prev) => ({ ...prev, [scoreId]: prev[scoreId] ?? xml }))
+          setWorkingXmlByScoreId((prev) => ({ ...prev, [scoreId]: prev[scoreId] ?? xml }))
           setHistoryByScoreId((prev) => ({
             ...prev,
-            [activeScoreId]: prev[activeScoreId] ?? { past: [], future: [] },
+            [scoreId]: prev[scoreId] ?? { past: [], future: [] },
           }))
         }
 
@@ -830,7 +829,7 @@ export function ScoreMusicXmlPage() {
   }, [
     activeScore,
     compactLayout,
-    activeScoreId,
+    scoreId,
     showMeasureNumbers,
     showPartNames,
     xmlEntry,
@@ -857,7 +856,7 @@ export function ScoreMusicXmlPage() {
         clearInstantPreviewLayer(getScoreSvgElement())
 
         if (noteToReselect) {
-          const graphicalNote = findGraphicalNoteFromRef(osmd, activeScoreId, noteToReselect)
+          const graphicalNote = findGraphicalNoteFromRef(osmd, scoreId, noteToReselect)
           if (graphicalNote) {
             highlightGraphicalNote(graphicalNote, selectedGraphicalNoteRef)
           }
@@ -887,7 +886,7 @@ export function ScoreMusicXmlPage() {
         window.cancelIdleCallback(idleHandle)
       }
     }
-  }, [workingXml, status, activeScoreId, xmlEntry.title])
+  }, [workingXml, status, scoreId, xmlEntry.title])
 
   useEffect(() => {
     if (status !== 'ready' || !osmdRef.current) return
@@ -897,12 +896,12 @@ export function ScoreMusicXmlPage() {
 
     const ref = selectedNoteRef.current
     if (ref) {
-      const graphicalNote = findGraphicalNoteFromRef(osmd, activeScoreId, ref)
+      const graphicalNote = findGraphicalNoteFromRef(osmd, scoreId, ref)
       if (graphicalNote) {
         highlightGraphicalNote(graphicalNote, selectedGraphicalNoteRef)
       }
     }
-  }, [status, zoom, activeScoreId])
+  }, [status, zoom, scoreId])
 
   if (!project || !activeScore) {
     return (
@@ -970,7 +969,7 @@ export function ScoreMusicXmlPage() {
     const svg = getScoreSvgElement()
     if (!osmd || !svg) return null
 
-    const graphicalNote = findGraphicalNoteFromRef(osmd, activeScoreId, ref)
+    const graphicalNote = findGraphicalNoteFromRef(osmd, scoreId, ref)
     return rememberNoteAnchor(ref, graphicalNote)
   }
 
@@ -1010,7 +1009,7 @@ export function ScoreMusicXmlPage() {
       return
     }
 
-    const ref = getEditableRefFromGraphicalNote(graphicalNote, activeScoreId)
+    const ref = getEditableRefFromGraphicalNote(graphicalNote, scoreId)
     if (!ref) {
       addToast({ title: 'This note cannot be edited yet' })
       return
@@ -1032,7 +1031,7 @@ export function ScoreMusicXmlPage() {
     updateXml: (xml: string) => string,
     preview?: () => void,
   ) {
-    const currentXml = workingXmlByScoreId[activeScoreId]
+    const currentXml = workingXmlByScoreId[scoreId]
     if (!currentXml) return
 
     try {
@@ -1040,12 +1039,12 @@ export function ScoreMusicXmlPage() {
       if (nextXml === currentXml) return
 
       preview?.()
-      setWorkingXmlByScoreId((prev) => ({ ...prev, [activeScoreId]: nextXml }))
+      setWorkingXmlByScoreId((prev) => ({ ...prev, [scoreId]: nextXml }))
       setHistoryByScoreId((prev) => {
-        const current = prev[activeScoreId] ?? { past: [], future: [] }
+        const current = prev[scoreId] ?? { past: [], future: [] }
         return {
           ...prev,
-          [activeScoreId]: {
+          [scoreId]: {
             past: [...current.past, currentXml],
             future: [],
           },
@@ -1060,34 +1059,37 @@ export function ScoreMusicXmlPage() {
     }
   }
 
-  function applyDynamic(mark: DynamicMark) {
-    if (!selectedNote) return
-    applyXmlOperation(
-      `Dynamic ${mark} applied`,
-      (xml) => replaceDynamic(xml, selectedNote, mark),
-      () => previewDynamic(selectedNote, mark),
-    )
-  }
+function applyDynamic(mark: DynamicMark) {
+  if (!selectedNote) return
+  const ref = selectedNote
+  applyXmlOperation(
+    `Dynamic ${mark} applied`,
+    (xml) => replaceDynamic(xml, ref, mark),
+    () => previewDynamic(ref, mark),
+  )
+}
 
-  function applyBowing(mark: BowingMark) {
-    if (!selectedNote) return
-    applyXmlOperation(
-      mark === 'up-bow' ? 'Up-bow applied' : 'Down-bow applied',
-      (xml) => replaceBowing(xml, selectedNote, mark),
-      () => previewBowing(selectedNote, mark),
-    )
-  }
+function applyBowing(mark: BowingMark) {
+  if (!selectedNote) return
+  const ref = selectedNote
+  applyXmlOperation(
+    mark === 'up-bow' ? 'Up-bow applied' : 'Down-bow applied',
+    (xml) => replaceBowing(xml, ref, mark),
+    () => previewBowing(ref, mark),
+  )
+}
 
-  function eraseSelectedMarkings() {
-    if (!selectedNote) return
-    applyXmlOperation(
-      'Selected markings erased',
-      (xml) => eraseSupportedMarkings(xml, selectedNote),
-      () => previewErase(selectedNote),
-    )
-    setSlurDraft(null)
-    setMode('select')
-  }
+function eraseSelectedMarkings() {
+  if (!selectedNote) return
+  const ref = selectedNote
+  applyXmlOperation(
+    'Selected markings erased',
+    (xml) => eraseSupportedMarkings(xml, ref),
+    () => previewErase(ref),
+  )
+  setSlurDraft(null)
+  setMode('select')
+}
 
   function startSlurMode() {
     setMode('slur')
@@ -1107,25 +1109,26 @@ export function ScoreMusicXmlPage() {
       return
     }
 
+    const start = slurDraft.start
     applyXmlOperation(
       'Slur applied',
-      (xml) => addSlur(xml, slurDraft.start, ref),
-      () => previewSlur(slurDraft.start, ref),
+      (xml) => addSlur(xml, start, ref),
+      () => previewSlur(start, ref),
     )
     setSlurDraft(null)
     setMode('select')
   }
 
   function undoXmlEdit() {
-    const currentXml = workingXmlByScoreId[activeScoreId]
-    const currentHistory = historyByScoreId[activeScoreId]
+    const currentXml = workingXmlByScoreId[scoreId]
+    const currentHistory = historyByScoreId[scoreId]
     if (!currentXml || !currentHistory?.past.length) return
 
     const previousXml = currentHistory.past[currentHistory.past.length - 1]
-    setWorkingXmlByScoreId((prev) => ({ ...prev, [activeScoreId]: previousXml }))
+    setWorkingXmlByScoreId((prev) => ({ ...prev, [scoreId]: previousXml }))
     setHistoryByScoreId((prev) => ({
       ...prev,
-      [activeScoreId]: {
+      [scoreId]: {
         past: currentHistory.past.slice(0, -1),
         future: [currentXml, ...currentHistory.future],
       },
@@ -1135,15 +1138,15 @@ export function ScoreMusicXmlPage() {
   }
 
   function redoXmlEdit() {
-    const currentXml = workingXmlByScoreId[activeScoreId]
-    const currentHistory = historyByScoreId[activeScoreId]
+    const currentXml = workingXmlByScoreId[scoreId]
+    const currentHistory = historyByScoreId[scoreId]
     if (!currentXml || !currentHistory?.future.length) return
 
     const nextXml = currentHistory.future[0]
-    setWorkingXmlByScoreId((prev) => ({ ...prev, [activeScoreId]: nextXml }))
+    setWorkingXmlByScoreId((prev) => ({ ...prev, [scoreId]: nextXml }))
     setHistoryByScoreId((prev) => ({
       ...prev,
-      [activeScoreId]: {
+      [scoreId]: {
         past: [...currentHistory.past, currentXml],
         future: currentHistory.future.slice(1),
       },
@@ -1154,8 +1157,8 @@ export function ScoreMusicXmlPage() {
 
   function resetWorkingXml() {
     if (!originalXml) return
-    setWorkingXmlByScoreId((prev) => ({ ...prev, [activeScoreId]: originalXml }))
-    setHistoryByScoreId((prev) => ({ ...prev, [activeScoreId]: { past: [], future: [] } }))
+    setWorkingXmlByScoreId((prev) => ({ ...prev, [scoreId]: originalXml }))
+    setHistoryByScoreId((prev) => ({ ...prev, [scoreId]: { past: [], future: [] } }))
     setSelectedNote(null)
     setSlurDraft(null)
     setMode('select')
@@ -1164,7 +1167,7 @@ export function ScoreMusicXmlPage() {
 
   function exportWorkingXml() {
     if (!workingXml) return
-    downloadText(`${fileSafeName(xmlEntry.title || activeScoreId)}-edited.musicxml`, workingXml)
+    downloadText(`${fileSafeName(xmlEntry.title || scoreId)}-edited.musicxml`, workingXml)
   }
 
   function resetView() {
@@ -1184,7 +1187,7 @@ export function ScoreMusicXmlPage() {
                 onClick={() => navigate(`/projects/${project.id}?tab=pieces`)}
               >
                 <ArrowLeft className="size-4" />
-                Pieces & Parts
+                曲目與分譜
               </Button>
               <div className="truncate text-sm font-semibold text-slate-950">
                 {xmlEntry.title}
@@ -1200,7 +1203,7 @@ export function ScoreMusicXmlPage() {
 
           <div className="flex flex-wrap items-center gap-2">
             <select
-              value={activeScoreId}
+              value={scoreId}
               onChange={(event) => changeScore(event.target.value)}
               className="h-9 max-w-full rounded-md border border-slate-200 bg-white px-3 text-sm shadow-sm xl:max-w-96"
               aria-label="Score part"
