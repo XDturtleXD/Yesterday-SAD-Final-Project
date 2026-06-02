@@ -61,7 +61,6 @@ type IndexedXmlNote = EditableNoteRef & {
 }
 
 type RenderStatus = 'idle' | 'loading' | 'ready' | 'error'
-type SvgAnchor = { x: number; y: number }
 
 const SCORE_XML_MAP: Record<string, ScoreXmlEntry> = {
   's-canon-v1': {
@@ -84,9 +83,6 @@ const SCORE_XML_MAP: Record<string, ScoreXmlEntry> = {
 const DYNAMICS: DynamicMark[] = ['pp', 'p', 'mp', 'mf', 'f', 'ff']
 const HIGHLIGHT_COLOR = '#0284c7'
 const DEFAULT_MUSIC_COLOR = '#000000'
-const SVG_NS = 'http://www.w3.org/2000/svg'
-const INSTANT_PREVIEW_LAYER_ATTR = 'data-musicxml-instant-preview-layer'
-const INSTANT_PREVIEW_KIND_ATTR = 'data-musicxml-instant-preview-kind'
 const OSMD_BACKGROUND_RENDER_DELAY_MS = 650
 
 function parseMusicXml(xml: string) {
@@ -149,10 +145,6 @@ function refsEqual(a: EditableNoteRef | null | undefined, b: EditableNoteRef | n
     a.measureNumber === b.measureNumber &&
     a.noteIndex === b.noteIndex
   )
-}
-
-function noteRefKey(ref: EditableNoteRef) {
-  return `${ref.scoreId}::${ref.partId}::${ref.measureNumber}::${ref.noteIndex}`
 }
 
 function compareRefs(a: EditableNoteRef, b: EditableNoteRef) {
@@ -489,178 +481,6 @@ function highlightGraphicalNote(
   }
 }
 
-function screenToSvgAnchor(svg: SVGSVGElement, x: number, y: number): SvgAnchor | null {
-  const matrix = svg.getScreenCTM()
-  if (!matrix) return null
-
-  const point = svg.createSVGPoint()
-  point.x = x
-  point.y = y
-  const transformed = point.matrixTransform(matrix.inverse())
-  return { x: transformed.x, y: transformed.y }
-}
-
-function unionRects(rects: DOMRect[]) {
-  if (rects.length === 0) return null
-  const left = Math.min(...rects.map((rect) => rect.left))
-  const right = Math.max(...rects.map((rect) => rect.right))
-  const top = Math.min(...rects.map((rect) => rect.top))
-  const bottom = Math.max(...rects.map((rect) => rect.bottom))
-  return {
-    left,
-    top,
-    width: right - left,
-    height: bottom - top,
-  }
-}
-
-function getGraphicalNoteAnchor(note: GraphicalNote, svg: SVGSVGElement): SvgAnchor | null {
-  const noteWithSvgHelpers = note as GraphicalNote & {
-    getNoteheadSVGs?: () => Element[]
-    getStemSVG?: () => Element | undefined
-  }
-  const candidates = [
-    ...(noteWithSvgHelpers.getNoteheadSVGs?.() ?? []),
-    noteWithSvgHelpers.getStemSVG?.(),
-  ].filter((element): element is Element => !!element)
-
-  const rect = unionRects(
-    candidates
-      .map((element) => element.getBoundingClientRect())
-      .filter((candidate) => candidate.width > 0 || candidate.height > 0),
-  )
-
-  if (!rect) return null
-  return screenToSvgAnchor(svg, rect.left + rect.width / 2, rect.top + rect.height / 2)
-}
-
-function ensureInstantPreviewLayer(svg: SVGSVGElement) {
-  const existing = svg.querySelector<SVGGElement>(`g[${INSTANT_PREVIEW_LAYER_ATTR}="true"]`)
-  if (existing) return existing
-
-  const layer = document.createElementNS(SVG_NS, 'g')
-  layer.setAttribute(INSTANT_PREVIEW_LAYER_ATTR, 'true')
-  layer.setAttribute('pointer-events', 'none')
-  svg.appendChild(layer)
-  return layer
-}
-
-function clearInstantPreviewLayer(svg: SVGSVGElement | null | undefined) {
-  svg?.querySelector(`g[${INSTANT_PREVIEW_LAYER_ATTR}="true"]`)?.remove()
-}
-
-function removeInstantPreviewElements(
-  svg: SVGSVGElement,
-  predicate: (element: SVGElement) => boolean,
-) {
-  const layer = ensureInstantPreviewLayer(svg)
-  Array.from(layer.children).forEach((child) => {
-    if (child instanceof SVGElement && predicate(child)) child.remove()
-  })
-}
-
-function setPreviewMeta(element: SVGElement, kind: string, refKey?: string) {
-  element.setAttribute(INSTANT_PREVIEW_KIND_ATTR, kind)
-  if (refKey) element.setAttribute('data-note-ref', refKey)
-}
-
-function renderInstantDynamic(svg: SVGSVGElement, ref: EditableNoteRef, anchor: SvgAnchor, mark: DynamicMark) {
-  const refKey = noteRefKey(ref)
-  const layer = ensureInstantPreviewLayer(svg)
-  removeInstantPreviewElements(
-    svg,
-    (element) =>
-      element.getAttribute(INSTANT_PREVIEW_KIND_ATTR) === 'dynamic' &&
-      element.getAttribute('data-note-ref') === refKey,
-  )
-
-  const text = document.createElementNS(SVG_NS, 'text')
-  setPreviewMeta(text, 'dynamic', refKey)
-  text.setAttribute('x', String(anchor.x))
-  text.setAttribute('y', String(anchor.y + 32))
-  text.setAttribute('text-anchor', 'middle')
-  text.setAttribute('font-family', 'Georgia, Times New Roman, serif')
-  text.setAttribute('font-size', '22')
-  text.setAttribute('font-style', 'italic')
-  text.setAttribute('font-weight', '700')
-  text.setAttribute('fill', '#111827')
-  text.textContent = mark
-  layer.appendChild(text)
-}
-
-function renderInstantBowing(svg: SVGSVGElement, ref: EditableNoteRef, anchor: SvgAnchor, mark: BowingMark) {
-  const refKey = noteRefKey(ref)
-  const layer = ensureInstantPreviewLayer(svg)
-  removeInstantPreviewElements(
-    svg,
-    (element) =>
-      element.getAttribute(INSTANT_PREVIEW_KIND_ATTR) === 'bowing' &&
-      element.getAttribute('data-note-ref') === refKey,
-  )
-
-  const path = document.createElementNS(SVG_NS, 'path')
-  setPreviewMeta(path, 'bowing', refKey)
-  const yTop = anchor.y - 34
-  const yBottom = anchor.y - 16
-  const d =
-    mark === 'down-bow'
-      ? `M ${anchor.x - 9} ${yBottom} V ${yTop} H ${anchor.x + 9} V ${yBottom}`
-      : `M ${anchor.x - 11} ${yTop} L ${anchor.x} ${yBottom} L ${anchor.x + 11} ${yTop}`
-  path.setAttribute('d', d)
-  path.setAttribute('fill', 'none')
-  path.setAttribute('stroke', '#111827')
-  path.setAttribute('stroke-width', '2.4')
-  path.setAttribute('stroke-linecap', 'round')
-  path.setAttribute('stroke-linejoin', 'round')
-  layer.appendChild(path)
-}
-
-function renderInstantSlur(
-  svg: SVGSVGElement,
-  start: EditableNoteRef,
-  end: EditableNoteRef,
-  startAnchor: SvgAnchor,
-  endAnchor: SvgAnchor,
-) {
-  const layer = ensureInstantPreviewLayer(svg)
-  const id = `${noteRefKey(start)}--${noteRefKey(end)}`
-  removeInstantPreviewElements(
-    svg,
-    (element) =>
-      element.getAttribute(INSTANT_PREVIEW_KIND_ATTR) === 'slur' &&
-      element.getAttribute('data-slur-id') === id,
-  )
-
-  const path = document.createElementNS(SVG_NS, 'path')
-  setPreviewMeta(path, 'slur')
-  path.setAttribute('data-slur-id', id)
-  path.setAttribute('data-start-ref', noteRefKey(start))
-  path.setAttribute('data-end-ref', noteRefKey(end))
-  const distance = Math.abs(endAnchor.x - startAnchor.x)
-  const lift = Math.max(30, Math.min(82, distance * 0.22))
-  const startY = startAnchor.y - 28
-  const endY = endAnchor.y - 28
-  const controlX = (startAnchor.x + endAnchor.x) / 2
-  const controlY = Math.min(startY, endY) - lift
-  path.setAttribute('d', `M ${startAnchor.x} ${startY} Q ${controlX} ${controlY} ${endAnchor.x} ${endY}`)
-  path.setAttribute('fill', 'none')
-  path.setAttribute('stroke', '#111827')
-  path.setAttribute('stroke-width', '2.2')
-  path.setAttribute('stroke-linecap', 'round')
-  layer.appendChild(path)
-}
-
-function removeInstantPreviewsForRef(svg: SVGSVGElement, ref: EditableNoteRef) {
-  const refKey = noteRefKey(ref)
-  removeInstantPreviewElements(
-    svg,
-    (element) =>
-      element.getAttribute('data-note-ref') === refKey ||
-      element.getAttribute('data-start-ref') === refKey ||
-      element.getAttribute('data-end-ref') === refKey,
-  )
-}
-
 function resolveXmlUrl(score: Score) {
   if (SCORE_XML_MAP[score.id]) {
     return SCORE_XML_MAP[score.id].xmlUrl
@@ -692,7 +512,6 @@ export function ScoreMusicXmlPage() {
   const osmdRef = useRef<OpenSheetMusicDisplay | null>(null)
   const selectedGraphicalNoteRef = useRef<GraphicalNote | null>(null)
   const selectedNoteRef = useRef<EditableNoteRef | null>(null)
-  const noteAnchorByKeyRef = useRef<Map<string, SvgAnchor>>(new Map())
   const lastRenderedXmlRef = useRef<string | null>(null)
   const backgroundRenderTokenRef = useRef(0)
   const zoomRef = useRef(100)
@@ -755,7 +574,6 @@ export function ScoreMusicXmlPage() {
     const container = containerRef.current
     selectedGraphicalNoteRef.current = null
     lastRenderedXmlRef.current = null
-    noteAnchorByKeyRef.current.clear()
     backgroundRenderTokenRef.current += 1
 
     async function bootstrapScore() {
@@ -812,7 +630,6 @@ export function ScoreMusicXmlPage() {
         osmd.Zoom = zoomRef.current / 100
         osmd.render()
         lastRenderedXmlRef.current = xml
-        clearInstantPreviewLayer(container.querySelector('svg'))
         setStatus('ready')
       } catch (err) {
         if (cancelled) return
@@ -852,8 +669,6 @@ export function ScoreMusicXmlPage() {
         osmd.Zoom = zoomRef.current / 100
         osmd.renderAndScrollBack()
         lastRenderedXmlRef.current = workingXml
-        noteAnchorByKeyRef.current.clear()
-        clearInstantPreviewLayer(getScoreSvgElement())
 
         if (noteToReselect) {
           const graphicalNote = findGraphicalNoteFromRef(osmd, scoreId, noteToReselect)
@@ -947,58 +762,6 @@ export function ScoreMusicXmlPage() {
     return svg instanceof SVGSVGElement ? svg : null
   }
 
-  function rememberNoteAnchor(
-    ref: EditableNoteRef,
-    graphicalNote: GraphicalNote | null,
-    fallbackAnchor?: SvgAnchor | null,
-  ) {
-    const svg = getScoreSvgElement()
-    if (!svg) return null
-
-    const anchor = graphicalNote ? getGraphicalNoteAnchor(graphicalNote, svg) : null
-    const nextAnchor = anchor ?? fallbackAnchor ?? null
-    if (nextAnchor) noteAnchorByKeyRef.current.set(noteRefKey(ref), nextAnchor)
-    return nextAnchor
-  }
-
-  function getPreviewAnchor(ref: EditableNoteRef) {
-    const stored = noteAnchorByKeyRef.current.get(noteRefKey(ref))
-    if (stored) return stored
-
-    const osmd = osmdRef.current
-    const svg = getScoreSvgElement()
-    if (!osmd || !svg) return null
-
-    const graphicalNote = findGraphicalNoteFromRef(osmd, scoreId, ref)
-    return rememberNoteAnchor(ref, graphicalNote)
-  }
-
-  function previewDynamic(ref: EditableNoteRef, mark: DynamicMark) {
-    const svg = getScoreSvgElement()
-    const anchor = getPreviewAnchor(ref)
-    if (svg && anchor) renderInstantDynamic(svg, ref, anchor, mark)
-  }
-
-  function previewBowing(ref: EditableNoteRef, mark: BowingMark) {
-    const svg = getScoreSvgElement()
-    const anchor = getPreviewAnchor(ref)
-    if (svg && anchor) renderInstantBowing(svg, ref, anchor, mark)
-  }
-
-  function previewSlur(start: EditableNoteRef, end: EditableNoteRef) {
-    const svg = getScoreSvgElement()
-    const startAnchor = getPreviewAnchor(start)
-    const endAnchor = getPreviewAnchor(end)
-    if (svg && startAnchor && endAnchor) {
-      renderInstantSlur(svg, start, end, startAnchor, endAnchor)
-    }
-  }
-
-  function previewErase(ref: EditableNoteRef) {
-    const svg = getScoreSvgElement()
-    if (svg) removeInstantPreviewsForRef(svg, ref)
-  }
-
   function handleScoreClick(event: React.MouseEvent<HTMLDivElement>) {
     if (mode === 'pan' || status !== 'ready') return
     if (!containerRef.current?.contains(event.target as Node)) return
@@ -1016,9 +779,6 @@ export function ScoreMusicXmlPage() {
     }
 
     setSelectedNote(ref)
-    const svg = getScoreSvgElement()
-    const clickAnchor = svg ? screenToSvgAnchor(svg, event.clientX, event.clientY) : null
-    rememberNoteAnchor(ref, graphicalNote, clickAnchor)
     highlightGraphicalNote(graphicalNote, selectedGraphicalNoteRef)
 
     if (mode === 'slur') {
@@ -1029,7 +789,6 @@ export function ScoreMusicXmlPage() {
   function applyXmlOperation(
     title: string,
     updateXml: (xml: string) => string,
-    preview?: () => void,
   ) {
     const currentXml = workingXmlByScoreId[scoreId]
     if (!currentXml) return
@@ -1038,7 +797,6 @@ export function ScoreMusicXmlPage() {
       const nextXml = updateXml(currentXml)
       if (nextXml === currentXml) return
 
-      preview?.()
       setWorkingXmlByScoreId((prev) => ({ ...prev, [scoreId]: nextXml }))
       setHistoryByScoreId((prev) => {
         const current = prev[scoreId] ?? { past: [], future: [] }
@@ -1059,37 +817,34 @@ export function ScoreMusicXmlPage() {
     }
   }
 
-function applyDynamic(mark: DynamicMark) {
-  if (!selectedNote) return
-  const ref = selectedNote
-  applyXmlOperation(
-    t('scoreEditor.dynamicApplied'),
-    (xml) => replaceDynamic(xml, ref, mark),
-    () => previewDynamic(ref, mark),
-  )
-}
+  function applyDynamic(mark: DynamicMark) {
+    if (!selectedNote) return
+    const ref = selectedNote
+    applyXmlOperation(
+      t('scoreEditor.dynamicApplied'),
+      (xml) => replaceDynamic(xml, ref, mark),
+    )
+  }
 
-function applyBowing(mark: BowingMark) {
-  if (!selectedNote) return
-  const ref = selectedNote
-  applyXmlOperation(
-    mark === 'up-bow' ? t('scoreEditor.upBowApplied') : t('scoreEditor.downBowApplied'),
-    (xml) => replaceBowing(xml, ref, mark),
-    () => previewBowing(ref, mark),
-  )
-}
+  function applyBowing(mark: BowingMark) {
+    if (!selectedNote) return
+    const ref = selectedNote
+    applyXmlOperation(
+      mark === 'up-bow' ? t('scoreEditor.upBowApplied') : t('scoreEditor.downBowApplied'),
+      (xml) => replaceBowing(xml, ref, mark),
+    )
+  }
 
-function eraseSelectedMarkings() {
-  if (!selectedNote) return
-  const ref = selectedNote
-  applyXmlOperation(
-    t('scoreEditor.selectedMarkingsErased'),
-    (xml) => eraseSupportedMarkings(xml, ref),
-    () => previewErase(ref),
-  )
-  setSlurDraft(null)
-  setMode('select')
-}
+  function eraseSelectedMarkings() {
+    if (!selectedNote) return
+    const ref = selectedNote
+    applyXmlOperation(
+      t('scoreEditor.selectedMarkingsErased'),
+      (xml) => eraseSupportedMarkings(xml, ref),
+    )
+    setSlurDraft(null)
+    setMode('select')
+  }
 
   function startSlurMode() {
     setMode('slur')
@@ -1113,7 +868,6 @@ function eraseSelectedMarkings() {
     applyXmlOperation(
       t('scoreEditor.slurApplied'),
       (xml) => addSlur(xml, start, ref),
-      () => previewSlur(start, ref),
     )
     setSlurDraft(null)
     setMode('select')
