@@ -18,6 +18,7 @@ import {
   ArrowLeft,
   Download,
   Eraser,
+  FileText,
   Hand,
   Maximize2,
   MousePointer2,
@@ -705,7 +706,13 @@ function eraseSupportedMarkings(xml: string, ref: EditableNoteRef) {
 
 function noteLabel(ref: EditableNoteRef | null) {
   if (!ref) return '-'
-  return `${ref.partId} · m.${ref.measureNumber} · note ${ref.noteIndex + 1}`
+  const measureNumber =
+    typeof ref.measureNumber === 'number' && Number.isFinite(ref.measureNumber)
+      ? ref.measureNumber
+      : typeof ref.measureArrayIndex === 'number'
+        ? ref.measureArrayIndex + 1
+        : '-'
+  return `${measureNumber}-${ref.noteIndex + 1}`
 }
 
 function downloadText(filename: string, content: string) {
@@ -1028,6 +1035,7 @@ export function ScoreMusicXmlPage() {
   const selectedGraphicalNoteRef = useRef<GraphicalNote | null>(null)
   const selectedNoteRef = useRef<EditableNoteRef | null>(null)
   const pendingHairpinSelectionKeyRef = useRef<string | null>(null)
+  const workingXmlByScoreIdRef = useRef<Record<string, string>>({})
   const lastRenderedXmlRef = useRef<string | null>(null)
   const backgroundRenderTokenRef = useRef(0)
   const zoomRef = useRef(90)
@@ -1067,6 +1075,7 @@ export function ScoreMusicXmlPage() {
   const [showPartNames, setShowPartNames] = useState(true)
   const [compactLayout, setCompactLayout] = useState(false)
   const [summaryOpen, setSummaryOpen] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
   const [originalXmlByScoreId, setOriginalXmlByScoreId] = useState<Record<string, string>>({})
   const [workingXmlByScoreId, setWorkingXmlByScoreId] = useState<Record<string, string>>({})
   const [historyByScoreId, setHistoryByScoreId] = useState<Record<string, XmlHistory>>({})
@@ -1075,6 +1084,10 @@ export function ScoreMusicXmlPage() {
   const originalXml = originalXmlByScoreId[scoreId]
   const history = historyByScoreId[scoreId] ?? { past: [], future: [] }
   const isModified = !!workingXml && !!originalXml && workingXml !== originalXml
+
+  useEffect(() => {
+    workingXmlByScoreIdRef.current = workingXmlByScoreId
+  }, [workingXmlByScoreId])
 
   useEffect(() => {
     selectedNoteRef.current = selectedNote
@@ -1517,6 +1530,32 @@ export function ScoreMusicXmlPage() {
     downloadText(`${fileSafeName(xmlEntry.title || scoreId)}-edited.musicxml`, workingXml)
   }
 
+  async function saveWorkingXml() {
+    if (!workingXml || !scoreId) return
+    if (!isModified) {
+      addToast({ title: t('scoreEditor.noChanges') })
+      return
+    }
+
+    setIsSaving(true)
+    try {
+      const savedXml = workingXml
+      await scoresApi.saveScoreMusicXml(scoreId, savedXml)
+      setOriginalXmlByScoreId((prev) => ({ ...prev, [scoreId]: savedXml }))
+      if (workingXmlByScoreIdRef.current[scoreId] === savedXml) {
+        setHistoryByScoreId((prev) => ({ ...prev, [scoreId]: { past: [], future: [] } }))
+      }
+      addToast({ title: t('scoreEditor.saveSuccess') })
+    } catch (err) {
+      addToast({
+        title: t('scoreEditor.saveFailed'),
+        message: language === 'en' && err instanceof Error ? err.message : t('scoreEditor.updateFailed'),
+      })
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
   function resetView() {
     setZoom(90)
     containerRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' })
@@ -1565,8 +1604,12 @@ export function ScoreMusicXmlPage() {
               <Download className="size-4" />
               {t('common.export')}
             </Button>
-            <Button variant="secondary" onClick={() => setSummaryOpen(true)}>
+            <Button onClick={saveWorkingXml} disabled={!scoreId || !workingXml || !isModified || isSaving}>
               <Save className="size-4" />
+              {isSaving ? t('common.saving') : t('common.save')}
+            </Button>
+            <Button variant="secondary" onClick={() => setSummaryOpen(true)}>
+              <FileText className="size-4" />
               {t('common.summary')}
             </Button>
           </div>
@@ -1832,6 +1875,9 @@ export function ScoreMusicXmlPage() {
             <Button onClick={exportWorkingXml} disabled={!workingXml}>
               {t('scoreEditor.exportXml')}
             </Button>
+            <Button onClick={saveWorkingXml} disabled={!scoreId || !workingXml || !isModified || isSaving}>
+              {isSaving ? t('common.saving') : t('common.save')}
+            </Button>
           </div>
         }
       >
@@ -1850,7 +1896,6 @@ export function ScoreMusicXmlPage() {
             {t('scoreEditor.selectedNote')}: <span className="font-medium text-slate-900">{noteLabel(selectedNote)}</span>
           </div>
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-            {/* Prototype: edits mutate only in-memory MusicXML for this browser session. No backend persistence or file write is performed yet. */}
             {t('scoreEditor.exportHelp')}
           </div>
         </div>
