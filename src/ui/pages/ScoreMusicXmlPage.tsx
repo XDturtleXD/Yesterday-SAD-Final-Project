@@ -835,7 +835,7 @@ export function ScoreMusicXmlPage() {
   const selectedNoteRef = useRef<EditableNoteRef | null>(null)
   const lastRenderedXmlRef = useRef<string | null>(null)
   const backgroundRenderTokenRef = useRef(0)
-  const zoomRef = useRef(100)
+  const zoomRef = useRef(90)
 
   const project = projectId ? getProject(projectId) : undefined
   const scoreId = scoreIdParam ?? searchParams.get('scoreId') ?? ''
@@ -863,13 +863,13 @@ export function ScoreMusicXmlPage() {
 
   const [status, setStatus] = useState<RenderStatus>('idle')
   const [error, setError] = useState<string | null>(null)
-  const [zoom, setZoom] = useState(100)
+  const [zoom, setZoom] = useState(90)
   const [mode, setMode] = useState<SelectionMode>('select')
   const [selectedNote, setSelectedNote] = useState<EditableNoteRef | null>(null)
   const [slurDraft, setSlurDraft] = useState<SlurDraft | null>(null)
   const [showMeasureNumbers, setShowMeasureNumbers] = useState(true)
   const [showPartNames, setShowPartNames] = useState(true)
-  const [compactLayout, setCompactLayout] = useState(true)
+  const [compactLayout, setCompactLayout] = useState(false)
   const [summaryOpen, setSummaryOpen] = useState(false)
   const [originalXmlByScoreId, setOriginalXmlByScoreId] = useState<Record<string, string>>({})
   const [workingXmlByScoreId, setWorkingXmlByScoreId] = useState<Record<string, string>>({})
@@ -1246,7 +1246,7 @@ export function ScoreMusicXmlPage() {
   }
 
   function resetView() {
-    setZoom(100)
+    setZoom(90)
     containerRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' })
   }
 
@@ -1475,7 +1475,7 @@ export function ScoreMusicXmlPage() {
             )}
             onClick={handleScoreClick}
           >
-            <div className="score-editor-paper mx-auto min-h-full w-fit min-w-[760px] rounded-lg border border-slate-200 bg-white p-6 shadow-[0_8px_30px_rgba(15,23,42,0.08)]">
+            <div className="score-editor-paper mx-auto min-h-full w-full max-w-[1000px] rounded-lg border border-slate-200 bg-white px-4 py-5 shadow-[0_8px_30px_rgba(15,23,42,0.08)] sm:px-6 lg:px-8">
               {status === 'loading' && (
                 <div className="flex h-64 items-center justify-center text-sm text-slate-500">
                   {t('scoreEditor.rendering')}
