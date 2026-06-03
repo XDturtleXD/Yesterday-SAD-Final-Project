@@ -14,6 +14,7 @@ drop table if exists public.score_versions cascade;
 drop table if exists public.commits cascade;
 drop table if exists public.branches cascade;
 drop table if exists public.project_invites cascade;
+drop table if exists public.score_annotations cascade;
 drop table if exists public.scores cascade;
 drop table if exists public.pieces cascade;
 drop table if exists public.project_members cascade;
@@ -113,6 +114,24 @@ create table public.scores (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint scores_piece_section_unique unique (piece_id, section_id)
+);
+
+-- Score annotations are separate from base MusicXML so private/shared markings
+-- can later be overlaid without mutating scores.xml_content.
+create table public.score_annotations (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references public.projects(id) on delete cascade,
+  score_id uuid not null references public.scores(id) on delete cascade,
+  owner_user_id uuid not null references public.users(id) on delete cascade,
+  section_id uuid references public.sections(id) on delete restrict,
+  scope text not null check (scope in ('shared', 'private')),
+  annotation_type text not null check (
+    annotation_type in ('bowing', 'dynamic', 'articulation', 'slur', 'hairpin', 'text')
+  ),
+  target_ref jsonb not null,
+  payload jsonb not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
 
 -- Optional invite tracking table (one-time links).
@@ -216,6 +235,13 @@ create index idx_scores_project_piece_section on public.scores(project_id, piece
 create index idx_scores_storage_bucket on public.scores(storage_bucket);
 create index idx_scores_storage_path on public.scores(storage_path);
 
+create index idx_score_annotations_score_scope_section
+  on public.score_annotations(score_id, scope, section_id);
+create index idx_score_annotations_score_owner
+  on public.score_annotations(score_id, owner_user_id);
+create index idx_score_annotations_project_section
+  on public.score_annotations(project_id, section_id);
+
 create index idx_project_invites_project_id on public.project_invites(project_id);
 create index idx_project_invites_target_section_id on public.project_invites(target_section_id);
 create index idx_project_invites_expires_at on public.project_invites(expires_at);
@@ -253,6 +279,10 @@ for each row execute function public.set_updated_at();
 
 create trigger trg_scores_set_updated_at
 before update on public.scores
+for each row execute function public.set_updated_at();
+
+create trigger trg_score_annotations_set_updated_at
+before update on public.score_annotations
 for each row execute function public.set_updated_at();
 
 create trigger trg_project_invites_set_updated_at

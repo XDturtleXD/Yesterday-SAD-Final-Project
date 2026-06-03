@@ -5,10 +5,11 @@ import {
   type GraphicalNote,
 } from 'opensheetmusicdisplay'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import * as annotationsApi from '../../api/annotations'
 import * as scoresApi from '../../api/scores'
 import { useAppState } from '../../state/AppState'
 import { useTranslation } from '../../i18n'
-import type { Score } from '../../types'
+import type { AnnotationScope, Score, ScoreAnnotation } from '../../types'
 import { Badge } from '../primitives/Badge'
 import { Button } from '../primitives/Button'
 import { Card } from '../primitives/Card'
@@ -70,6 +71,11 @@ type XmlHistory = {
   future: string[]
 }
 
+type AnnotationLayerState = {
+  shared: ScoreAnnotation[]
+  private: ScoreAnnotation[]
+}
+
 type IndexedXmlNote = EditableNoteRef & {
   note: Element
 }
@@ -110,6 +116,7 @@ const DEFAULT_MUSIC_COLOR = '#000000'
 const OSMD_BACKGROUND_RENDER_DELAY_MS = 650
 const DEFAULT_NOTE_STAFF = '1'
 const DEFAULT_NOTE_VOICE = '1'
+const EMPTY_ANNOTATION_LAYERS: AnnotationLayerState = { shared: [], private: [] }
 
 function parseMusicXml(xml: string) {
   const doc = new DOMParser().parseFromString(xml, 'application/xml')
@@ -1039,6 +1046,7 @@ export function ScoreMusicXmlPage() {
   const lastRenderedXmlRef = useRef<string | null>(null)
   const backgroundRenderTokenRef = useRef(0)
   const zoomRef = useRef(90)
+  const addToastRef = useRef(addToast)
 
   const project = projectId ? getProject(projectId) : undefined
   const scoreId = scoreIdParam ?? searchParams.get('scoreId') ?? ''
@@ -1079,11 +1087,20 @@ export function ScoreMusicXmlPage() {
   const [originalXmlByScoreId, setOriginalXmlByScoreId] = useState<Record<string, string>>({})
   const [workingXmlByScoreId, setWorkingXmlByScoreId] = useState<Record<string, string>>({})
   const [historyByScoreId, setHistoryByScoreId] = useState<Record<string, XmlHistory>>({})
+  const [activeAnnotationLayer, setActiveAnnotationLayer] = useState<AnnotationScope>('shared')
+  const [annotationsByScoreId, setAnnotationsByScoreId] = useState<Record<string, AnnotationLayerState>>({})
+  const [annotationsLoadingByScoreId, setAnnotationsLoadingByScoreId] = useState<Record<string, boolean>>({})
+  const [annotationErrorByScoreId, setAnnotationErrorByScoreId] = useState<Record<string, string | undefined>>({})
 
   const workingXml = workingXmlByScoreId[scoreId]
   const originalXml = originalXmlByScoreId[scoreId]
   const history = historyByScoreId[scoreId] ?? { past: [], future: [] }
   const isModified = !!workingXml && !!originalXml && workingXml !== originalXml
+  const annotationLayers = annotationsByScoreId[scoreId] ?? EMPTY_ANNOTATION_LAYERS
+  const sharedAnnotations = annotationLayers.shared
+  const privateAnnotations = annotationLayers.private
+  const annotationsLoading = !!annotationsLoadingByScoreId[scoreId]
+  const annotationError = annotationErrorByScoreId[scoreId]
 
   useEffect(() => {
     workingXmlByScoreIdRef.current = workingXmlByScoreId
@@ -1096,6 +1113,48 @@ export function ScoreMusicXmlPage() {
   useEffect(() => {
     zoomRef.current = zoom
   }, [zoom])
+
+  useEffect(() => {
+    addToastRef.current = addToast
+  }, [addToast])
+
+  useEffect(() => {
+    if (!scoreId) return
+
+    let cancelled = false
+    setAnnotationsLoadingByScoreId((prev) => ({ ...prev, [scoreId]: true }))
+    setAnnotationErrorByScoreId((prev) => ({ ...prev, [scoreId]: undefined }))
+
+    annotationsApi.listScoreAnnotations(scoreId)
+      .then((annotations) => {
+        if (cancelled) return
+        setAnnotationsByScoreId((prev) => ({
+          ...prev,
+          [scoreId]: {
+            shared: annotations.filter((annotation) => annotation.scope === 'shared'),
+            private: annotations.filter((annotation) => annotation.scope === 'private'),
+          },
+        }))
+      })
+      .catch((err) => {
+        if (cancelled) return
+        const message = err instanceof Error ? err.message : 'Unable to load annotation layers'
+        setAnnotationErrorByScoreId((prev) => ({ ...prev, [scoreId]: message }))
+        setAnnotationsByScoreId((prev) => ({ ...prev, [scoreId]: EMPTY_ANNOTATION_LAYERS }))
+        addToastRef.current({
+          title: 'Annotation layers unavailable',
+          message,
+        })
+      })
+      .finally(() => {
+        if (cancelled) return
+        setAnnotationsLoadingByScoreId((prev) => ({ ...prev, [scoreId]: false }))
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [scoreId])
 
   useEffect(() => {
     if (mode !== 'hairpin' || !selectedNote || !hairpinDraft) return
@@ -1640,6 +1699,47 @@ export function ScoreMusicXmlPage() {
               pendingHairpinSelectionKeyRef.current = null
             }}
           />
+
+          <div className="flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 p-1 shadow-inner">
+            <span className="px-2 text-xs font-medium text-slate-500">Layer</span>
+            <button
+              type="button"
+              aria-pressed={activeAnnotationLayer === 'shared'}
+              onClick={() => setActiveAnnotationLayer('shared')}
+              className={cn(
+                'h-7 rounded px-2 text-xs font-medium transition',
+                activeAnnotationLayer === 'shared'
+                  ? 'bg-slate-900 text-white shadow-sm'
+                  : 'text-slate-600 hover:bg-white hover:text-slate-950',
+              )}
+            >
+              Shared ({sharedAnnotations.length})
+            </button>
+            <button
+              type="button"
+              aria-pressed={activeAnnotationLayer === 'private'}
+              onClick={() => setActiveAnnotationLayer('private')}
+              className={cn(
+                'h-7 rounded px-2 text-xs font-medium transition',
+                activeAnnotationLayer === 'private'
+                  ? 'bg-slate-900 text-white shadow-sm'
+                  : 'text-slate-600 hover:bg-white hover:text-slate-950',
+              )}
+            >
+              My private ({privateAnnotations.length})
+            </button>
+            {annotationsLoading && (
+              <span className="px-2 text-xs text-slate-500">Loading</span>
+            )}
+            {annotationError && !annotationsLoading && (
+              <span
+                className="px-2 text-xs font-semibold text-amber-700"
+                title={annotationError}
+              >
+                !
+              </span>
+            )}
+          </div>
 
           <Divider />
 

@@ -47,6 +47,37 @@ export type Score = {
   updatedAt: string
 }
 
+export type AnnotationScope = 'shared' | 'private'
+
+export type AnnotationType = 'bowing' | 'dynamic' | 'articulation' | 'slur' | 'hairpin' | 'text'
+
+export type ScoreAnnotation = {
+  id: string
+  projectId: string
+  scoreId: string
+  ownerUserId: string
+  sectionId: string | null
+  scope: AnnotationScope
+  annotationType: AnnotationType
+  targetRef: Record<string, unknown>
+  payload: Record<string, unknown>
+  createdAt: string
+  updatedAt: string
+}
+
+export type CreateScoreAnnotationPayload = {
+  scope: AnnotationScope
+  annotationType: AnnotationType
+  targetRef: Record<string, unknown>
+  payload: Record<string, unknown>
+  sectionId?: string
+}
+
+export type UpdateScoreAnnotationPayload = {
+  targetRef?: Record<string, unknown>
+  payload?: Record<string, unknown>
+}
+
 export type Branch = {
   id: string
   projectId: string
