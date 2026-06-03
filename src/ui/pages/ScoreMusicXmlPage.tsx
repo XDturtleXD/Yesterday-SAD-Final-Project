@@ -43,7 +43,13 @@ type EditableNoteRef = {
   scoreId: string
   partId: string
   measureNumber: number
+  measureArrayIndex?: number
   noteIndex: number
+  staff?: string
+  voice?: string
+  pitchStep?: string
+  pitchOctave?: string
+  duration?: string
 }
 
 type SlurDraft = {
@@ -84,10 +90,14 @@ const DYNAMICS: DynamicMark[] = ['pp', 'p', 'mp', 'mf', 'f', 'ff']
 const HIGHLIGHT_COLOR = '#0284c7'
 const DEFAULT_MUSIC_COLOR = '#000000'
 const OSMD_BACKGROUND_RENDER_DELAY_MS = 650
+const DEFAULT_NOTE_STAFF = '1'
+const DEFAULT_NOTE_VOICE = '1'
 
 function parseMusicXml(xml: string) {
   const doc = new DOMParser().parseFromString(xml, 'application/xml')
-  const parserError = doc.getElementsByTagName('parsererror')[0]
+  const parserError = Array.from(doc.getElementsByTagName('*')).find((element) =>
+    isElementNamed(element, 'parsererror'),
+  )
   if (parserError) {
     throw new Error('MusicXML could not be parsed.')
   }
@@ -98,9 +108,21 @@ function serializeMusicXml(doc: Document) {
   return `<?xml version="1.0" encoding="UTF-8"?>\n${new XMLSerializer().serializeToString(doc.documentElement)}\n`
 }
 
-function elementChildren(parent: ParentNode, localName?: string) {
+function isElementNamed(element: Element, name: string) {
+  const tagName = element.tagName
+  const tagNameWithoutPrefix = tagName.includes(':') ? tagName.split(':').pop() : tagName
+
+  return (
+    element.localName === name ||
+    tagName === name ||
+    tagName.toLowerCase() === name.toLowerCase() ||
+    tagNameWithoutPrefix === name
+  )
+}
+
+function elementChildren(parent: ParentNode, name?: string) {
   return Array.from(parent.children).filter(
-    (child) => !localName || child.localName === localName,
+    (child) => !name || isElementNamed(child, name),
   )
 }
 
@@ -114,6 +136,34 @@ function isGraceNote(note: Element) {
   return elementChildren(note, 'grace').length > 0
 }
 
+function isRestNote(note: Element) {
+  return elementChildren(note, 'rest').length > 0
+}
+
+function getChildText(parent: Element, localName: string) {
+  return elementChildren(parent, localName)[0]?.textContent?.trim() || undefined
+}
+
+function getXmlNoteStaff(note: Element) {
+  return getChildText(note, 'staff') ?? DEFAULT_NOTE_STAFF
+}
+
+function getXmlNoteVoice(note: Element) {
+  return getChildText(note, 'voice') ?? DEFAULT_NOTE_VOICE
+}
+
+function getXmlNotePitch(note: Element) {
+  const pitch = elementChildren(note, 'pitch')[0]
+  return {
+    pitchStep: pitch ? getChildText(pitch, 'step') : undefined,
+    pitchOctave: pitch ? getChildText(pitch, 'octave') : undefined,
+  }
+}
+
+function noteContextKey(staff: string | undefined, voice: string | undefined) {
+  return `${staff ?? DEFAULT_NOTE_STAFF}\u0000${voice ?? DEFAULT_NOTE_VOICE}`
+}
+
 function buildEditableNoteIndex(doc: Document, scoreId: string): IndexedXmlNote[] {
   const parts = elementChildren(doc.documentElement, 'part')
 
@@ -123,41 +173,129 @@ function buildEditableNoteIndex(doc: Document, scoreId: string): IndexedXmlNote[
 
     return measures.flatMap((measure, measureIndex) => {
       const measureNumber = getMeasureNumber(measure, measureIndex + 1)
-      const notes = elementChildren(measure, 'note').filter((note) => !isGraceNote(note))
+      const notesByContext = new Map<string, IndexedXmlNote[]>()
+      const indexedNotes: IndexedXmlNote[] = []
 
-      return notes.map((note, noteIndex) => ({
-        scoreId,
-        partId,
-        measureNumber,
-        noteIndex,
-        note,
-      }))
+      elementChildren(measure, 'note').forEach((note) => {
+        if (isGraceNote(note) || isRestNote(note)) return
+
+        const staff = getXmlNoteStaff(note)
+        const voice = getXmlNoteVoice(note)
+        const contextKey = noteContextKey(staff, voice)
+        const contextNotes = notesByContext.get(contextKey) ?? []
+        const { pitchStep, pitchOctave } = getXmlNotePitch(note)
+        const indexedNote = {
+          scoreId,
+          partId,
+          measureNumber,
+          measureArrayIndex: measureIndex,
+          noteIndex: contextNotes.length,
+          staff,
+          voice,
+          pitchStep,
+          pitchOctave,
+          duration: getChildText(note, 'duration'),
+          note,
+        }
+
+        contextNotes.push(indexedNote)
+        notesByContext.set(contextKey, contextNotes)
+        indexedNotes.push(indexedNote)
+      })
+
+      return indexedNotes
     })
   })
 }
 
-function refsEqual(a: EditableNoteRef | null | undefined, b: EditableNoteRef | null | undefined) {
+function baseRefsEqual(a: EditableNoteRef, b: EditableNoteRef) {
+  const sameMeasure =
+    a.measureArrayIndex !== undefined && b.measureArrayIndex !== undefined
+      ? a.measureArrayIndex === b.measureArrayIndex
+      : a.measureNumber === b.measureNumber
+
   return (
-    !!a &&
-    !!b &&
     a.scoreId === b.scoreId &&
     a.partId === b.partId &&
-    a.measureNumber === b.measureNumber &&
+    sameMeasure &&
     a.noteIndex === b.noteIndex
   )
 }
 
+function refsEqual(a: EditableNoteRef | null | undefined, b: EditableNoteRef | null | undefined) {
+  if (!a || !b || !baseRefsEqual(a, b)) return false
+  if (a.staff && b.staff && a.staff !== b.staff) return false
+  if (a.voice && b.voice && a.voice !== b.voice) return false
+  return true
+}
+
 function compareRefs(a: EditableNoteRef, b: EditableNoteRef) {
   if (a.partId !== b.partId) return a.partId.localeCompare(b.partId)
+  if (a.measureArrayIndex !== undefined && b.measureArrayIndex !== undefined) {
+    if (a.measureArrayIndex !== b.measureArrayIndex) return a.measureArrayIndex - b.measureArrayIndex
+  }
   if (a.measureNumber !== b.measureNumber) return a.measureNumber - b.measureNumber
+  const aStaff = a.staff ?? DEFAULT_NOTE_STAFF
+  const bStaff = b.staff ?? DEFAULT_NOTE_STAFF
+  if (aStaff !== bStaff) return aStaff.localeCompare(bStaff, undefined, { numeric: true })
+  const aVoice = a.voice ?? DEFAULT_NOTE_VOICE
+  const bVoice = b.voice ?? DEFAULT_NOTE_VOICE
+  if (aVoice !== bVoice) return aVoice.localeCompare(bVoice, undefined, { numeric: true })
   return a.noteIndex - b.noteIndex
 }
 
 function findXmlNote(doc: Document, ref: EditableNoteRef) {
-  return (
-    buildEditableNoteIndex(doc, ref.scoreId).find((item) => refsEqual(item, ref))?.note ??
-    null
+  const indexedNotes = buildEditableNoteIndex(doc, ref.scoreId)
+  const refStaff = ref.staff
+  const refVoice = ref.voice
+  const hasStaffVoice = !!refStaff || !!refVoice
+
+  if (ref.measureArrayIndex !== undefined) {
+    const exactMeasureIndexMatch = indexedNotes.find(
+      (item) =>
+        item.scoreId === ref.scoreId &&
+        item.partId === ref.partId &&
+        item.measureArrayIndex === ref.measureArrayIndex &&
+        item.noteIndex === ref.noteIndex &&
+        item.staff === (refStaff ?? DEFAULT_NOTE_STAFF) &&
+        item.voice === (refVoice ?? DEFAULT_NOTE_VOICE),
+    )
+    if (exactMeasureIndexMatch) return exactMeasureIndexMatch.note
+
+    if (hasStaffVoice) {
+      const partialMeasureIndexMatch = indexedNotes.find(
+        (item) =>
+          item.scoreId === ref.scoreId &&
+          item.partId === ref.partId &&
+          item.measureArrayIndex === ref.measureArrayIndex &&
+          item.noteIndex === ref.noteIndex &&
+          (!refStaff || !item.staff || item.staff === refStaff) &&
+          (!refVoice || !item.voice || item.voice === refVoice),
+      )
+      if (partialMeasureIndexMatch) return partialMeasureIndexMatch.note
+    }
+  }
+
+  const exactMatch = indexedNotes.find(
+    (item) =>
+      baseRefsEqual(item, ref) &&
+      item.staff === (refStaff ?? DEFAULT_NOTE_STAFF) &&
+      item.voice === (refVoice ?? DEFAULT_NOTE_VOICE),
   )
+  if (exactMatch) return exactMatch.note
+
+  if (hasStaffVoice) {
+    return (
+      indexedNotes.find(
+        (item) =>
+          baseRefsEqual(item, ref) &&
+          (!refStaff || !item.staff || item.staff === refStaff) &&
+          (!refVoice || !item.voice || item.voice === refVoice),
+      )?.note ?? null
+    )
+  }
+
+  return indexedNotes.find((item) => baseRefsEqual(item, ref))?.note ?? null
 }
 
 function ensureChild(parent: Element, localName: string) {
@@ -407,6 +545,180 @@ function fileSafeName(name: string) {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 }
 
+type UnknownRecord = Record<string, unknown>
+type SourceNoteLike = GraphicalNote['sourceNote']
+type SourceStaffEntryLike = {
+  VoiceEntries: Array<{
+    Notes: SourceNoteLike[]
+  }>
+}
+
+function asRecord(value: unknown): UnknownRecord | null {
+  return value && typeof value === 'object' ? value as UnknownRecord : null
+}
+
+function stringValue(value: unknown) {
+  if (value === null || value === undefined) return undefined
+  if (typeof value === 'string') return value.trim() || undefined
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value)
+  if (typeof value === 'boolean') return String(value)
+  return undefined
+}
+
+function numberValue(value: unknown) {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number.parseInt(value, 10)
+    return Number.isFinite(parsed) ? parsed : undefined
+  }
+  return undefined
+}
+
+function nestedValue(value: unknown, path: string[]) {
+  return path.reduce<unknown>((current, key) => asRecord(current)?.[key], value)
+}
+
+function firstStringValue(...values: unknown[]) {
+  for (const value of values) {
+    const text = stringValue(value)
+    if (text) return text
+  }
+  return undefined
+}
+
+function getSourceNoteStaffFromSourceNote(sourceNote: SourceNoteLike) {
+  const sourceNoteRecord = asRecord(sourceNote)
+  const staffRecord = asRecord(sourceNote.ParentStaff)
+  const instrumentRecord = asRecord(sourceNote.ParentStaff.ParentInstrument)
+  const staves = instrumentRecord?.Staves ?? instrumentRecord?.staves
+
+  if (Array.isArray(staves)) {
+    const staffIndexInPart = staves.indexOf(sourceNote.ParentStaff)
+    if (staffIndexInPart >= 0) return String(staffIndexInPart + 1)
+  }
+
+  const explicitStaff = firstStringValue(
+    sourceNoteRecord?.Staff,
+    sourceNoteRecord?.staff,
+    sourceNoteRecord?.StaffNumber,
+    sourceNoteRecord?.staffNumber,
+    staffRecord?.StaffNumber,
+    staffRecord?.staffNumber,
+  )
+  if (explicitStaff) return explicitStaff
+
+  return stringValue(sourceNote.ParentStaff.idInMusicSheet + 1) ?? DEFAULT_NOTE_STAFF
+}
+
+function getSourceNoteStaff(note: GraphicalNote) {
+  return getSourceNoteStaffFromSourceNote(note.sourceNote)
+}
+
+function getSourceNoteVoice(sourceNote: GraphicalNote['sourceNote'], voiceEntry?: unknown) {
+  return firstStringValue(
+    nestedValue(sourceNote, ['VoiceId']),
+    nestedValue(sourceNote, ['voiceId']),
+    nestedValue(sourceNote, ['ParentVoiceEntry', 'VoiceId']),
+    nestedValue(sourceNote, ['ParentVoiceEntry', 'voiceId']),
+    nestedValue(sourceNote, ['ParentVoiceEntry', 'ParentVoice', 'VoiceId']),
+    nestedValue(sourceNote, ['ParentVoiceEntry', 'ParentVoice', 'voiceId']),
+    nestedValue(voiceEntry, ['VoiceId']),
+    nestedValue(voiceEntry, ['voiceId']),
+    nestedValue(voiceEntry, ['ParentVoice', 'VoiceId']),
+    nestedValue(voiceEntry, ['ParentVoice', 'voiceId']),
+  ) ?? DEFAULT_NOTE_VOICE
+}
+
+function getVoiceEntryVoice(voiceEntry: unknown) {
+  return firstStringValue(
+    nestedValue(voiceEntry, ['VoiceId']),
+    nestedValue(voiceEntry, ['voiceId']),
+    nestedValue(voiceEntry, ['ParentVoice', 'VoiceId']),
+    nestedValue(voiceEntry, ['ParentVoice', 'voiceId']),
+  ) ?? DEFAULT_NOTE_VOICE
+}
+
+function getSourceMeasureArrayIndex(sourceMeasure: unknown) {
+  return numberValue(
+    nestedValue(sourceMeasure, ['measureListIndex']) ??
+    nestedValue(sourceMeasure, ['MeasureListIndex']) ??
+    nestedValue(sourceMeasure, ['measureIndex']) ??
+    nestedValue(sourceMeasure, ['MeasureIndex']) ??
+    nestedValue(sourceMeasure, ['index']) ??
+    nestedValue(sourceMeasure, ['Index']),
+  )
+}
+
+function sourcePitchStep(sourceNote: GraphicalNote['sourceNote']) {
+  const pitch = nestedValue(sourceNote, ['Pitch'])
+  const rawStep = nestedValue(pitch, ['Step']) ?? nestedValue(pitch, ['step']) ??
+    nestedValue(pitch, ['FundamentalNote']) ?? nestedValue(pitch, ['fundamentalNote'])
+
+  if (typeof rawStep === 'number' && Number.isFinite(rawStep)) {
+    return ['C', 'D', 'E', 'F', 'G', 'A', 'B'][rawStep]
+  }
+
+  const step = stringValue(rawStep)
+  return step ? step.charAt(0).toUpperCase() : undefined
+}
+
+function sourcePitchOctave(sourceNote: GraphicalNote['sourceNote']) {
+  return firstStringValue(
+    nestedValue(sourceNote, ['Pitch', 'Octave']),
+    nestedValue(sourceNote, ['Pitch', 'octave']),
+  )
+}
+
+function sourceDuration(sourceNote: GraphicalNote['sourceNote']) {
+  const length = nestedValue(sourceNote, ['Length']) ?? nestedValue(sourceNote, ['length'])
+  const lengthRecord = asRecord(length)
+  return firstStringValue(
+    nestedValue(sourceNote, ['Duration']),
+    nestedValue(sourceNote, ['duration']),
+    lengthRecord?.RealValue,
+    lengthRecord?.realValue,
+    lengthRecord?.Numerator && lengthRecord?.Denominator
+      ? `${stringValue(lengthRecord.Numerator)}/${stringValue(lengthRecord.Denominator)}`
+      : undefined,
+    length,
+  )
+}
+
+function isSourceGraceNote(sourceNote: GraphicalNote['sourceNote']) {
+  return !!nestedValue(sourceNote, ['IsGraceNote'])
+}
+
+function isSourceRestNote(sourceNote: GraphicalNote['sourceNote']) {
+  const sourceNoteRecord = asRecord(sourceNote)
+  const isRestMethod = sourceNoteRecord?.isRest
+  if (typeof isRestMethod === 'function') return !!isRestMethod.call(sourceNote)
+
+  const explicitRest = nestedValue(sourceNote, ['IsRest']) ?? nestedValue(sourceNote, ['isRest'])
+  if (typeof explicitRest === 'boolean') return explicitRest
+  return !nestedValue(sourceNote, ['Pitch'])
+}
+
+function getPitchedSourceNotesInVoice(
+  entries: SourceStaffEntryLike[],
+  voice: string,
+) {
+  const notes: SourceNoteLike[] = []
+
+  for (const entry of entries) {
+    for (const voiceEntry of entry.VoiceEntries) {
+      if (getVoiceEntryVoice(voiceEntry) !== voice) continue
+
+      for (const sourceEntryNote of voiceEntry.Notes) {
+        if (!isSourceGraceNote(sourceEntryNote) && !isSourceRestNote(sourceEntryNote)) {
+          notes.push(sourceEntryNote)
+        }
+      }
+    }
+  }
+
+  return notes
+}
+
 function getEditableRefFromGraphicalNote(
   note: GraphicalNote,
   scoreId: string,
@@ -416,27 +728,36 @@ function getEditableRefFromGraphicalNote(
   const staff = sourceNote.ParentStaff
   const staffIndex = staff.idInMusicSheet
   const entries = sourceMeasure.getEntriesPerStaff(staffIndex) ?? []
-  let noteIndex = 0
+  const targetStaff = getSourceNoteStaff(note)
+  let targetVoice = getSourceNoteVoice(sourceNote)
 
   for (const entry of entries) {
-    for (const voiceEntry of entry.VoiceEntries) {
-      for (const sourceEntryNote of voiceEntry.Notes) {
-        if (!sourceEntryNote.IsGraceNote) {
-          if (sourceEntryNote === sourceNote) {
-            return {
-              scoreId,
-              partId: staff.ParentInstrument.IdString,
-              measureNumber: sourceMeasure.MeasureNumber,
-              noteIndex,
-            }
-          }
-          noteIndex += 1
-        }
-      }
+    const containingVoiceEntry = entry.VoiceEntries.find((voiceEntry) =>
+      voiceEntry.Notes.some((sourceEntryNote) => sourceEntryNote === sourceNote),
+    )
+    if (containingVoiceEntry) {
+      targetVoice = getVoiceEntryVoice(containingVoiceEntry)
+      break
     }
   }
 
-  return null
+  const pitchedNotes = getPitchedSourceNotesInVoice(entries, targetVoice)
+  const noteIndex = pitchedNotes.indexOf(sourceNote)
+  if (noteIndex < 0) return null
+
+  // noteIndex is 0-based within staff/voice pitched notes only.
+  return {
+    scoreId,
+    partId: staff.ParentInstrument.IdString,
+    measureNumber: sourceMeasure.MeasureNumber,
+    measureArrayIndex: getSourceMeasureArrayIndex(sourceMeasure),
+    noteIndex,
+    staff: targetStaff,
+    voice: targetVoice,
+    pitchStep: sourcePitchStep(sourceNote),
+    pitchOctave: sourcePitchOctave(sourceNote),
+    duration: sourceDuration(sourceNote),
+  }
 }
 
 function findGraphicalNoteFromRef(
@@ -754,7 +1075,7 @@ export function ScoreMusicXmlPage() {
     const svgPoint = point.matrixTransform(matrix.inverse())
     const osmdPoint = osmd.GraphicSheet.svgToOsmd(new PointF2D(svgPoint.x, svgPoint.y))
 
-    return osmd.GraphicSheet.GetNearestNote(osmdPoint, new PointF2D(18, 18)) ?? null
+    return osmd.GraphicSheet.GetNearestNote(osmdPoint, new PointF2D(12, 12)) ?? null
   }
 
   function getScoreSvgElement() {
