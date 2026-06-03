@@ -38,7 +38,8 @@ type ScoreXmlEntry = {
 type DynamicMark = 'pp' | 'p' | 'mp' | 'mf' | 'f' | 'ff'
 type BowingMark = 'up-bow' | 'down-bow'
 type ArticulationMark = 'staccato' | 'accent' | 'tenuto' | 'fermata'
-type SelectionMode = 'select' | 'pan' | 'slur'
+type HairpinType = 'crescendo' | 'diminuendo'
+type SelectionMode = 'select' | 'pan' | 'slur' | 'hairpin'
 
 type EditableNoteRef = {
   scoreId: string
@@ -56,6 +57,11 @@ type EditableNoteRef = {
 type SlurDraft = {
   start: EditableNoteRef
   end?: EditableNoteRef
+}
+
+type HairpinDraft = {
+  type: HairpinType
+  start?: EditableNoteRef
 }
 
 type XmlHistory = {
@@ -93,6 +99,10 @@ const ARTICULATION_TOOLS: Array<{ mark: ArticulationMark; label: string; symbol:
   { mark: 'accent', label: 'Accent', symbol: '>' },
   { mark: 'tenuto', label: 'Tenuto', symbol: '-' },
   { mark: 'fermata', label: 'Fermata', symbol: '𝄐' },
+]
+const HAIRPIN_TOOLS: Array<{ type: HairpinType; label: string; symbol: string }> = [
+  { type: 'crescendo', label: 'Cresc', symbol: '<' },
+  { type: 'diminuendo', label: 'Dim', symbol: '>' },
 ]
 const HIGHLIGHT_COLOR = '#0284c7'
 const DEFAULT_MUSIC_COLOR = '#000000'
@@ -455,6 +465,100 @@ function replaceArticulation(xml: string, ref: EditableNoteRef, type: Articulati
   return serializeMusicXml(doc)
 }
 
+function getDirectionWedge(direction: Element) {
+  return elementChildren(direction, 'direction-type')
+    .flatMap((directionType) => elementChildren(directionType, 'wedge'))[0]
+}
+
+function directionMatchesWedge(
+  direction: Element | null | undefined,
+  type: HairpinType | 'stop',
+  number: string,
+  staff: string,
+) {
+  if (!direction || !isElementNamed(direction, 'direction')) return false
+
+  const wedge = getDirectionWedge(direction)
+  if (!wedge) return false
+
+  const directionStaff = getChildText(direction, 'staff') ?? DEFAULT_NOTE_STAFF
+  return (
+    wedge.getAttribute('type') === type &&
+    (wedge.getAttribute('number') || '1') === number &&
+    directionStaff === staff
+  )
+}
+
+function hasWedgeDirectionBeforeNote(
+  note: Element,
+  type: HairpinType | 'stop',
+  number: string,
+  staff: string,
+) {
+  return directionMatchesWedge(note.previousElementSibling, type, number, staff)
+}
+
+function createWedgeDirection(doc: Document, type: HairpinType | 'stop', number: string, staff: string) {
+  const direction = doc.createElement('direction')
+  direction.setAttribute('placement', 'below')
+
+  const directionType = doc.createElement('direction-type')
+  const wedge = doc.createElement('wedge')
+  wedge.setAttribute('type', type)
+  wedge.setAttribute('number', number)
+  directionType.appendChild(wedge)
+  direction.appendChild(directionType)
+
+  const staffElement = doc.createElement('staff')
+  staffElement.textContent = staff
+  direction.appendChild(staffElement)
+
+  return direction
+}
+
+function addWedgeDirectionBeforeNote(
+  note: Element,
+  type: HairpinType | 'stop',
+  number: string,
+  staff: string,
+) {
+  note.parentElement?.insertBefore(createWedgeDirection(note.ownerDocument, type, number, staff), note)
+}
+
+function addHairpin(xml: string, type: HairpinType, start: EditableNoteRef, end: EditableNoteRef) {
+  if (start.scoreId !== end.scoreId || start.partId !== end.partId) {
+    throw new Error('Hairpins must begin and end in the same part.')
+  }
+
+  if (compareRefs(start, end) >= 0) {
+    throw new Error('Choose a later note as the hairpin endpoint.')
+  }
+
+  const doc = parseMusicXml(xml)
+  const startNote = findXmlNote(doc, start)
+  const endNote = findXmlNote(doc, end)
+  if (!startNote || !endNote) {
+    throw new Error('Could not find the selected hairpin notes in MusicXML.')
+  }
+  if (isRestNote(startNote) || isRestNote(endNote)) return xml
+
+  const number = '1'
+  const startStaff = start.staff ?? DEFAULT_NOTE_STAFF
+  const endStaff = end.staff ?? startStaff
+  let changed = false
+
+  if (!hasWedgeDirectionBeforeNote(startNote, type, number, startStaff)) {
+    addWedgeDirectionBeforeNote(startNote, type, number, startStaff)
+    changed = true
+  }
+  if (!hasWedgeDirectionBeforeNote(endNote, 'stop', number, endStaff)) {
+    addWedgeDirectionBeforeNote(endNote, 'stop', number, endStaff)
+    changed = true
+  }
+
+  return changed ? serializeMusicXml(doc) : xml
+}
+
 function getSlurElements(note: Element) {
   return elementChildren(note, 'notations').flatMap((notations) =>
     elementChildren(notations, 'slur'),
@@ -617,6 +721,22 @@ function downloadText(filename: string, content: string) {
 
 function fileSafeName(name: string) {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+}
+
+function editableNoteRefKey(ref: EditableNoteRef) {
+  return [
+    ref.scoreId,
+    ref.partId,
+    ref.measureArrayIndex ?? '',
+    ref.measureNumber,
+    ref.noteIndex,
+    ref.staff ?? '',
+    ref.voice ?? '',
+  ].join('\u0000')
+}
+
+function hairpinLabel(type: HairpinType) {
+  return HAIRPIN_TOOLS.find((tool) => tool.type === type)?.label ?? type
 }
 
 type UnknownRecord = Record<string, unknown>
@@ -907,6 +1027,7 @@ export function ScoreMusicXmlPage() {
   const osmdRef = useRef<OpenSheetMusicDisplay | null>(null)
   const selectedGraphicalNoteRef = useRef<GraphicalNote | null>(null)
   const selectedNoteRef = useRef<EditableNoteRef | null>(null)
+  const pendingHairpinSelectionKeyRef = useRef<string | null>(null)
   const lastRenderedXmlRef = useRef<string | null>(null)
   const backgroundRenderTokenRef = useRef(0)
   const zoomRef = useRef(90)
@@ -941,6 +1062,7 @@ export function ScoreMusicXmlPage() {
   const [mode, setMode] = useState<SelectionMode>('select')
   const [selectedNote, setSelectedNote] = useState<EditableNoteRef | null>(null)
   const [slurDraft, setSlurDraft] = useState<SlurDraft | null>(null)
+  const [hairpinDraft, setHairpinDraft] = useState<HairpinDraft | null>(null)
   const [showMeasureNumbers, setShowMeasureNumbers] = useState(true)
   const [showPartNames, setShowPartNames] = useState(true)
   const [compactLayout, setCompactLayout] = useState(false)
@@ -961,6 +1083,18 @@ export function ScoreMusicXmlPage() {
   useEffect(() => {
     zoomRef.current = zoom
   }, [zoom])
+
+  useEffect(() => {
+    if (mode !== 'hairpin' || !selectedNote || !hairpinDraft) return
+
+    const selectionKey = editableNoteRefKey(selectedNote)
+    if (pendingHairpinSelectionKeyRef.current === selectionKey) {
+      pendingHairpinSelectionKeyRef.current = null
+      return
+    }
+
+    handleHairpinNoteSelection(selectedNote)
+  }, [mode, selectedNote, hairpinDraft])
 
   useEffect(() => {
     if (!xmlEntry || !containerRef.current) return
@@ -1134,6 +1268,8 @@ export function ScoreMusicXmlPage() {
   function changeScore(nextScoreId: string) {
     setSelectedNote(null)
     setSlurDraft(null)
+    setHairpinDraft(null)
+    pendingHairpinSelectionKeyRef.current = null
     selectedGraphicalNoteRef.current = null
     setSearchParams({ scoreId: nextScoreId })
   }
@@ -1255,11 +1391,15 @@ export function ScoreMusicXmlPage() {
       (xml) => eraseSupportedMarkings(xml, ref),
     )
     setSlurDraft(null)
+    setHairpinDraft(null)
+    pendingHairpinSelectionKeyRef.current = null
     setMode('select')
   }
 
   function startSlurMode() {
     setMode('slur')
+    setHairpinDraft(null)
+    pendingHairpinSelectionKeyRef.current = null
     if (selectedNote) {
       setSlurDraft({ start: selectedNote })
       addToast({ title: t('scoreEditor.slurStartSelected'), message: t('scoreEditor.clickEndingNote') })
@@ -1285,6 +1425,41 @@ export function ScoreMusicXmlPage() {
     setMode('select')
   }
 
+  function applyHairpin(type: HairpinType) {
+    setMode('hairpin')
+    setSlurDraft(null)
+    if (selectedNote) {
+      setHairpinDraft({ type, start: selectedNote })
+      pendingHairpinSelectionKeyRef.current = editableNoteRefKey(selectedNote)
+      addToast({ title: `${hairpinLabel(type)} start selected`, message: t('scoreEditor.clickEndingNote') })
+      return
+    }
+
+    setHairpinDraft({ type })
+    pendingHairpinSelectionKeyRef.current = null
+    addToast({ title: `Select ${hairpinLabel(type)} start`, message: t('scoreEditor.clickFirstNote') })
+  }
+
+  function handleHairpinNoteSelection(ref: EditableNoteRef) {
+    if (!hairpinDraft) return
+
+    if (!hairpinDraft.start) {
+      setHairpinDraft({ ...hairpinDraft, start: ref })
+      pendingHairpinSelectionKeyRef.current = editableNoteRefKey(ref)
+      addToast({ title: `${hairpinLabel(hairpinDraft.type)} start selected`, message: t('scoreEditor.clickEndingNote') })
+      return
+    }
+
+    const start = hairpinDraft.start
+    applyXmlOperation(
+      `${hairpinLabel(hairpinDraft.type)} hairpin applied`,
+      (xml) => addHairpin(xml, hairpinDraft.type, start, ref),
+    )
+    setHairpinDraft(null)
+    pendingHairpinSelectionKeyRef.current = null
+    setMode('select')
+  }
+
   function undoXmlEdit() {
     const currentXml = workingXmlByScoreId[scoreId]
     const currentHistory = historyByScoreId[scoreId]
@@ -1300,6 +1475,8 @@ export function ScoreMusicXmlPage() {
       },
     }))
     setSlurDraft(null)
+    setHairpinDraft(null)
+    pendingHairpinSelectionKeyRef.current = null
     addToast({ title: t('scoreEditor.undoToast') })
   }
 
@@ -1318,6 +1495,8 @@ export function ScoreMusicXmlPage() {
       },
     }))
     setSlurDraft(null)
+    setHairpinDraft(null)
+    pendingHairpinSelectionKeyRef.current = null
     addToast({ title: t('scoreEditor.redoToast') })
   }
 
@@ -1327,6 +1506,8 @@ export function ScoreMusicXmlPage() {
     setHistoryByScoreId((prev) => ({ ...prev, [scoreId]: { past: [], future: [] } }))
     setSelectedNote(null)
     setSlurDraft(null)
+    setHairpinDraft(null)
+    pendingHairpinSelectionKeyRef.current = null
     setMode('select')
     addToast({ title: t('scoreEditor.resetToast') })
   }
@@ -1401,6 +1582,8 @@ export function ScoreMusicXmlPage() {
             onClick={() => {
               setMode('select')
               setSlurDraft(null)
+              setHairpinDraft(null)
+              pendingHairpinSelectionKeyRef.current = null
             }}
           />
           <ToolButton
@@ -1410,6 +1593,8 @@ export function ScoreMusicXmlPage() {
             onClick={() => {
               setMode('pan')
               setSlurDraft(null)
+              setHairpinDraft(null)
+              pendingHairpinSelectionKeyRef.current = null
             }}
           />
 
@@ -1440,6 +1625,22 @@ export function ScoreMusicXmlPage() {
               >
                 <span className="text-base font-semibold leading-none">
                   {tool.symbol}
+                </span>
+              </SymbolButton>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 p-1 shadow-inner">
+            {HAIRPIN_TOOLS.map((tool) => (
+              <SymbolButton
+                key={tool.type}
+                title={`Create ${tool.label} hairpin`}
+                active={mode === 'hairpin' && hairpinDraft?.type === tool.type}
+                className="w-auto min-w-14 px-2.5 text-xs font-semibold"
+                onClick={() => applyHairpin(tool.type)}
+              >
+                <span className="whitespace-nowrap leading-none">
+                  {tool.label} {tool.symbol}
                 </span>
               </SymbolButton>
             ))}
@@ -1548,9 +1749,11 @@ export function ScoreMusicXmlPage() {
               <div className="mt-1 text-sm font-medium text-slate-900">
                 {mode === 'slur'
                   ? t('scoreEditor.slurEndpointSelection')
-                  : mode === 'pan'
-                    ? t('scoreEditor.pan')
-                    : t('scoreEditor.select')}
+                  : mode === 'hairpin'
+                    ? `${hairpinDraft ? hairpinLabel(hairpinDraft.type) : 'Hairpin'} endpoint selection`
+                    : mode === 'pan'
+                      ? t('scoreEditor.pan')
+                      : t('scoreEditor.select')}
               </div>
             </div>
             {slurDraft && (
@@ -1558,6 +1761,16 @@ export function ScoreMusicXmlPage() {
                 <div className="text-xs font-medium text-slate-500">{t('scoreEditor.slurStart')}</div>
                 <div className="mt-1 text-sm text-slate-700">
                   {noteLabel(slurDraft.start)}
+                </div>
+              </div>
+            )}
+            {hairpinDraft?.start && (
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <div className="text-xs font-medium text-slate-500">
+                  {hairpinLabel(hairpinDraft.type)} start
+                </div>
+                <div className="mt-1 text-sm text-slate-700">
+                  {noteLabel(hairpinDraft.start)}
                 </div>
               </div>
             )}
