@@ -151,7 +151,8 @@ test("POST /scores/upload: PDF upload starts a conversion job", async () => {
   const baseURL = await harness.baseURLPromise;
   const originalFetch = global.fetch;
   global.fetch = async (url, options) => {
-    if (String(url).startsWith("http://127.0.0.1:8000/") && options?.method === "POST") {
+    const target = String(url);
+    if (!target.startsWith(baseURL) && target.endsWith("/upload") && options?.method === "POST") {
       return new Response(JSON.stringify({ job_id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }), {
         status: 200,
         headers: { "content-type": "application/json" },
@@ -188,7 +189,8 @@ test("POST /scores/upload: reports a clear error when OMR service is unavailable
   const baseURL = await harness.baseURLPromise;
   const originalFetch = global.fetch;
   global.fetch = async (url, options) => {
-    if (String(url).startsWith("http://127.0.0.1:8000/") && options?.method === "POST") {
+    const target = String(url);
+    if (!target.startsWith(baseURL) && target.endsWith("/upload") && options?.method === "POST") {
       throw new TypeError("fetch failed");
     }
     return originalFetch(url, options);
