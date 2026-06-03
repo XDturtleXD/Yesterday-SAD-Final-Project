@@ -47,6 +47,15 @@ const getScoreById = async (req, res, next) => {
   }
 };
 
+const updateScoreMusicXml = async (req, res, next) => {
+  try {
+    const score = await scoreService.updateScoreMusicXml(req.score, req.body.xmlContent);
+    return sendSuccess(res, score, "Score MusicXML updated successfully");
+  } catch (error) {
+    return next(error);
+  }
+};
+
 const uploadScore = async (req, res, next) => {
   try {
     const { projectId } = req.params;
@@ -145,6 +154,7 @@ const deleteScore = async (req, res, next) => {
 module.exports = {
   getProjectScores,
   getScoreById,
+  updateScoreMusicXml,
   uploadScore,
   uploadScoreFile,
   deleteScore,

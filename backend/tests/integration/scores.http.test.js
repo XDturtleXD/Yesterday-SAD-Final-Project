@@ -389,6 +389,82 @@ test("DELETE /scores/:scoreId: concertmaster deletes a score", async () => {
   assert.equal(refetch.status, 404);
 });
 
+test("PATCH /scores/:scoreId/musicxml: concertmaster saves inline MusicXML", async () => {
+  const { owner, projectId } = await setupScenario();
+  const upload = await harness.request("POST", `/api/projects/${projectId}/scores`, {
+    token: owner.token,
+    body: {
+      sectionId: SECTION_FIRST_VIOLIN,
+      title: "Save me",
+      piece: { title: "Editable piece" },
+      xmlContent: "<score-partwise><part/></score-partwise>",
+    },
+  });
+  const scoreId = upload.body.data.id;
+  const nextXml = "<score-partwise><part><measure number=\"1\"/></part></score-partwise>";
+
+  const saved = await harness.request("PATCH", `/api/scores/${scoreId}/musicxml`, {
+    token: owner.token,
+    body: { xmlContent: nextXml },
+  });
+
+  assert.equal(saved.status, 200);
+  assert.equal(saved.body.success, true);
+  assert.equal(saved.body.data.id, scoreId);
+  assert.equal(saved.body.data.xml_content, nextXml);
+
+  const refetched = await harness.request("GET", `/api/scores/${scoreId}`, {
+    token: owner.token,
+  });
+  assert.equal(refetched.status, 200);
+  assert.equal(refetched.body.data.xml_content, nextXml);
+});
+
+test("PATCH /scores/:scoreId/musicxml: accepts large MusicXML payloads", async () => {
+  const { owner, projectId } = await setupScenario();
+  const upload = await harness.request("POST", `/api/projects/${projectId}/scores`, {
+    token: owner.token,
+    body: {
+      sectionId: SECTION_FIRST_VIOLIN,
+      title: "Large save",
+      piece: { title: "Large editable piece" },
+      xmlContent: "<score-partwise><part/></score-partwise>",
+    },
+  });
+  const scoreId = upload.body.data.id;
+  const largeXml = `<score-partwise><part>${"<!-- large-save-payload -->".repeat(260000)}</part></score-partwise>`;
+
+  const saved = await harness.request("PATCH", `/api/scores/${scoreId}/musicxml`, {
+    token: owner.token,
+    body: { xmlContent: largeXml },
+  });
+
+  assert.notEqual(saved.status, 413);
+  assert.equal(saved.status, 200);
+  assert.equal(saved.body.data.xml_content.length, largeXml.length);
+});
+
+test("PATCH /scores/:scoreId/musicxml: 400 when xmlContent is missing", async () => {
+  const { owner, projectId } = await setupScenario();
+  const upload = await harness.request("POST", `/api/projects/${projectId}/scores`, {
+    token: owner.token,
+    body: {
+      sectionId: SECTION_FIRST_VIOLIN,
+      title: "Missing payload",
+      piece: { title: "Payload piece" },
+      xmlContent: "<score-partwise/>",
+    },
+  });
+
+  const response = await harness.request("PATCH", `/api/scores/${upload.body.data.id}/musicxml`, {
+    token: owner.token,
+    body: {},
+  });
+
+  assert.equal(response.status, 400);
+  assert.match(response.body.message, /xmlContent/);
+});
+
 test("DELETE /scores/:scoreId: principal can delete own section only", async () => {
   const { owner, projectId } = await setupScenario();
   const principal = seedUserWithToken(fake, { email: "delete-principal@example.test" });

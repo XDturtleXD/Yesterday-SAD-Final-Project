@@ -17,6 +17,13 @@ export function deleteScore(scoreId: string) {
   })
 }
 
+export function saveScoreMusicXml(scoreId: string, xmlContent: string) {
+  return apiRequest<ApiScore>(`/scores/${encodeURIComponent(scoreId)}/musicxml`, {
+    method: 'PATCH',
+    body: JSON.stringify({ xmlContent }),
+  })
+}
+
 /** Multipart upload — supports PDF (triggers OMR conversion) and MusicXML/XML */
 export async function uploadProjectScoreFile(
   projectId: string,
