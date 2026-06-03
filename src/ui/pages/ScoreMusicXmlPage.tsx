@@ -37,6 +37,7 @@ type ScoreXmlEntry = {
 
 type DynamicMark = 'pp' | 'p' | 'mp' | 'mf' | 'f' | 'ff'
 type BowingMark = 'up-bow' | 'down-bow'
+type ArticulationMark = 'staccato' | 'accent' | 'tenuto' | 'fermata'
 type SelectionMode = 'select' | 'pan' | 'slur'
 
 type EditableNoteRef = {
@@ -87,6 +88,12 @@ const SCORE_XML_MAP: Record<string, ScoreXmlEntry> = {
 }
 
 const DYNAMICS: DynamicMark[] = ['pp', 'p', 'mp', 'mf', 'f', 'ff']
+const ARTICULATION_TOOLS: Array<{ mark: ArticulationMark; label: string; symbol: string }> = [
+  { mark: 'staccato', label: 'Staccato', symbol: '·' },
+  { mark: 'accent', label: 'Accent', symbol: '>' },
+  { mark: 'tenuto', label: 'Tenuto', symbol: '-' },
+  { mark: 'fermata', label: 'Fermata', symbol: '𝄐' },
+]
 const HIGHLIGHT_COLOR = '#0284c7'
 const DEFAULT_MUSIC_COLOR = '#000000'
 const OSMD_BACKGROUND_RENDER_DELAY_MS = 650
@@ -402,6 +409,49 @@ function replaceBowing(xml: string, ref: EditableNoteRef, mark: BowingMark) {
   const technical = ensureChild(notations, 'technical')
 
   technical.appendChild(doc.createElement(mark))
+  return serializeMusicXml(doc)
+}
+
+function ensureNotations(note: Element) {
+  return ensureChild(note, 'notations')
+}
+
+function ensureArticulations(notations: Element) {
+  return ensureChild(notations, 'articulations')
+}
+
+function hasArticulation(note: Element, type: Exclude<ArticulationMark, 'fermata'>) {
+  return elementChildren(note, 'notations').some((notations) =>
+    elementChildren(notations, 'articulations').some(
+      (articulations) => elementChildren(articulations, type).length > 0,
+    ),
+  )
+}
+
+function hasFermata(note: Element) {
+  return elementChildren(note, 'notations').some(
+    (notations) => elementChildren(notations, 'fermata').length > 0,
+  )
+}
+
+function replaceArticulation(xml: string, ref: EditableNoteRef, type: ArticulationMark) {
+  const doc = parseMusicXml(xml)
+  const note = findXmlNote(doc, ref)
+  if (!note) throw new Error('Could not find the selected note in MusicXML.')
+  if (isRestNote(note)) return xml
+
+  const notations = ensureNotations(note)
+  if (type === 'fermata') {
+    if (hasFermata(note)) return xml
+    const fermata = doc.createElement('fermata')
+    fermata.setAttribute('type', 'upright')
+    notations.appendChild(fermata)
+    return serializeMusicXml(doc)
+  }
+
+  if (hasArticulation(note, type)) return xml
+  const articulations = ensureArticulations(notations)
+  articulations.appendChild(doc.createElement(type))
   return serializeMusicXml(doc)
 }
 
@@ -1183,6 +1233,20 @@ export function ScoreMusicXmlPage() {
     )
   }
 
+  function applyArticulation(type: ArticulationMark) {
+    if (!selectedNote) {
+      addToast({ title: t('scoreEditor.noNoteSelected'), message: t('scoreEditor.clickCloserToNote') })
+      return
+    }
+
+    const ref = selectedNote
+    const label = ARTICULATION_TOOLS.find((tool) => tool.mark === type)?.label ?? type
+    applyXmlOperation(
+      `${label} applied`,
+      (xml) => replaceArticulation(xml, ref, type),
+    )
+  }
+
   function eraseSelectedMarkings() {
     if (!selectedNote) return
     const ref = selectedNote
@@ -1361,6 +1425,21 @@ export function ScoreMusicXmlPage() {
               >
                 <span className="font-serif text-base font-bold italic leading-none">
                   {mark}
+                </span>
+              </SymbolButton>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 p-1 shadow-inner">
+            {ARTICULATION_TOOLS.map((tool) => (
+              <SymbolButton
+                key={tool.mark}
+                title={`Apply ${tool.label}`}
+                disabled={!selectedNote}
+                onClick={() => applyArticulation(tool.mark)}
+              >
+                <span className="text-base font-semibold leading-none">
+                  {tool.symbol}
                 </span>
               </SymbolButton>
             ))}
