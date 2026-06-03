@@ -140,6 +140,30 @@ function isRestNote(note: Element) {
   return elementChildren(note, 'rest').length > 0
 }
 
+function sanitizeRestPlacementForRender(xml: string) {
+  try {
+    const doc = parseMusicXml(xml)
+    const notes = Array.from(doc.getElementsByTagName('*')).filter((element) =>
+      isElementNamed(element, 'note') && isRestNote(element),
+    )
+
+    notes.forEach((note) => {
+      // This sanitizer only affects render-time rest placement for Audiveris MusicXML.
+      note.removeAttribute('default-y')
+      note.removeAttribute('relative-y')
+
+      elementChildren(note, 'rest').forEach((rest) => {
+        elementChildren(rest, 'display-step').forEach((child) => child.remove())
+        elementChildren(rest, 'display-octave').forEach((child) => child.remove())
+      })
+    })
+
+    return serializeMusicXml(doc)
+  } catch {
+    return xml
+  }
+}
+
 function getChildText(parent: Element, localName: string) {
   return elementChildren(parent, localName)[0]?.textContent?.trim() || undefined
 }
@@ -933,6 +957,7 @@ export function ScoreMusicXmlPage() {
         }
 
         const osmd = new OpenSheetMusicDisplay(container, {
+          alignRests: 2,
           autoResize: true,
           backend: 'svg',
           drawComposer: true,
@@ -946,7 +971,8 @@ export function ScoreMusicXmlPage() {
         osmdRef.current = osmd
         osmd.loadUrlTimeout = 15000
 
-        await osmd.load(xml, xmlEntry.title)
+        const renderXml = sanitizeRestPlacementForRender(xml)
+        await osmd.load(renderXml, xmlEntry.title)
         if (cancelled) return
         osmd.Zoom = zoomRef.current / 100
         osmd.render()
@@ -985,7 +1011,8 @@ export function ScoreMusicXmlPage() {
 
     async function applyWorkingXmlUpdate() {
       try {
-        await osmd.load(workingXml, xmlEntry.title)
+        const renderXml = sanitizeRestPlacementForRender(workingXml)
+        await osmd.load(renderXml, xmlEntry.title)
         if (cancelled || renderToken !== backgroundRenderTokenRef.current) return
         osmd.Zoom = zoomRef.current / 100
         osmd.renderAndScrollBack()
