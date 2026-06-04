@@ -7,8 +7,8 @@ import { Badge } from '../primitives/Badge'
 import { Avatar } from '../primitives/Avatar'
 import { Button } from '../primitives/Button'
 import { Card } from '../primitives/Card'
-import { roleLabel, memberRoleLabel, useTranslation } from '../../i18n'
-import { memberSectionLabel } from '../../utils/sectionLabels'
+import { roleLabel, useTranslation } from '../../i18n'
+import { memberPositionLabel, memberSectionLabel } from '../../utils/sectionLabels'
 import { FolderKanban, Pencil, UserRound } from 'lucide-react'
 
 const MAX_AVATAR_FILE_BYTES = 300 * 1024
@@ -313,7 +313,7 @@ export function UserProfilePage() {
                     </Button>
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2">
-                    <Badge>{t('profile.roleLabel')}: {m ? memberRoleLabel(m.role, language) : '—'}</Badge>
+                    <Badge>{t('profile.roleLabel')}: {memberPositionLabel(m, language)}</Badge>
                     <Badge>{t('profile.section')}: {m ? memberSectionLabel(m, language) : '—'}</Badge>
                   </div>
                 </div>

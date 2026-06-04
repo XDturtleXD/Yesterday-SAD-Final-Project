@@ -36,3 +36,21 @@ export function memberSectionLabel(
   }
   return SECTION_LABELS_BY_CODE[member.sectionCode] ?? (member.sectionName || 'Unassigned')
 }
+
+export function memberPositionLabel(
+  member: Pick<ProjectMember, 'role' | 'sectionCode' | 'sectionName'> | null | undefined,
+  language: LanguagePreference = 'en',
+) {
+  if (!member) return '—'
+
+  if (member.role === 'concertmaster') {
+    return language === 'zh' ? '總負責人' : 'Concertmaster'
+  }
+
+  const section = memberSectionLabel(member, language)
+  if (member.role === 'principal') {
+    return language === 'zh' ? `${section}首席` : `${section} Principal`
+  }
+
+  return language === 'zh' ? `${section}團員` : `${section} Member`
+}

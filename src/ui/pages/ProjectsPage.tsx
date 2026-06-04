@@ -6,8 +6,8 @@ import { Badge } from '../primitives/Badge'
 import { Button } from '../primitives/Button'
 import { Card } from '../primitives/Card'
 import { Modal } from '../primitives/Modal'
-import { memberRoleLabel, roleLabel, useTranslation } from '../../i18n'
-import { memberSectionLabel, sectionLabel } from '../../utils/sectionLabels'
+import { roleLabel, useTranslation } from '../../i18n'
+import { memberPositionLabel, sectionLabel } from '../../utils/sectionLabels'
 import { Copy, FolderPlus, LogIn, Music2 } from 'lucide-react'
 
 export function ProjectsPage() {
@@ -76,11 +76,10 @@ export function ProjectsPage() {
         {projects.map((p) => {
           const myMember = p.members.find((m) => m.userId === currentUser.id)
           const myRole = myMember
-            ? memberRoleLabel(myMember.role, language)
+            ? memberPositionLabel(myMember, language)
             : currentUser.role === 'admin'
               ? roleLabel(currentUser.role, language)
               : '—'
-          const mySection = myMember ? memberSectionLabel(myMember, language) : '—'
           const lastCommit = latestCommit(p)
           const lastAuthor = lastCommit
             ? getMemberDisplayName(lastCommit.authorUserId)
@@ -103,7 +102,7 @@ export function ProjectsPage() {
                   </div>
                   <div className="mt-1 line-clamp-2 text-sm text-slate-600">{p.description}</div>
                   <div className="mt-3 text-xs text-slate-500">
-                    {myRole} · {mySection}
+                    {myRole}
                     {p.detailLoaded ? ` · ${p.scores.length} ${t('projects.scores')}` : ''}
                   </div>
                 </div>

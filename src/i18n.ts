@@ -56,7 +56,7 @@ export const translations = {
 
     'role.regular': 'regular',
     'role.admin': 'admin',
-    'memberRole.concertmaster': 'Manager',
+    'memberRole.concertmaster': 'Concertmaster',
     'memberRole.principal': 'Principal',
     'memberRole.member': 'Member',
     'inviteRole.principal': 'Section principal',

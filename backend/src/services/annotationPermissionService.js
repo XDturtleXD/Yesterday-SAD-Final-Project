@@ -20,15 +20,11 @@ const canCreateSharedAnnotation = (score, membership, annotation = {}) => {
   if (!canViewScore(score, membership)) return false;
   if (!membership) return false;
 
-  if (isAdminRole(membership.role)) {
-    return true;
-  }
-
   if (membership.role !== "principal") {
     return false;
   }
 
-  const targetSectionId = annotationSectionId(annotation) || (score && score.section_id);
+  const targetSectionId = annotationSectionId(annotation);
   return (
     !!score &&
     score.section_id === membership.section_id &&
@@ -56,7 +52,11 @@ const canReadAnnotation = (score, membership, requestUser, annotation) => {
   }
 
   if (annotation.scope === "shared") {
-    return true;
+    return (
+      !!membership &&
+      !!membership.section_id &&
+      annotationSectionId(annotation) === membership.section_id
+    );
   }
 
   return false;

@@ -7,8 +7,8 @@ import { Button } from '../primitives/Button'
 import { Card } from '../primitives/Card'
 import { Modal } from '../primitives/Modal'
 import { cn } from '../utils/cn'
-import { memberRoleLabel, roleLabel, useTranslation } from '../../i18n'
-import { memberSectionLabel } from '../../utils/sectionLabels'
+import { roleLabel, useTranslation } from '../../i18n'
+import { memberPositionLabel } from '../../utils/sectionLabels'
 import { BranchesPanel } from './project/BranchesPanel'
 import { FullScorePanel } from './project/FullScorePanel'
 import { MembersPanel } from './project/MembersPanel'
@@ -64,11 +64,10 @@ export function ProjectDetailPage() {
     [project, currentUser.id],
   )
   const myRole = myMember
-    ? memberRoleLabel(myMember.role, language)
+    ? memberPositionLabel(myMember, language)
     : currentUser.role === 'admin'
       ? roleLabel(currentUser.role, language)
       : '—'
-  const mySection = myMember ? memberSectionLabel(myMember, language) : '—'
   const currentCommit = project?.commits.find(
     (c) => c.id === project.branches.find((b) => b.id === project.currentBranchId)?.headCommitId,
   )
@@ -147,7 +146,6 @@ export function ProjectDetailPage() {
           <div className="mt-1 text-sm text-slate-600">{project.description}</div>
           <div className="mt-2 text-xs text-slate-500">
             {project.members.length} {t('projects.members')} · {project.scores.length} {t('projects.scores')} · {myRole}
-            {mySection !== '—' ? ` · ${mySection}` : ''}
           </div>
         </div>
 

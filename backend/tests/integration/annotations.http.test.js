@@ -46,9 +46,22 @@ const setupScenario = async () => {
     email: "other-member@example.test",
     name: "Other Member",
   });
+  const secondViolinMember = seedUserWithToken(fake, {
+    email: "second-violin-member@example.test",
+    name: "Second Violin Member",
+  });
+  const principalA = seedUserWithToken(fake, {
+    email: "principal-a@example.test",
+    name: "First Violin Principal",
+  });
   const principal = seedUserWithToken(fake, {
     email: "principal@example.test",
     name: "Principal",
+  });
+  const platformAdmin = seedUserWithToken(fake, {
+    email: "admin@example.test",
+    name: "Platform Admin",
+    systemRole: "platform_admin",
   });
 
   const created = await harness.request("POST", "/api/projects", {
@@ -59,6 +72,8 @@ const setupScenario = async () => {
 
   seedMember(projectId, member, SECTION_FIRST_VIOLIN, "member");
   seedMember(projectId, otherMember, SECTION_FIRST_VIOLIN, "member");
+  seedMember(projectId, secondViolinMember, SECTION_SECOND_VIOLIN, "member");
+  seedMember(projectId, principalA, SECTION_FIRST_VIOLIN, "principal");
   seedMember(projectId, principal, SECTION_SECOND_VIOLIN, "principal");
 
   const scoreA = await harness.request("POST", `/api/projects/${projectId}/scores`, {
@@ -85,7 +100,10 @@ const setupScenario = async () => {
     owner,
     member,
     otherMember,
+    secondViolinMember,
+    principalA,
     principal,
+    platformAdmin,
     projectId,
     scoreAId: scoreA.body.data.id,
     scoreBId: scoreB.body.data.id,
@@ -151,16 +169,62 @@ test("principal creates shared annotation for own section", async () => {
   assert.equal(response.body.data.annotationType, "bowing");
 });
 
+test("principal cannot create shared annotation for another section id", async () => {
+  const { principalA, scoreAId } = await setupScenario();
+
+  const response = await harness.request("POST", `/api/scores/${scoreAId}/annotations`, {
+    token: principalA.token,
+    body: annotationBody({
+      scope: "shared",
+      sectionId: SECTION_SECOND_VIOLIN,
+    }),
+  });
+
+  assert.equal(response.status, 403);
+});
+
+test("concertmaster cannot create section-shared annotation by default", async () => {
+  const { owner, scoreAId } = await setupScenario();
+
+  const response = await harness.request("POST", `/api/scores/${scoreAId}/annotations`, {
+    token: owner.token,
+    body: annotationBody({
+      scope: "shared",
+      sectionId: SECTION_FIRST_VIOLIN,
+    }),
+  });
+
+  assert.equal(response.status, 403);
+});
+
+test("platform admin cannot create section-shared annotation by default", async () => {
+  const { platformAdmin, scoreAId } = await setupScenario();
+
+  const response = await harness.request("POST", `/api/scores/${scoreAId}/annotations`, {
+    token: platformAdmin.token,
+    body: annotationBody({
+      scope: "shared",
+      sectionId: SECTION_FIRST_VIOLIN,
+    }),
+  });
+
+  assert.equal(response.status, 403);
+});
+
 test("GET returns shared and own private annotations", async () => {
-  const { owner, member, otherMember, scoreAId } = await setupScenario();
+  const { principalA, member, otherMember, scoreAId } = await setupScenario();
 
   const ownPrivate = await harness.request("POST", `/api/scores/${scoreAId}/annotations`, {
     token: member.token,
     body: annotationBody({ payload: { mark: "p" } }),
   });
   const shared = await harness.request("POST", `/api/scores/${scoreAId}/annotations`, {
-    token: owner.token,
-    body: annotationBody({ scope: "shared", payload: { mark: "ff" } }),
+    token: principalA.token,
+    body: annotationBody({
+      scope: "shared",
+      sectionId: SECTION_FIRST_VIOLIN,
+      payload: { mark: "ff" },
+    }),
   });
   await harness.request("POST", `/api/scores/${scoreAId}/annotations`, {
     token: otherMember.token,
@@ -175,6 +239,48 @@ test("GET returns shared and own private annotations", async () => {
   assert.deepEqual(
     response.body.data.map((annotation) => annotation.id).sort(),
     [ownPrivate.body.data.id, shared.body.data.id].sort(),
+  );
+});
+
+test("different-section member cannot read section-shared annotation", async () => {
+  const { principalA, secondViolinMember, scoreAId } = await setupScenario();
+
+  await harness.request("POST", `/api/scores/${scoreAId}/annotations`, {
+    token: principalA.token,
+    body: annotationBody({
+      scope: "shared",
+      sectionId: SECTION_FIRST_VIOLIN,
+      payload: { mark: "ff" },
+    }),
+  });
+
+  const response = await harness.request("GET", `/api/scores/${scoreAId}/annotations`, {
+    token: secondViolinMember.token,
+  });
+
+  assert.equal(response.status, 403);
+});
+
+test("section-shared annotation is not globally visible to concertmaster", async () => {
+  const { owner, principal, scoreBId } = await setupScenario();
+
+  const shared = await harness.request("POST", `/api/scores/${scoreBId}/annotations`, {
+    token: principal.token,
+    body: annotationBody({
+      scope: "shared",
+      sectionId: SECTION_SECOND_VIOLIN,
+      payload: { mark: "ff" },
+    }),
+  });
+
+  const response = await harness.request("GET", `/api/scores/${scoreBId}/annotations`, {
+    token: owner.token,
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(
+    response.body.data.some((annotation) => annotation.id === shared.body.data.id),
+    false,
   );
 });
 

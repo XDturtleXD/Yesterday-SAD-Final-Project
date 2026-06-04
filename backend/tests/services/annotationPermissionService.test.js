@@ -32,6 +32,11 @@ const memberInA = {
   section_id: SECTION_A,
 };
 
+const memberInB = {
+  role: "member",
+  section_id: SECTION_B,
+};
+
 const principalInA = {
   role: "principal",
   section_id: SECTION_A,
@@ -40,6 +45,11 @@ const principalInA = {
 const concertmaster = {
   role: "concertmaster",
   section_id: SECTION_A,
+};
+
+const platformAdmin = {
+  role: "platform_admin",
+  section_id: null,
 };
 
 const privateAnnotation = {
@@ -100,24 +110,66 @@ test("principal cannot create shared annotation for another section", () => {
   );
 });
 
-test("concertmaster can create shared annotation", () => {
+test("principal cannot create shared annotation with another section id", () => {
   assert.equal(
-    canCreateAnnotation(scoreInB, concertmaster, ownerUser, {
+    canCreateAnnotation(scoreInA, principalInA, ownerUser, {
       scope: "shared",
       owner_user_id: ownerUser.id,
       section_id: SECTION_B,
     }),
-    true,
+    false,
   );
 });
 
-test("private annotation readable only by owner", () => {
+test("concertmaster cannot create section-shared annotation by default", () => {
+  assert.equal(
+    canCreateAnnotation(scoreInA, concertmaster, ownerUser, {
+      scope: "shared",
+      owner_user_id: ownerUser.id,
+      section_id: SECTION_A,
+    }),
+    false,
+  );
+});
+
+test("platform admin cannot create section-shared annotation by default", () => {
+  assert.equal(
+    canCreateAnnotation(scoreInA, platformAdmin, ownerUser, {
+      scope: "shared",
+      owner_user_id: ownerUser.id,
+      section_id: SECTION_A,
+    }),
+    false,
+  );
+});
+
+test("owner can read own private annotation", () => {
   assert.equal(canReadAnnotation(scoreInA, memberInA, ownerUser, privateAnnotation), true);
+});
+
+test("another user cannot read someone else's private annotation", () => {
   assert.equal(canReadAnnotation(scoreInA, memberInA, otherUser, privateAnnotation), false);
 });
 
-test("shared annotation readable by score-visible members", () => {
+test("same-section member can read shared annotation", () => {
   assert.equal(canReadAnnotation(scoreInA, memberInA, otherUser, sharedAnnotation), true);
+});
+
+test("different-section member cannot read shared annotation", () => {
+  assert.equal(canReadAnnotation(scoreInA, memberInB, otherUser, sharedAnnotation), false);
+});
+
+test("shared annotation is not globally visible through project-level score access", () => {
+  assert.equal(
+    canReadAnnotation(scoreInB, concertmaster, otherUser, {
+      ...sharedAnnotation,
+      section_id: SECTION_B,
+    }),
+    false,
+  );
+});
+
+test("shared annotation must match the current member section", () => {
   assert.equal(canReadAnnotation(scoreInB, memberInA, otherUser, sharedAnnotation), false);
 });
 
