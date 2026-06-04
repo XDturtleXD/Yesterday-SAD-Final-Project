@@ -139,6 +139,62 @@ test("member creates private annotation successfully", async () => {
   assert.deepEqual(response.body.data.payload, { mark: "mf" });
 });
 
+test("member creates private bowing annotation without mutating score XML", async () => {
+  const { member, otherMember, projectId, scoreAId } = await setupScenario();
+  const beforeScore = fake.rows("scores").find((score) => score.id === scoreAId);
+  const targetRef = {
+    scoreId: scoreAId,
+    partId: "P1",
+    measureNumber: 8,
+    measureArrayIndex: 7,
+    noteIndex: 2,
+    staff: "1",
+    voice: "1",
+    pitchStep: "D",
+    pitchOctave: "4",
+    duration: "1",
+  };
+
+  const created = await harness.request("POST", `/api/scores/${scoreAId}/annotations`, {
+    token: member.token,
+    body: annotationBody({
+      scope: "private",
+      annotationType: "bowing",
+      targetRef,
+      payload: { bowingType: "up-bow" },
+    }),
+  });
+
+  assert.equal(created.status, 201);
+  assert.equal(created.body.data.projectId, projectId);
+  assert.equal(created.body.data.scoreId, scoreAId);
+  assert.equal(created.body.data.ownerUserId, member.user.id);
+  assert.equal(created.body.data.sectionId, SECTION_FIRST_VIOLIN);
+  assert.equal(created.body.data.scope, "private");
+  assert.equal(created.body.data.annotationType, "bowing");
+  assert.deepEqual(created.body.data.targetRef, targetRef);
+  assert.deepEqual(created.body.data.payload, { bowingType: "up-bow" });
+  assert.equal(fake.rows("scores").find((score) => score.id === scoreAId).xml_content, beforeScore.xml_content);
+
+  const visibleToOwner = await harness.request("GET", `/api/scores/${scoreAId}/annotations`, {
+    token: member.token,
+  });
+  assert.equal(visibleToOwner.status, 200);
+  assert.equal(
+    visibleToOwner.body.data.some((annotation) => annotation.id === created.body.data.id),
+    true,
+  );
+
+  const hiddenFromOtherMember = await harness.request("GET", `/api/scores/${scoreAId}/annotations`, {
+    token: otherMember.token,
+  });
+  assert.equal(hiddenFromOtherMember.status, 200);
+  assert.equal(
+    hiddenFromOtherMember.body.data.some((annotation) => annotation.id === created.body.data.id),
+    false,
+  );
+});
+
 test("member cannot create shared annotation", async () => {
   const { member, scoreAId } = await setupScenario();
 

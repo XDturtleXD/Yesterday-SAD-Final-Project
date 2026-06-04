@@ -55,7 +55,7 @@ async function annotationRequest<T>(path: string, options: RequestInit = {}) {
 }
 
 export function listScoreAnnotations(scoreId: string) {
-  return apiRequest<ScoreAnnotation[]>(`/scores/${encodeURIComponent(scoreId)}/annotations`)
+  return annotationRequest<ScoreAnnotation[]>(`/scores/${encodeURIComponent(scoreId)}/annotations`)
 }
 
 export function createScoreAnnotation(scoreId: string, payload: CreateScoreAnnotationPayload) {

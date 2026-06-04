@@ -1270,7 +1270,10 @@ export function ScoreMusicXmlPage() {
       })
       .catch((err) => {
         if (cancelled) return
-        const message = err instanceof Error ? err.message : 'Unable to load annotation layers'
+        const isAnnotationError = err instanceof annotationsApi.AnnotationApiError
+        const details = isAnnotationError ? formatAnnotationErrorDetails(err.details) : undefined
+        const baseMessage = err instanceof Error ? err.message : 'Unable to load annotation layers'
+        const message = details ? `${baseMessage} - ${details}` : baseMessage
         setAnnotationErrorByScoreId((prev) => ({ ...prev, [scoreId]: message }))
         setAnnotationsByScoreId((prev) => ({ ...prev, [scoreId]: EMPTY_ANNOTATION_LAYERS }))
         addToastRef.current({
