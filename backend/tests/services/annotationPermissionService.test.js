@@ -151,26 +151,32 @@ test("another user cannot read someone else's private annotation", () => {
   assert.equal(canReadAnnotation(scoreInA, memberInA, otherUser, privateAnnotation), false);
 });
 
-test("same-section member can read shared annotation", () => {
+test("member can read shared annotation when they can view the score", () => {
   assert.equal(canReadAnnotation(scoreInA, memberInA, otherUser, sharedAnnotation), true);
 });
 
-test("different-section member cannot read shared annotation", () => {
+test("member who cannot view the score cannot read shared annotation", () => {
   assert.equal(canReadAnnotation(scoreInA, memberInB, otherUser, sharedAnnotation), false);
 });
 
-test("shared annotation is not globally visible through project-level score access", () => {
+test("project-level viewer can read shared annotation when they can view the score", () => {
   assert.equal(
     canReadAnnotation(scoreInB, concertmaster, otherUser, {
       ...sharedAnnotation,
       section_id: SECTION_B,
     }),
-    false,
+    true,
   );
 });
 
-test("shared annotation must match the current member section", () => {
-  assert.equal(canReadAnnotation(scoreInB, memberInA, otherUser, sharedAnnotation), false);
+test("shared annotation read follows score visibility, not membership section equality", () => {
+  assert.equal(
+    canReadAnnotation(scoreInB, platformAdmin, otherUser, {
+      ...sharedAnnotation,
+      section_id: SECTION_B,
+    }),
+    true,
+  );
 });
 
 test("users cannot update/delete another user's private annotation", () => {

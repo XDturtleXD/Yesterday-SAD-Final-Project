@@ -298,7 +298,7 @@ test("GET returns shared and own private annotations", async () => {
   );
 });
 
-test("different-section member cannot read section-shared annotation", async () => {
+test("member who cannot view score cannot read shared annotation", async () => {
   const { principalA, secondViolinMember, scoreAId } = await setupScenario();
 
   await harness.request("POST", `/api/scores/${scoreAId}/annotations`, {
@@ -317,7 +317,7 @@ test("different-section member cannot read section-shared annotation", async () 
   assert.equal(response.status, 403);
 });
 
-test("section-shared annotation is not globally visible to concertmaster", async () => {
+test("concertmaster can read shared annotation when they can view the score", async () => {
   const { owner, principal, scoreBId } = await setupScenario();
 
   const shared = await harness.request("POST", `/api/scores/${scoreBId}/annotations`, {
@@ -336,7 +336,7 @@ test("section-shared annotation is not globally visible to concertmaster", async
   assert.equal(response.status, 200);
   assert.equal(
     response.body.data.some((annotation) => annotation.id === shared.body.data.id),
-    false,
+    true,
   );
 });
 

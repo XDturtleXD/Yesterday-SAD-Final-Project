@@ -52,11 +52,7 @@ const canReadAnnotation = (score, membership, requestUser, annotation) => {
   }
 
   if (annotation.scope === "shared") {
-    return (
-      !!membership &&
-      !!membership.section_id &&
-      annotationSectionId(annotation) === membership.section_id
-    );
+    return true;
   }
 
   return false;
