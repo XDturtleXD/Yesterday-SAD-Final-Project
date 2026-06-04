@@ -23,6 +23,14 @@ const ensureSupabaseReady = () => {
   }
 };
 
+const logAnnotationServiceError = (operation, error) => {
+  if (process.env.NODE_ENV === "production" || process.env.NODE_ENV === "test") {
+    return;
+  }
+
+  console.error(`[annotationService] ${operation} failed`, error);
+};
+
 const isPlainObject = (value) => {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 };
@@ -175,6 +183,7 @@ const listVisibleAnnotations = async (score, membership, requestUser) => {
     .order("created_at", { ascending: true });
 
   if (error) {
+    logAnnotationServiceError("listVisibleAnnotations", error);
     throw new AppError("Failed to fetch annotations", 500, error);
   }
 
@@ -197,6 +206,7 @@ const createAnnotation = async (score, membership, requestUser, body) => {
     .single();
 
   if (error) {
+    logAnnotationServiceError("createAnnotation", error);
     throw new AppError("Failed to create annotation", 500, error);
   }
 
