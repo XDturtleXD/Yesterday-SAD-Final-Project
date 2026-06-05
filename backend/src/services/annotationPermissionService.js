@@ -9,8 +9,21 @@ const annotationOwnerId = (annotation) =>
 const annotationSectionId = (annotation) =>
   annotation && (annotation.section_id || annotation.sectionId);
 
+const isOwnSectionScore = (score, membership) =>
+  !!score && !!membership && score.section_id === membership.section_id;
+
+const canAnnotateOwnSectionScore = (score, membership) => {
+  if (!score || !membership) return false;
+  if (isAdminRole(membership.role)) return true;
+  if (membership.role === "member" || membership.role === "principal") {
+    return isOwnSectionScore(score, membership);
+  }
+  return false;
+};
+
 const canCreatePrivateAnnotation = (score, membership, requestUser, annotation = {}) => {
   if (!requestUser || !canViewScore(score, membership)) return false;
+  if (!canAnnotateOwnSectionScore(score, membership)) return false;
 
   const ownerUserId = annotationOwnerId(annotation);
   return !ownerUserId || ownerUserId === requestUser.id;
@@ -52,7 +65,10 @@ const canReadAnnotation = (score, membership, requestUser, annotation) => {
   }
 
   if (annotation.scope === "shared") {
-    return true;
+    if (isAdminRole(membership?.role)) {
+      return true;
+    }
+    return annotationSectionId(annotation) === membership?.section_id;
   }
 
   return false;
@@ -64,7 +80,7 @@ const canUpdateAnnotation = (score, membership, requestUser, annotation) => {
   }
 
   if (annotation.scope === "private") {
-    return annotationOwnerId(annotation) === requestUser.id;
+    return canCreatePrivateAnnotation(score, membership, requestUser, annotation);
   }
 
   return canCreateSharedAnnotation(score, membership, annotation);
@@ -109,5 +125,6 @@ module.exports = {
   assertCanDeleteAnnotation,
   _helpers: {
     isAdminRole,
+    canAnnotateOwnSectionScore,
   },
 };

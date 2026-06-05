@@ -139,6 +139,33 @@ test("member creates private annotation successfully", async () => {
   assert.deepEqual(response.body.data.payload, { mark: "mf" });
 });
 
+test("member cannot create private annotation on another section score", async () => {
+  const { secondViolinMember, scoreAId } = await setupScenario();
+
+  const response = await harness.request("POST", `/api/scores/${scoreAId}/annotations`, {
+    token: secondViolinMember.token,
+    body: annotationBody(),
+  });
+
+  assert.equal(response.status, 403);
+});
+
+test("principal cannot create private annotation on another section score", async () => {
+  const { principal, scoreAId } = await setupScenario();
+
+  const response = await harness.request("POST", `/api/scores/${scoreAId}/annotations`, {
+    token: principal.token,
+    body: annotationBody({
+      scope: "private",
+      sectionId: SECTION_FIRST_VIOLIN,
+      annotationType: "bowing",
+      payload: { bowingType: "down-bow" },
+    }),
+  });
+
+  assert.equal(response.status, 403);
+});
+
 test("member creates private bowing annotation without mutating score XML", async () => {
   const { member, otherMember, projectId, scoreAId } = await setupScenario();
   const beforeScore = fake.rows("scores").find((score) => score.id === scoreAId);
@@ -325,7 +352,7 @@ test("GET returns shared and own private annotations", async () => {
   );
 });
 
-test("member who cannot view score cannot read shared annotation", async () => {
+test("member can view another section score but cannot read its shared annotation", async () => {
   const { principalA, secondViolinMember, scoreAId } = await setupScenario();
 
   await harness.request("POST", `/api/scores/${scoreAId}/annotations`, {
@@ -341,7 +368,8 @@ test("member who cannot view score cannot read shared annotation", async () => {
     token: secondViolinMember.token,
   });
 
-  assert.equal(response.status, 403);
+  assert.equal(response.status, 200);
+  assert.deepEqual(response.body.data, []);
 });
 
 test("concertmaster can read shared annotation when they can view the score", async () => {

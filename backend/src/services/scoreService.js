@@ -29,7 +29,7 @@ const canViewScore = (score, membership) => {
   }
 
   if (membership.role === "principal" || membership.role === "member") {
-    return score.section_id === membership.section_id;
+    return true;
   }
 
   return false;
@@ -47,7 +47,7 @@ const applyScoreVisibilityFilter = (query, membership) => {
   }
 
   if (membership.role === "principal" || membership.role === "member") {
-    return query.eq("section_id", membership.section_id);
+    return query;
   }
 
   return query.eq("id", "__no_access__");

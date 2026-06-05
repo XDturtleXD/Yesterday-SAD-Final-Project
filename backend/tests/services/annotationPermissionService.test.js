@@ -77,12 +77,34 @@ test("member can create private annotation for own visible score", () => {
   );
 });
 
+test("member cannot create private annotation for another section score", () => {
+  assert.equal(
+    canCreateAnnotation(scoreInB, memberInA, ownerUser, {
+      scope: "private",
+      owner_user_id: ownerUser.id,
+      section_id: SECTION_B,
+    }),
+    false,
+  );
+});
+
 test("member cannot create shared annotation", () => {
   assert.equal(
     canCreateAnnotation(scoreInA, memberInA, ownerUser, {
       scope: "shared",
       owner_user_id: ownerUser.id,
       section_id: SECTION_A,
+    }),
+    false,
+  );
+});
+
+test("principal cannot create private annotation for another section score", () => {
+  assert.equal(
+    canCreateAnnotation(scoreInB, principalInA, ownerUser, {
+      scope: "private",
+      owner_user_id: ownerUser.id,
+      section_id: SECTION_B,
     }),
     false,
   );
@@ -155,7 +177,7 @@ test("member can read shared annotation when they can view the score", () => {
   assert.equal(canReadAnnotation(scoreInA, memberInA, otherUser, sharedAnnotation), true);
 });
 
-test("member who cannot view the score cannot read shared annotation", () => {
+test("member can view another section score but cannot read its shared annotation", () => {
   assert.equal(canReadAnnotation(scoreInA, memberInB, otherUser, sharedAnnotation), false);
 });
 
@@ -169,7 +191,7 @@ test("project-level viewer can read shared annotation when they can view the sco
   );
 });
 
-test("shared annotation read follows score visibility, not membership section equality", () => {
+test("platform admin can read section-shared annotations across sections", () => {
   assert.equal(
     canReadAnnotation(scoreInB, platformAdmin, otherUser, {
       ...sharedAnnotation,

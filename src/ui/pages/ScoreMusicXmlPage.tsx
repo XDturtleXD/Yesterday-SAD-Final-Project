@@ -7,7 +7,7 @@ import {
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import * as annotationsApi from '../../api/annotations'
 import * as scoresApi from '../../api/scores'
-import { useAppState } from '../../state/AppState'
+import { useAppState, useRequiredUser } from '../../state/AppState'
 import { useTranslation } from '../../i18n'
 import type { AnnotationScope, Score, ScoreAnnotation, SimilarPassageCandidate } from '../../types'
 import { Badge } from '../primitives/Badge'
@@ -1216,6 +1216,7 @@ export function ScoreMusicXmlPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
   const { getProject, loadProjectDetail, addToast } = useAppState()
+  const currentUser = useRequiredUser()
   const { language, t } = useTranslation()
 
   useEffect(() => {
@@ -1245,6 +1246,26 @@ export function ScoreMusicXmlPage() {
   const defaultScoreId = availableScores[0]?.id ?? scoreId
   const activeScoreId = scoreId || defaultScoreId
   const activeScore = project?.scores.find((s) => s.id === activeScoreId)
+  const myProjectMember = useMemo(
+    () => project?.members.find((member) => member.userId === currentUser.id),
+    [currentUser.id, project],
+  )
+  const canManageProjectScores =
+    currentUser.role === 'admin' || myProjectMember?.role === 'concertmaster'
+  const canAnnotateActiveScore =
+    !!activeScore &&
+    (canManageProjectScores ||
+      ((myProjectMember?.role === 'member' || myProjectMember?.role === 'principal') &&
+        myProjectMember.sectionId === activeScore.sectionId))
+  const canSaveSharedScore =
+    !!activeScore &&
+    (canManageProjectScores ||
+      (myProjectMember?.role === 'principal' &&
+        myProjectMember.sectionId === activeScore.sectionId))
+  const viewOnlyMessage =
+    language === 'zh'
+      ? '你可以查看所有聲部，但只能在自己所屬的聲部上做記號。'
+      : 'You can view every section, but markings are only allowed on your assigned section.'
   const xmlEntry = useMemo(
     () =>
       activeScore
@@ -1291,6 +1312,15 @@ export function ScoreMusicXmlPage() {
   const privateAnnotations = annotationLayers.private
   const annotationsLoading = !!annotationsLoadingByScoreId[scoreId]
   const annotationError = annotationErrorByScoreId[scoreId]
+  const sharedEditDisabled = !canSaveSharedScore
+  const sharedEditTitleSuffix = sharedEditDisabled ? ` - ${viewOnlyMessage}` : ''
+  const bowingDisabled =
+    !selectedNote ||
+    (activeAnnotationLayer === 'private' ? !canAnnotateActiveScore : !canSaveSharedScore)
+  const bowingTitleSuffix =
+    activeAnnotationLayer === 'private'
+      ? !canAnnotateActiveScore ? ` - ${viewOnlyMessage}` : ''
+      : sharedEditTitleSuffix
   const layeredRenderXml = useMemo(() => {
     if (!workingXml) return undefined
     if (activeAnnotationLayer !== 'private') return workingXml
@@ -1672,6 +1702,14 @@ export function ScoreMusicXmlPage() {
     title: string,
     updateXml: (xml: string) => string,
   ) {
+    if (!canSaveSharedScore) {
+      addToast({
+        title: language === 'zh' ? '此聲部只能檢視' : 'View-only section',
+        message: viewOnlyMessage,
+      })
+      return
+    }
+
     const currentXml = workingXmlByScoreId[scoreId]
     if (!currentXml) return
 
@@ -1709,6 +1747,14 @@ export function ScoreMusicXmlPage() {
   }
 
   async function createPrivateBowingAnnotation(ref: EditableNoteRef, mark: BowingMark) {
+    if (!canAnnotateActiveScore) {
+      addToast({
+        title: language === 'zh' ? '無法在此聲部做私人記號' : 'Private marking unavailable',
+        message: viewOnlyMessage,
+      })
+      return
+    }
+
     try {
       const annotation = await annotationsApi.createScoreAnnotation(scoreId, {
         scope: 'private',
@@ -1786,6 +1832,14 @@ export function ScoreMusicXmlPage() {
   }
 
   function startSlurMode() {
+    if (!canSaveSharedScore) {
+      addToast({
+        title: language === 'zh' ? '此聲部只能檢視' : 'View-only section',
+        message: viewOnlyMessage,
+      })
+      return
+    }
+
     setMode('slur')
     setHairpinDraft(null)
     pendingHairpinSelectionKeyRef.current = null
@@ -1815,6 +1869,14 @@ export function ScoreMusicXmlPage() {
   }
 
   function applyHairpin(type: HairpinType) {
+    if (!canSaveSharedScore) {
+      addToast({
+        title: language === 'zh' ? '此聲部只能檢視' : 'View-only section',
+        message: viewOnlyMessage,
+      })
+      return
+    }
+
     setMode('hairpin')
     setSlurDraft(null)
     if (selectedNote) {
@@ -1908,6 +1970,14 @@ export function ScoreMusicXmlPage() {
 
   async function saveWorkingXml() {
     if (!workingXml || !scoreId) return
+    if (!canSaveSharedScore) {
+      addToast({
+        title: language === 'zh' ? '無法儲存此聲部' : 'Cannot save this section',
+        message: viewOnlyMessage,
+      })
+      return
+    }
+
     if (!isModified) {
       addToast({ title: t('scoreEditor.noChanges') })
       return
@@ -1980,7 +2050,7 @@ export function ScoreMusicXmlPage() {
               <Download className="size-4" />
               {t('common.export')}
             </Button>
-            <Button onClick={saveWorkingXml} disabled={!scoreId || !workingXml || !isModified || isSaving}>
+            <Button onClick={saveWorkingXml} disabled={!scoreId || !workingXml || !isModified || isSaving || !canSaveSharedScore}>
               <Save className="size-4" />
               {isSaving ? t('common.saving') : t('common.save')}
             </Button>
@@ -2096,8 +2166,8 @@ export function ScoreMusicXmlPage() {
             {DYNAMICS.map((mark) => (
               <SymbolButton
                 key={mark}
-                title={`${t('scoreEditor.apply')} ${mark}`}
-                disabled={!selectedNote}
+                title={`${t('scoreEditor.apply')} ${mark}${sharedEditTitleSuffix}`}
+                disabled={!selectedNote || sharedEditDisabled}
                 onClick={() => applyDynamic(mark)}
               >
                 <span className="font-serif text-base font-bold italic leading-none">
@@ -2111,8 +2181,8 @@ export function ScoreMusicXmlPage() {
             {ARTICULATION_TOOLS.map((tool) => (
               <SymbolButton
                 key={tool.mark}
-                title={`Apply ${tool.label}`}
-                disabled={!selectedNote}
+                title={`Apply ${tool.label}${sharedEditTitleSuffix}`}
+                disabled={!selectedNote || sharedEditDisabled}
                 onClick={() => applyArticulation(tool.mark)}
               >
                 <span className="text-base font-semibold leading-none">
@@ -2126,7 +2196,8 @@ export function ScoreMusicXmlPage() {
             {HAIRPIN_TOOLS.map((tool) => (
               <SymbolButton
                 key={tool.type}
-                title={`Create ${tool.label} hairpin`}
+                title={`Create ${tool.label} hairpin${sharedEditTitleSuffix}`}
+                disabled={sharedEditDisabled}
                 active={mode === 'hairpin' && hairpinDraft?.type === tool.type}
                 className="w-auto min-w-14 px-2.5 text-xs font-semibold"
                 onClick={() => applyHairpin(tool.type)}
@@ -2142,10 +2213,10 @@ export function ScoreMusicXmlPage() {
             <SymbolButton
               title={
                 activeAnnotationLayer === 'private'
-                  ? `${t('scoreEditor.applyDownBow')} - saves to My private layer`
-                  : t('scoreEditor.applyDownBow')
+                  ? `${t('scoreEditor.applyDownBow')} - saves to My private layer${bowingTitleSuffix}`
+                  : `${t('scoreEditor.applyDownBow')}${bowingTitleSuffix}`
               }
-              disabled={!selectedNote}
+              disabled={bowingDisabled}
               onClick={() => applyBowing('down-bow')}
             >
               <DownBowIcon />
@@ -2153,24 +2224,25 @@ export function ScoreMusicXmlPage() {
             <SymbolButton
               title={
                 activeAnnotationLayer === 'private'
-                  ? `${t('scoreEditor.applyUpBow')} - saves to My private layer`
-                  : t('scoreEditor.applyUpBow')
+                  ? `${t('scoreEditor.applyUpBow')} - saves to My private layer${bowingTitleSuffix}`
+                  : `${t('scoreEditor.applyUpBow')}${bowingTitleSuffix}`
               }
-              disabled={!selectedNote}
+              disabled={bowingDisabled}
               onClick={() => applyBowing('up-bow')}
             >
               <UpBowIcon />
             </SymbolButton>
             <SymbolButton
               title={t('scoreEditor.createSlur')}
+              disabled={sharedEditDisabled}
               active={mode === 'slur'}
               onClick={startSlurMode}
             >
               <SlurIcon />
             </SymbolButton>
             <SymbolButton
-              title={t('scoreEditor.eraseSelected')}
-              disabled={!selectedNote}
+              title={`${t('scoreEditor.eraseSelected')}${sharedEditTitleSuffix}`}
+              disabled={!selectedNote || sharedEditDisabled}
               onClick={eraseSelectedMarkings}
             >
               <Eraser className="size-4" />
@@ -2392,7 +2464,7 @@ export function ScoreMusicXmlPage() {
             <Button onClick={exportWorkingXml} disabled={!workingXml}>
               {t('scoreEditor.exportXml')}
             </Button>
-            <Button onClick={saveWorkingXml} disabled={!scoreId || !workingXml || !isModified || isSaving}>
+            <Button onClick={saveWorkingXml} disabled={!scoreId || !workingXml || !isModified || isSaving || !canSaveSharedScore}>
               {isSaving ? t('common.saving') : t('common.save')}
             </Button>
           </div>
