@@ -78,6 +78,30 @@ export type UpdateScoreAnnotationPayload = {
   payload?: Record<string, unknown>
 }
 
+export type SimilarPassageCandidate = {
+  targetScoreId: string
+  targetSectionId: string
+  targetSectionName: string | null
+  startRef: Record<string, unknown>
+  endRef: Record<string, unknown>
+  startMeasureNumber: number
+  endMeasureNumber: number
+  similarity: number
+  intervalScore: number
+  rhythmScore: number
+  noteCount: number
+}
+
+export type FindSimilarPassagesPayload = {
+  sourceRange: {
+    startRef: Record<string, unknown>
+    endRef: Record<string, unknown>
+  }
+  threshold?: number
+  limit?: number
+  targetSectionIds?: string[]
+}
+
 export type Branch = {
   id: string
   projectId: string

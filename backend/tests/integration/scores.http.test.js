@@ -35,6 +35,77 @@ const setupScenario = async ({ ownerSection = SECTION_FIRST_VIOLIN } = {}) => {
   return { owner, projectId: created.body.data.id };
 };
 
+const now = () => new Date().toISOString();
+
+const seedMember = (projectId, user, sectionId, role = "member") => {
+  fake.seedRows("project_members", [
+    {
+      id: `pm-${user.user.id}-${role}-${sectionId}`,
+      project_id: projectId,
+      user_id: user.user.id,
+      section_id: sectionId,
+      role,
+      created_at: now(),
+      updated_at: now(),
+    },
+  ]);
+};
+
+const parsePitch = (pitch) => {
+  const match = String(pitch).match(/^([A-G])(\d+)?$/);
+  return {
+    step: match ? match[1] : pitch,
+    octave: match && match[2] ? match[2] : "4",
+  };
+};
+
+const melodyXml = (pitches, durations = []) => `<?xml version="1.0"?>
+<score-partwise version="3.1">
+  <part-list>
+    <score-part id="P1"><part-name>Part</part-name></score-part>
+  </part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>1</divisions>
+        <time><beats>4</beats><beat-type>4</beat-type></time>
+        <clef><sign>G</sign><line>2</line></clef>
+      </attributes>
+      ${pitches.map((pitch, index) => {
+        const parsed = parsePitch(pitch);
+        return `
+        <note>
+          <pitch><step>${parsed.step}</step><octave>${parsed.octave}</octave></pitch>
+          <duration>${durations[index] || 1}</duration>
+          <voice>1</voice>
+          <type>quarter</type>
+          <staff>1</staff>
+        </note>
+      `;
+      }).join("\n")}
+    </measure>
+  </part>
+</score-partwise>`;
+
+const sourceRange = (scoreId) => ({
+  startRef: {
+    scoreId,
+    partId: "P1",
+    measureArrayIndex: 0,
+    noteIndex: 0,
+    staff: "1",
+    voice: "1",
+  },
+  endRef: {
+    scoreId,
+    partId: "P1",
+    measureArrayIndex: 0,
+    noteIndex: 3,
+    staff: "1",
+    voice: "1",
+  },
+});
+
 // ---------------------------------------------------------------------------
 // Upload happy path
 // ---------------------------------------------------------------------------
@@ -364,6 +435,95 @@ test("GET /projects/:projectId/scores: returns uploaded scores", async () => {
   assert.equal(body.data.length, 2);
   const titles = body.data.map((s) => s.title).sort();
   assert.deepEqual(titles, ["Vln 1", "Vln 2"]);
+});
+
+test("POST /scores/:scoreId/similar-passages returns visible top candidates", async () => {
+  const { owner, projectId } = await setupScenario();
+  const source = await harness.request("POST", `/api/projects/${projectId}/scores`, {
+    token: owner.token,
+    body: {
+      sectionId: SECTION_FIRST_VIOLIN,
+      title: "Violin I",
+      piece: { title: "Similarity Piece" },
+      xmlContent: melodyXml(["C4", "D4", "E4", "F4"]),
+    },
+  });
+  const pieceId = source.body.data.piece_id;
+  const target = await harness.request("POST", `/api/projects/${projectId}/scores`, {
+    token: owner.token,
+    body: {
+      sectionId: SECTION_SECOND_VIOLIN,
+      title: "Violin II",
+      pieceId,
+      xmlContent: melodyXml(["G4", "A4", "B4", "C5"]),
+    },
+  });
+
+  const response = await harness.request(
+    "POST",
+    `/api/scores/${source.body.data.id}/similar-passages`,
+    {
+      token: owner.token,
+      body: {
+        sourceRange: sourceRange(source.body.data.id),
+        threshold: 0.9,
+        limit: 5,
+      },
+    },
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(response.body.data.length, 1);
+  assert.equal(response.body.data[0].targetScoreId, target.body.data.id);
+  assert.equal(response.body.data[0].targetSectionId, SECTION_SECOND_VIOLIN);
+  assert.equal(response.body.data[0].startMeasureNumber, 1);
+  assert.equal(response.body.data[0].endMeasureNumber, 1);
+  assert.equal(response.body.data[0].noteCount, 4);
+  assert.ok(response.body.data[0].similarity >= 0.9);
+});
+
+test("POST /scores/:scoreId/similar-passages filters target scores by visibility", async () => {
+  const { owner, projectId } = await setupScenario();
+  const firstViolinPrincipal = seedUserWithToken(fake, {
+    email: "similarity-principal@example.test",
+    name: "Principal",
+  });
+  seedMember(projectId, firstViolinPrincipal, SECTION_FIRST_VIOLIN, "principal");
+
+  const source = await harness.request("POST", `/api/projects/${projectId}/scores`, {
+    token: owner.token,
+    body: {
+      sectionId: SECTION_FIRST_VIOLIN,
+      title: "Violin I",
+      piece: { title: "Visibility Piece" },
+      xmlContent: melodyXml(["C4", "D4", "E4", "F4"]),
+    },
+  });
+  await harness.request("POST", `/api/projects/${projectId}/scores`, {
+    token: owner.token,
+    body: {
+      sectionId: SECTION_SECOND_VIOLIN,
+      title: "Violin II",
+      pieceId: source.body.data.piece_id,
+      xmlContent: melodyXml(["G4", "A4", "B4", "C5"]),
+    },
+  });
+
+  const response = await harness.request(
+    "POST",
+    `/api/scores/${source.body.data.id}/similar-passages`,
+    {
+      token: firstViolinPrincipal.token,
+      body: {
+        sourceRange: sourceRange(source.body.data.id),
+        threshold: 0.7,
+        limit: 5,
+      },
+    },
+  );
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(response.body.data, []);
 });
 
 test("DELETE /scores/:scoreId: concertmaster deletes a score", async () => {

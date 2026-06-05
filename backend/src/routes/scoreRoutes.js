@@ -21,6 +21,12 @@ router.post(
   projectPermissionMiddleware("score"),
   annotationController.createScoreAnnotation
 );
+router.post(
+  "/:scoreId/similar-passages",
+  loadScoreMiddleware,
+  projectPermissionMiddleware("score"),
+  scoreController.findSimilarPassages
+);
 router.patch(
   "/:scoreId/musicxml",
   loadScoreMiddleware,

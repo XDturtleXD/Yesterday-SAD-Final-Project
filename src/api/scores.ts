@@ -2,6 +2,7 @@ import { apiRequest, getStoredToken, ApiError } from './client'
 import { API_URL } from '../config/env'
 import type { ApiConversionStart } from './conversions'
 import type { ApiScore } from './types'
+import type { FindSimilarPassagesPayload, SimilarPassageCandidate } from '../types'
 
 export function listProjectScores(projectId: string) {
   return apiRequest<ApiScore[]>(`/projects/${projectId}/scores`)
@@ -22,6 +23,16 @@ export function saveScoreMusicXml(scoreId: string, xmlContent: string) {
     method: 'PATCH',
     body: JSON.stringify({ xmlContent }),
   })
+}
+
+export function findSimilarPassages(scoreId: string, payload: FindSimilarPassagesPayload) {
+  return apiRequest<SimilarPassageCandidate[]>(
+    `/scores/${encodeURIComponent(scoreId)}/similar-passages`,
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    },
+  )
 }
 
 /** Multipart upload — supports PDF (triggers OMR conversion) and MusicXML/XML */

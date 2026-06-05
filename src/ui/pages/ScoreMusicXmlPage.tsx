@@ -9,7 +9,7 @@ import * as annotationsApi from '../../api/annotations'
 import * as scoresApi from '../../api/scores'
 import { useAppState } from '../../state/AppState'
 import { useTranslation } from '../../i18n'
-import type { AnnotationScope, Score, ScoreAnnotation } from '../../types'
+import type { AnnotationScope, Score, ScoreAnnotation, SimilarPassageCandidate } from '../../types'
 import { Badge } from '../primitives/Badge'
 import { Button } from '../primitives/Button'
 import { Card } from '../primitives/Card'
@@ -26,6 +26,7 @@ import {
   Redo2,
   RotateCcw,
   Save,
+  Search,
   Undo2,
   ZoomIn,
   ZoomOut,
@@ -850,6 +851,15 @@ function noteLabel(ref: EditableNoteRef | null) {
   return `${measureNumber}-${ref.noteIndex + 1}`
 }
 
+function rangeLabel(start: EditableNoteRef | null, end: EditableNoteRef | null) {
+  if (!start && !end) return '-'
+  return `${noteLabel(start)} -> ${noteLabel(end)}`
+}
+
+function percentage(value: number) {
+  return `${Math.round(value * 100)}%`
+}
+
 function downloadText(filename: string, content: string) {
   const url = URL.createObjectURL(
     new Blob([content], { type: 'application/vnd.recordare.musicxml+xml' }),
@@ -1252,6 +1262,11 @@ export function ScoreMusicXmlPage() {
   const [zoom, setZoom] = useState(90)
   const [mode, setMode] = useState<SelectionMode>('select')
   const [selectedNote, setSelectedNote] = useState<EditableNoteRef | null>(null)
+  const [similarityRangeStart, setSimilarityRangeStart] = useState<EditableNoteRef | null>(null)
+  const [similarityRangeEnd, setSimilarityRangeEnd] = useState<EditableNoteRef | null>(null)
+  const [similarityCandidates, setSimilarityCandidates] = useState<SimilarPassageCandidate[]>([])
+  const [isFindingSimilar, setIsFindingSimilar] = useState(false)
+  const [similarityError, setSimilarityError] = useState<string | null>(null)
   const [slurDraft, setSlurDraft] = useState<SlurDraft | null>(null)
   const [hairpinDraft, setHairpinDraft] = useState<HairpinDraft | null>(null)
   const [showMeasureNumbers, setShowMeasureNumbers] = useState(true)
@@ -1294,6 +1309,13 @@ export function ScoreMusicXmlPage() {
   useEffect(() => {
     selectedNoteRef.current = selectedNote
   }, [selectedNote])
+
+  useEffect(() => {
+    setSimilarityRangeStart(null)
+    setSimilarityRangeEnd(null)
+    setSimilarityCandidates([])
+    setSimilarityError(null)
+  }, [scoreId])
 
   useEffect(() => {
     zoomRef.current = zoom
@@ -1538,6 +1560,66 @@ export function ScoreMusicXmlPage() {
     pendingHairpinSelectionKeyRef.current = null
     selectedGraphicalNoteRef.current = null
     setSearchParams({ scoreId: nextScoreId })
+  }
+
+  function setSimilarityRangePoint(point: 'start' | 'end') {
+    if (!selectedNote) {
+      addToast({ title: t('scoreEditor.noNoteSelected'), message: t('scoreEditor.clickCloserToNote') })
+      return
+    }
+
+    if (point === 'start') {
+      setSimilarityRangeStart(selectedNote)
+    } else {
+      setSimilarityRangeEnd(selectedNote)
+    }
+    setSimilarityCandidates([])
+    setSimilarityError(null)
+  }
+
+  function candidateSectionLabel(candidate: SimilarPassageCandidate) {
+    if (candidate.targetSectionName) return candidate.targetSectionName
+    const member = project?.members.find((item) => item.sectionId === candidate.targetSectionId)
+    if (member) return member.sectionName
+    const score = availableScores.find((item) => item.id === candidate.targetScoreId)
+    return score?.title ?? candidate.targetSectionId
+  }
+
+  async function findSimilarPassages() {
+    if (!similarityRangeStart || !similarityRangeEnd) {
+      const message = language === 'zh' ? '請先設定旋律範圍起點與終點。' : 'Set a range start and end first.'
+      setSimilarityError(message)
+      addToast({ title: language === 'zh' ? '尚未設定範圍' : 'Range not set', message })
+      return
+    }
+
+    setIsFindingSimilar(true)
+    setSimilarityError(null)
+    try {
+      const candidates = await scoresApi.findSimilarPassages(scoreId, {
+        sourceRange: {
+          startRef: editableNoteRefToAnnotationTarget(similarityRangeStart),
+          endRef: editableNoteRefToAnnotationTarget(similarityRangeEnd),
+        },
+        threshold: 0.7,
+        limit: 10,
+      })
+      setSimilarityCandidates(candidates)
+      if (candidates.length === 0) {
+        addToast({
+          title: language === 'zh' ? '沒有找到相似段落' : 'No similar passages found',
+        })
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unable to find similar passages'
+      setSimilarityError(message)
+      addToast({
+        title: language === 'zh' ? '尋找相似段落失敗' : 'Similar passage search failed',
+        message,
+      })
+    } finally {
+      setIsFindingSimilar(false)
+    }
   }
 
   function getClickedGraphicalNote(event: React.MouseEvent<HTMLDivElement>) {
@@ -1979,6 +2061,38 @@ export function ScoreMusicXmlPage() {
           <Divider />
 
           <div className="flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 p-1 shadow-inner">
+            <button
+              type="button"
+              disabled={!selectedNote}
+              onClick={() => setSimilarityRangePoint('start')}
+              className="h-7 rounded px-2 text-xs font-medium text-slate-600 transition hover:bg-white hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {language === 'zh' ? '設起點' : 'Set start'}
+            </button>
+            <button
+              type="button"
+              disabled={!selectedNote}
+              onClick={() => setSimilarityRangePoint('end')}
+              className="h-7 rounded px-2 text-xs font-medium text-slate-600 transition hover:bg-white hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {language === 'zh' ? '設終點' : 'Set end'}
+            </button>
+            <Button
+              variant="secondary"
+              className="h-7 px-2 text-xs"
+              disabled={!similarityRangeStart || !similarityRangeEnd || isFindingSimilar}
+              onClick={() => void findSimilarPassages()}
+            >
+              <Search className="size-3.5" />
+              {isFindingSimilar
+                ? language === 'zh' ? '搜尋中' : 'Finding'
+                : language === 'zh' ? '尋找相似段落' : 'Find similar passages'}
+            </Button>
+          </div>
+
+          <Divider />
+
+          <div className="flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 p-1 shadow-inner">
             {DYNAMICS.map((mark) => (
               <SymbolButton
                 key={mark}
@@ -2160,6 +2274,66 @@ export function ScoreMusicXmlPage() {
                 </div>
               </div>
             )}
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <div className="text-xs font-medium text-slate-500">
+                {language === 'zh' ? '相似旋律範圍' : 'Similar melody range'}
+              </div>
+              <div className="mt-1 text-sm font-medium text-slate-900">
+                {rangeLabel(similarityRangeStart, similarityRangeEnd)}
+              </div>
+              {similarityError && (
+                <div className="mt-2 text-xs font-medium text-amber-700">{similarityError}</div>
+              )}
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-white p-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-xs font-medium text-slate-500">
+                  {language === 'zh' ? '候選段落' : 'Candidates'}
+                </div>
+                <Badge tone={similarityCandidates.length ? 'info' : 'neutral'}>
+                  {similarityCandidates.length}
+                </Badge>
+              </div>
+              <div className="mt-2 grid gap-2">
+                {similarityCandidates.length === 0 ? (
+                  <div className="text-xs text-slate-500">
+                    {language === 'zh' ? '尚未搜尋。' : 'No search yet.'}
+                  </div>
+                ) : (
+                  similarityCandidates.map((candidate) => (
+                    <div
+                      key={`${candidate.targetScoreId}-${candidate.startMeasureNumber}-${candidate.endMeasureNumber}-${candidate.similarity}`}
+                      className="rounded-md border border-slate-200 bg-slate-50 p-2"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <div className="text-sm font-semibold text-slate-900">
+                            {candidateSectionLabel(candidate)}
+                          </div>
+                          <div className="text-xs text-slate-600">
+                            m.{candidate.startMeasureNumber}
+                            {candidate.endMeasureNumber !== candidate.startMeasureNumber
+                              ? `-${candidate.endMeasureNumber}`
+                              : ''}{' '}
+                            · {percentage(candidate.similarity)}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          className="rounded border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100"
+                          onClick={() => changeScore(candidate.targetScoreId)}
+                        >
+                          {language === 'zh' ? '開啟' : 'Open'}
+                        </button>
+                      </div>
+                      <div className="mt-1 text-[11px] text-slate-500">
+                        interval {percentage(candidate.intervalScore)} · rhythm {percentage(candidate.rhythmScore)}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
               <div className="text-xs font-medium text-slate-500">{t('scoreEditor.changes')}</div>
               <div className="mt-1 flex flex-wrap gap-2">
