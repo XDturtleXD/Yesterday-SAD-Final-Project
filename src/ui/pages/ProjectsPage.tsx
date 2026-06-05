@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { useAppState, useRequiredUser } from '../../state/AppState'
@@ -7,38 +7,23 @@ import { Button } from '../primitives/Button'
 import { Card } from '../primitives/Card'
 import { Modal } from '../primitives/Modal'
 import { roleLabel, useTranslation } from '../../i18n'
-import { memberPositionLabel, sectionLabel } from '../../utils/sectionLabels'
-import { Copy, FolderPlus, LogIn, Music2 } from 'lucide-react'
+import { memberPositionLabel } from '../../utils/sectionLabels'
+import { FolderPlus, LogIn, Music2 } from 'lucide-react'
 
 export function ProjectsPage() {
   const {
     projects,
     projectsLoading,
     getMemberDisplayName,
-    createInviteCode,
     joinProject,
-    loadSections,
-    sections,
-    addToast,
   } = useAppState()
   const currentUser = useRequiredUser()
   const { language, t } = useTranslation()
   const navigate = useNavigate()
   const [joinOpen, setJoinOpen] = useState(false)
   const [inviteCode, setInviteCode] = useState('')
-  const [joinSectionId, setJoinSectionId] = useState('')
   const [joinLoading, setJoinLoading] = useState(false)
   const [joinError, setJoinError] = useState('')
-
-  useEffect(() => {
-    if (joinOpen) {
-      loadSections().then((rows) => {
-        if (rows.length > 0) {
-          setJoinSectionId((prev) => prev || rows[0].id)
-        }
-      })
-    }
-  }, [joinOpen, loadSections])
 
   const latestCommit = (p: (typeof projects)[0]) => p.commits[0]
 
@@ -126,28 +111,6 @@ export function ProjectsPage() {
                 <Button size="sm" onClick={() => navigate(`/projects/${p.id}`)}>
                   {t('projects.openProject')}
                 </Button>
-                {myMember &&
-                  (myMember.role === 'concertmaster' || myMember.role === 'principal') && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={async () => {
-                        try {
-                          const code = await createInviteCode(p.id)
-                          await navigator.clipboard.writeText(code)
-                          addToast({ title: t('projects.inviteCopied'), message: t('projects.copiedToClipboard') })
-                        } catch (err) {
-                          addToast({
-                            title: t('projects.inviteCreateFailed'),
-                            message: err instanceof ApiError ? err.message : t('projects.tryAgainLater'),
-                          })
-                        }
-                      }}
-                    >
-                      <Copy className="size-4" />
-                      {t('projects.copyInvite')}
-                    </Button>
-                  )}
               </div>
             </Card>
           )
@@ -164,14 +127,13 @@ export function ProjectsPage() {
               {t('common.cancel')}
             </Button>
             <Button
-              disabled={joinLoading || !inviteCode.trim() || !joinSectionId}
+              disabled={joinLoading || !inviteCode.trim()}
               onClick={async () => {
                 setJoinError('')
                 setJoinLoading(true)
                 try {
                   await joinProject({
                     inviteCode: inviteCode.trim(),
-                    sectionId: joinSectionId,
                   })
                   setJoinOpen(false)
                   setInviteCode('')
@@ -196,17 +158,6 @@ export function ProjectsPage() {
           placeholder={t('projects.invitePlaceholder')}
           className="mt-3 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
         />
-        <select
-          value={joinSectionId}
-          onChange={(e) => setJoinSectionId(e.target.value)}
-          className="mt-3 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
-        >
-          {sections.map((s) => (
-            <option key={s.id} value={s.id}>
-              {sectionLabel(s, language)}
-            </option>
-          ))}
-        </select>
         {joinError && (
           <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
             {joinError}

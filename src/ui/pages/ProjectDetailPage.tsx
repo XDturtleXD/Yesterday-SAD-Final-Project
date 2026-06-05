@@ -5,7 +5,6 @@ import { useAppState, useRequiredUser } from '../../state/AppState'
 import { Badge } from '../primitives/Badge'
 import { Button } from '../primitives/Button'
 import { Card } from '../primitives/Card'
-import { Modal } from '../primitives/Modal'
 import { cn } from '../utils/cn'
 import { roleLabel, useTranslation } from '../../i18n'
 import { memberPositionLabel } from '../../utils/sectionLabels'
@@ -20,8 +19,7 @@ type TabKey = 'overview' | 'pieces' | 'members' | 'branches' | 'versions' | 'ful
 
 export function ProjectDetailPage() {
   const { projectId } = useParams()
-  const { getProject, loadProjectDetail, getMemberDisplayName, createInviteCode, addToast } =
-    useAppState()
+  const { getProject, loadProjectDetail, getMemberDisplayName } = useAppState()
   const currentUser = useRequiredUser()
   const { language, t } = useTranslation()
   const navigate = useNavigate()
@@ -29,9 +27,6 @@ export function ProjectDetailPage() {
   const tabParam = sp.get('tab')
   const tab: TabKey =
     tabParam === 'scores' ? 'pieces' : ((tabParam as TabKey) || 'overview')
-  const [inviteOpen, setInviteOpen] = useState(false)
-  const [inviteCode, setInviteCode] = useState('')
-  const [inviteLoading, setInviteLoading] = useState(false)
   const [accessDenied, setAccessDenied] = useState(false)
   const [loading, setLoading] = useState(true)
 
@@ -154,7 +149,11 @@ export function ProjectDetailPage() {
             <Edit3 className="size-4" />
             {t('common.edit')}
           </Button>
-          <Button variant="secondary" onClick={() => setInviteOpen(true)} disabled={!canInvite}>
+          <Button
+            variant="secondary"
+            onClick={() => navigate(`/projects/${project.id}?tab=members`)}
+            disabled={!canInvite}
+          >
             <MailPlus className="size-4" />
             {t('project.inviteMember')}
           </Button>
@@ -212,78 +211,8 @@ export function ProjectDetailPage() {
       {tab === 'branches' && <BranchesPanel project={project} />}
       {tab === 'versions' && <VersionsPanel project={project} />}
       {tab === 'fullscore' && <FullScorePanel project={project} />}
-
-      <Modal
-        title={t('project.inviteMember')}
-        open={inviteOpen}
-        onClose={() => setInviteOpen(false)}
-        footer={
-          <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setInviteOpen(false)}>
-              {t('common.close')}
-            </Button>
-            <Button
-              disabled={inviteLoading || !inviteCode}
-              onClick={async () => {
-                try {
-                  await navigator.clipboard.writeText(inviteCode)
-                  addToast({ title: t('project.inviteCodeCopied'), message: t('project.inviteCodeCopiedMessage') })
-                } catch {
-                  addToast({ title: t('project.copyFailed'), message: t('project.copyFailedMessage') })
-                }
-              }}
-            >
-              {t('common.copyCode')}
-            </Button>
-          </div>
-        }
-      >
-        <div className="text-sm text-slate-600">
-          {t('project.inviteDescription')}
-        </div>
-        {inviteLoading ? (
-          <div className="mt-3 text-sm text-slate-500">{t('project.generatingInvite')}</div>
-        ) : (
-          <textarea
-            readOnly
-            value={inviteCode}
-            rows={4}
-            className="mt-3 w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-xs"
-          />
-        )}
-      </Modal>
-
-      {inviteOpen && !inviteCode && !inviteLoading && (
-        <InviteCodeLoader
-          projectId={project.id}
-          createInviteCode={createInviteCode}
-          onLoaded={setInviteCode}
-          onLoading={setInviteLoading}
-        />
-      )}
     </div>
   )
-}
-
-function InviteCodeLoader({
-  projectId,
-  createInviteCode,
-  onLoaded,
-  onLoading,
-}: {
-  projectId: string
-  createInviteCode: (id: string) => Promise<string>
-  onLoaded: (code: string) => void
-  onLoading: (v: boolean) => void
-}) {
-  useEffect(() => {
-    onLoading(true)
-    createInviteCode(projectId)
-      .then(onLoaded)
-      .finally(() => onLoading(false))
-  }, [projectId, createInviteCode, onLoaded, onLoading])
-
-  return null
 }
 
 function Tabs({ tab, projectId }: { tab: TabKey; projectId: string }) {

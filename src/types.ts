@@ -165,5 +165,5 @@ export type MemberInviteDraft = {
   inviteCode: string
   createdByUserId: string
   createdAt: string
-  source: 'api-token-with-frontend-metadata'
+  source: 'api-bound-invite'
 }

@@ -1,8 +1,13 @@
 const supabase = require("../config/supabase");
 const AppError = require("../utils/appError");
 const { signInviteToken, verifyInviteToken } = require("../utils/inviteToken");
+const crypto = require("node:crypto");
 
 const PROJECT_COLUMNS = "id, name, description, created_by, created_at, updated_at";
+const INVITE_COLUMNS =
+  "id, project_id, target_section_id, target_role, token_id, created_by, expires_at, used_by, used_at, revoked_at, created_at, updated_at";
+const VALID_INVITE_ROLES = ["principal", "member"];
+const DEFAULT_INVITE_EXPIRES_MS = 7 * 24 * 60 * 60 * 1000;
 
 const isPlatformAdmin = (user) => {
   return user && (user.system_role === "platform_admin" || user.role === "platform_admin");
@@ -166,8 +171,45 @@ const getProjectByIdForMember = async (projectId, requestUser) => {
   return project;
 };
 
-const createProjectInviteCode = async (projectId, requestUser) => {
+const normalizeInvitePayload = (body = {}) => {
+  const targetRole = body.targetRole;
+  const sectionId = body.sectionId;
+
+  if (!VALID_INVITE_ROLES.includes(targetRole)) {
+    throw new AppError("targetRole must be one of principal, member", 400);
+  }
+  if (!sectionId || typeof sectionId !== "string") {
+    throw new AppError("sectionId is required", 400);
+  }
+
+  return { targetRole, sectionId };
+};
+
+const assertInviteCreatorCanTarget = (membership, { targetRole, sectionId }) => {
+  if (!membership) {
+    throw new AppError("Forbidden: you are not a member of this project", 403);
+  }
+
+  if (membership.role === "concertmaster" || membership.role === "platform_admin") {
+    return;
+  }
+
+  if (membership.role === "principal") {
+    if (targetRole !== "member") {
+      throw new AppError("Forbidden: principals can only invite members", 403);
+    }
+    if (membership.section_id !== sectionId) {
+      throw new AppError("Forbidden: principals can only invite their own section", 403);
+    }
+    return;
+  }
+
+  throw new AppError("Forbidden: only concertmaster or principal can create invite code", 403);
+};
+
+const createProjectInviteCode = async (projectId, requestUser, body = {}) => {
   ensureSupabaseReady();
+  const inviteTarget = normalizeInvitePayload(body);
 
   const { data: project, error: projectError } = await supabase
     .from("projects")
@@ -182,48 +224,10 @@ const createProjectInviteCode = async (projectId, requestUser) => {
     throw new AppError("Project not found", 404);
   }
 
-  if (!isPlatformAdmin(requestUser)) {
-    const membership = await checkProjectMembership(projectId, requestUser.id);
-    if (!membership) {
-      throw new AppError("Forbidden: you are not a member of this project", 403);
-    }
-
-    const allowedRoles = ["concertmaster", "principal"];
-    if (!allowedRoles.includes(membership.role)) {
-      throw new AppError("Forbidden: only concertmaster or principal can create invite code", 403);
-    }
-  }
-
-  const inviteCode = signInviteToken({
-    type: "project_invite",
-    projectId,
-    createdBy: requestUser.id,
-  });
-
-  return {
-    inviteCode,
-  };
-};
-
-const joinProjectByInviteCode = async ({ inviteCode, sectionId }, requestUser) => {
-  ensureSupabaseReady();
-
-  if (!inviteCode || typeof inviteCode !== "string") {
-    throw new AppError("inviteCode is required", 400);
-  }
-  if (!sectionId) {
-    throw new AppError("sectionId is required", 400);
-  }
-
-  const payload = verifyInviteToken(inviteCode);
-  if (!payload || payload.type !== "project_invite" || !payload.projectId) {
-    throw new AppError("Invalid invite code", 400);
-  }
-
   const { data: section, error: sectionError } = await supabase
     .from("sections")
     .select("id")
-    .eq("id", sectionId)
+    .eq("id", inviteTarget.sectionId)
     .maybeSingle();
 
   if (sectionError) {
@@ -233,7 +237,80 @@ const joinProjectByInviteCode = async ({ inviteCode, sectionId }, requestUser) =
     throw new AppError("Invalid sectionId: section does not exist", 400);
   }
 
-  const projectId = payload.projectId;
+  const membership = isPlatformAdmin(requestUser)
+    ? { role: "platform_admin", section_id: null }
+    : await checkProjectMembership(projectId, requestUser.id);
+  assertInviteCreatorCanTarget(membership, inviteTarget);
+
+  const tokenId = crypto.randomUUID();
+  const expiresAt = new Date(Date.now() + DEFAULT_INVITE_EXPIRES_MS).toISOString();
+  const inviteCode = signInviteToken({
+    type: "project_invite",
+    projectId,
+    tokenId,
+    createdBy: requestUser.id,
+  });
+
+  const { data: invite, error: insertError } = await supabase
+    .from("project_invites")
+    .insert({
+      project_id: projectId,
+      target_section_id: inviteTarget.sectionId,
+      target_role: inviteTarget.targetRole,
+      token_id: tokenId,
+      created_by: requestUser.id,
+      expires_at: expiresAt,
+    })
+    .select(INVITE_COLUMNS)
+    .single();
+
+  if (insertError) {
+    throw new AppError("Failed to create invite code", 500, insertError);
+  }
+
+  return {
+    inviteCode,
+    targetRole: invite.target_role,
+    sectionId: invite.target_section_id,
+    expiresAt: invite.expires_at,
+  };
+};
+
+const joinProjectByInviteCode = async ({ inviteCode }, requestUser) => {
+  ensureSupabaseReady();
+
+  if (!inviteCode || typeof inviteCode !== "string") {
+    throw new AppError("inviteCode is required", 400);
+  }
+
+  const payload = verifyInviteToken(inviteCode);
+  if (!payload || payload.type !== "project_invite" || !payload.projectId || !payload.tokenId) {
+    throw new AppError("Invalid invite code", 400);
+  }
+
+  const { data: invite, error: inviteError } = await supabase
+    .from("project_invites")
+    .select(INVITE_COLUMNS)
+    .eq("token_id", payload.tokenId)
+    .maybeSingle();
+
+  if (inviteError) {
+    throw new AppError("Failed to validate invite code", 500, inviteError);
+  }
+  if (!invite || invite.project_id !== payload.projectId) {
+    throw new AppError("Invalid invite code", 400);
+  }
+  if (invite.used_at) {
+    throw new AppError("Invite code has already been used", 409);
+  }
+  if (invite.revoked_at) {
+    throw new AppError("Invite code has been revoked", 410);
+  }
+  if (Date.parse(invite.expires_at) <= Date.now()) {
+    throw new AppError("Invite code has expired", 410);
+  }
+
+  const projectId = invite.project_id;
   const { data: existingMember, error: existingMemberError } = await supabase
     .from("project_members")
     .select("id")
@@ -253,14 +330,26 @@ const joinProjectByInviteCode = async ({ inviteCode, sectionId }, requestUser) =
     .insert({
       project_id: projectId,
       user_id: requestUser.id,
-      section_id: sectionId,
-      role: "member",
+      section_id: invite.target_section_id,
+      role: invite.target_role,
     })
     .select("id, project_id, user_id, section_id, role, created_at, updated_at")
     .single();
 
   if (insertError) {
     throw new AppError("Failed to join project", 500, insertError);
+  }
+
+  const { error: updateInviteError } = await supabase
+    .from("project_invites")
+    .update({
+      used_by: requestUser.id,
+      used_at: new Date().toISOString(),
+    })
+    .eq("id", invite.id);
+
+  if (updateInviteError) {
+    throw new AppError("Failed to mark invite code as used", 500, updateInviteError);
   }
 
   return createdMember;

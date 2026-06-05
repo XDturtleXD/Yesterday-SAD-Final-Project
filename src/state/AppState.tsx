@@ -69,8 +69,11 @@ type AppState = {
   movePiece: (projectId: string, pieceId: string, direction: 'up' | 'down') => Promise<void>
   reorderPieces: (projectId: string, orderedPieceIds: string[]) => Promise<void>
   deleteProjectScore: (projectId: string, scoreId: string) => Promise<void>
-  joinProject: (input: { inviteCode: string; sectionId: string }) => Promise<void>
-  createInviteCode: (projectId: string) => Promise<string>
+  joinProject: (input: { inviteCode: string }) => Promise<void>
+  createInviteCode: (
+    projectId: string,
+    input: { sectionId: string; targetRole: 'principal' | 'member' },
+  ) => Promise<string>
   createMemberInvite: (
     projectId: string,
     input: { sectionId: string; targetRole: 'principal' | 'member' },
@@ -494,8 +497,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         ])
       },
 
-      createInviteCode: async (projectId) => {
-        const result = await projectsApi.createInviteCode(projectId)
+      createInviteCode: async (projectId, input) => {
+        const result = await projectsApi.createInviteCode(projectId, input)
         return result.inviteCode
       },
 
@@ -503,7 +506,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         const section = sections.find((s) => s.id === input.sectionId)
         if (!section || !currentUser) throw new Error('Invalid invite metadata')
 
-        const result = await projectsApi.createInviteCode(projectId)
+        const result = await projectsApi.createInviteCode(projectId, input)
         const invite: MemberInviteDraft = {
           id: id('invite'),
           projectId,
@@ -513,12 +516,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           inviteCode: result.inviteCode,
           createdByUserId: currentUser.id,
           createdAt: new Date().toISOString(),
-          source: 'api-token-with-frontend-metadata',
+          source: 'api-bound-invite',
         }
-        // TODO API contract: POST /api/projects/:projectId/invites
-        // Request: { targetRole: 'principal' | 'member', sectionId: string, expiresIn?: string }
-        // Response: ApiResponse<{ id, inviteCode, targetRole, sectionId, expiresAt }>
-        // Current backend returns only a generic inviteCode, so role/section intent is stored in frontend state.
         setInvitesByProjectId((prev) => ({
           ...prev,
           [projectId]: [invite, ...(prev[projectId] ?? [])],

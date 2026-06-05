@@ -44,7 +44,7 @@ export function memberPositionLabel(
   if (!member) return '—'
 
   if (member.role === 'concertmaster') {
-    return language === 'zh' ? '總負責人' : 'Concertmaster'
+    return language === 'zh' ? '譜務' : 'Score Librarian'
   }
 
   const section = memberSectionLabel(member, language)
