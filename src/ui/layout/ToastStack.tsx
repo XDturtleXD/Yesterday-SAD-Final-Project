@@ -1,19 +1,22 @@
 import { useEffect, useRef } from 'react'
 import { useAppState } from '../../state/AppState'
+import { useTranslation } from '../../i18n'
 
 const TOAST_AUTO_DISMISS_MS = 5000
 
 export function ToastStack() {
   const { toasts, dismissToast } = useAppState()
+  const { t } = useTranslation()
   if (!toasts.length) return null
 
   return (
     <div className="pointer-events-none fixed bottom-4 right-4 z-50 flex w-[360px] max-w-[calc(100vw-2rem)] flex-col gap-2">
-      {toasts.slice(-4).map((t) => (
+      {toasts.slice(-4).map((toast) => (
         <ToastItem
-          key={t.id}
-          toast={t}
+          key={toast.id}
+          toast={toast}
           onDismiss={dismissToast}
+          dismissLabel={t('common.dismiss')}
         />
       ))}
     </div>
@@ -27,9 +30,10 @@ type ToastItemProps = {
     message?: string
   }
   onDismiss: (id: string) => void
+  dismissLabel: string
 }
 
-function ToastItem({ toast, onDismiss }: ToastItemProps) {
+function ToastItem({ toast, onDismiss, dismissLabel }: ToastItemProps) {
   const dismissRef = useRef(onDismiss)
 
   useEffect(() => {
@@ -62,7 +66,7 @@ function ToastItem({ toast, onDismiss }: ToastItemProps) {
           onClick={() => onDismiss(toast.id)}
           className="cursor-pointer rounded-md px-2 py-1 text-xs text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600"
         >
-          Dismiss
+          {dismissLabel}
         </button>
       </div>
     </div>

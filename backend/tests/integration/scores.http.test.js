@@ -35,6 +35,77 @@ const setupScenario = async ({ ownerSection = SECTION_FIRST_VIOLIN } = {}) => {
   return { owner, projectId: created.body.data.id };
 };
 
+const now = () => new Date().toISOString();
+
+const seedMember = (projectId, user, sectionId, role = "member") => {
+  fake.seedRows("project_members", [
+    {
+      id: `pm-${user.user.id}-${role}-${sectionId}`,
+      project_id: projectId,
+      user_id: user.user.id,
+      section_id: sectionId,
+      role,
+      created_at: now(),
+      updated_at: now(),
+    },
+  ]);
+};
+
+const parsePitch = (pitch) => {
+  const match = String(pitch).match(/^([A-G])(\d+)?$/);
+  return {
+    step: match ? match[1] : pitch,
+    octave: match && match[2] ? match[2] : "4",
+  };
+};
+
+const melodyXml = (pitches, durations = []) => `<?xml version="1.0"?>
+<score-partwise version="3.1">
+  <part-list>
+    <score-part id="P1"><part-name>Part</part-name></score-part>
+  </part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>1</divisions>
+        <time><beats>4</beats><beat-type>4</beat-type></time>
+        <clef><sign>G</sign><line>2</line></clef>
+      </attributes>
+      ${pitches.map((pitch, index) => {
+        const parsed = parsePitch(pitch);
+        return `
+        <note>
+          <pitch><step>${parsed.step}</step><octave>${parsed.octave}</octave></pitch>
+          <duration>${durations[index] || 1}</duration>
+          <voice>1</voice>
+          <type>quarter</type>
+          <staff>1</staff>
+        </note>
+      `;
+      }).join("\n")}
+    </measure>
+  </part>
+</score-partwise>`;
+
+const sourceRange = (scoreId) => ({
+  startRef: {
+    scoreId,
+    partId: "P1",
+    measureArrayIndex: 0,
+    noteIndex: 0,
+    staff: "1",
+    voice: "1",
+  },
+  endRef: {
+    scoreId,
+    partId: "P1",
+    measureArrayIndex: 0,
+    noteIndex: 3,
+    staff: "1",
+    voice: "1",
+  },
+});
+
 // ---------------------------------------------------------------------------
 // Upload happy path
 // ---------------------------------------------------------------------------
@@ -151,7 +222,8 @@ test("POST /scores/upload: PDF upload starts a conversion job", async () => {
   const baseURL = await harness.baseURLPromise;
   const originalFetch = global.fetch;
   global.fetch = async (url, options) => {
-    if (String(url).startsWith("http://127.0.0.1:8000/") && options?.method === "POST") {
+    const target = String(url);
+    if (!target.startsWith(baseURL) && target.endsWith("/upload") && options?.method === "POST") {
       return new Response(JSON.stringify({ job_id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }), {
         status: 200,
         headers: { "content-type": "application/json" },
@@ -178,6 +250,41 @@ test("POST /scores/upload: PDF upload starts a conversion job", async () => {
     assert.equal(body.success, true);
     assert.equal(body.data.jobId, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
     assert.equal(body.data.status, "queued");
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("POST /scores/upload: reports a clear error when OMR service is unavailable", async () => {
+  const { owner, projectId } = await setupScenario();
+  const baseURL = await harness.baseURLPromise;
+  const originalFetch = global.fetch;
+  global.fetch = async (url, options) => {
+    const target = String(url);
+    if (!target.startsWith(baseURL) && target.endsWith("/upload") && options?.method === "POST") {
+      throw new TypeError("fetch failed");
+    }
+    return originalFetch(url, options);
+  };
+
+  try {
+    const form = new FormData();
+    form.set("file", new Blob(["%PDF-1.7"], { type: "application/pdf" }), "part.pdf");
+    form.set("sectionId", SECTION_FIRST_VIOLIN);
+    form.set("title", "Violin I");
+    form.set("pieceTitle", "PDF Piece");
+
+    const res = await fetch(`${baseURL}/api/projects/${projectId}/scores/upload`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${owner.token}` },
+      body: form,
+    });
+    const body = await res.json();
+
+    assert.equal(res.status, 502);
+    assert.equal(body.success, false);
+    assert.match(body.message, /Conversion service is unavailable/);
+    assert.match(body.message, /npm run dev:all/);
   } finally {
     global.fetch = originalFetch;
   }
@@ -330,6 +437,165 @@ test("GET /projects/:projectId/scores: returns uploaded scores", async () => {
   assert.deepEqual(titles, ["Vln 1", "Vln 2"]);
 });
 
+test("GET /projects/:projectId/scores: principal sees every section score", async () => {
+  const { owner, projectId } = await setupScenario();
+  const principal = seedUserWithToken(fake, { email: "score-list-principal@example.test" });
+  seedMember(projectId, principal, SECTION_SECOND_VIOLIN, "principal");
+
+  await harness.request("POST", `/api/projects/${projectId}/scores`, {
+    token: owner.token,
+    body: {
+      sectionId: SECTION_FIRST_VIOLIN,
+      title: "Vln 1",
+      piece: { title: "Principal visible piece" },
+      xmlContent: "<x/>",
+    },
+  });
+  await harness.request("POST", `/api/projects/${projectId}/scores`, {
+    token: owner.token,
+    body: {
+      sectionId: SECTION_SECOND_VIOLIN,
+      title: "Vln 2",
+      piece: { title: "Principal visible piece" },
+      xmlContent: "<x/>",
+    },
+  });
+
+  const { status, body } = await harness.request(
+    "GET",
+    `/api/projects/${projectId}/scores`,
+    { token: principal.token },
+  );
+
+  assert.equal(status, 200);
+  assert.equal(body.data.length, 2);
+  assert.deepEqual(body.data.map((s) => s.title).sort(), ["Vln 1", "Vln 2"]);
+});
+
+test("GET /projects/:projectId/scores: member sees every section score", async () => {
+  const { owner, projectId } = await setupScenario();
+  const member = seedUserWithToken(fake, { email: "score-list-member@example.test" });
+  seedMember(projectId, member, SECTION_SECOND_VIOLIN, "member");
+
+  await harness.request("POST", `/api/projects/${projectId}/scores`, {
+    token: owner.token,
+    body: {
+      sectionId: SECTION_FIRST_VIOLIN,
+      title: "Vln 1",
+      piece: { title: "Member visible piece" },
+      xmlContent: "<x/>",
+    },
+  });
+  await harness.request("POST", `/api/projects/${projectId}/scores`, {
+    token: owner.token,
+    body: {
+      sectionId: SECTION_SECOND_VIOLIN,
+      title: "Vln 2",
+      piece: { title: "Member visible piece" },
+      xmlContent: "<x/>",
+    },
+  });
+
+  const { status, body } = await harness.request(
+    "GET",
+    `/api/projects/${projectId}/scores`,
+    { token: member.token },
+  );
+
+  assert.equal(status, 200);
+  assert.equal(body.data.length, 2);
+  assert.deepEqual(body.data.map((s) => s.title).sort(), ["Vln 1", "Vln 2"]);
+});
+
+test("POST /scores/:scoreId/similar-passages returns visible top candidates", async () => {
+  const { owner, projectId } = await setupScenario();
+  const source = await harness.request("POST", `/api/projects/${projectId}/scores`, {
+    token: owner.token,
+    body: {
+      sectionId: SECTION_FIRST_VIOLIN,
+      title: "Violin I",
+      piece: { title: "Similarity Piece" },
+      xmlContent: melodyXml(["C4", "D4", "E4", "F4"]),
+    },
+  });
+  const pieceId = source.body.data.piece_id;
+  const target = await harness.request("POST", `/api/projects/${projectId}/scores`, {
+    token: owner.token,
+    body: {
+      sectionId: SECTION_SECOND_VIOLIN,
+      title: "Violin II",
+      pieceId,
+      xmlContent: melodyXml(["G4", "A4", "B4", "C5"]),
+    },
+  });
+
+  const response = await harness.request(
+    "POST",
+    `/api/scores/${source.body.data.id}/similar-passages`,
+    {
+      token: owner.token,
+      body: {
+        sourceRange: sourceRange(source.body.data.id),
+        threshold: 0.9,
+        limit: 5,
+      },
+    },
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(response.body.data.length, 1);
+  assert.equal(response.body.data[0].targetScoreId, target.body.data.id);
+  assert.equal(response.body.data[0].targetSectionId, SECTION_SECOND_VIOLIN);
+  assert.equal(response.body.data[0].startMeasureNumber, 1);
+  assert.equal(response.body.data[0].endMeasureNumber, 1);
+  assert.equal(response.body.data[0].noteCount, 4);
+  assert.ok(response.body.data[0].similarity >= 0.9);
+});
+
+test("POST /scores/:scoreId/similar-passages lets principals compare visible project scores", async () => {
+  const { owner, projectId } = await setupScenario();
+  const firstViolinPrincipal = seedUserWithToken(fake, {
+    email: "similarity-principal@example.test",
+    name: "Principal",
+  });
+  seedMember(projectId, firstViolinPrincipal, SECTION_FIRST_VIOLIN, "principal");
+
+  const source = await harness.request("POST", `/api/projects/${projectId}/scores`, {
+    token: owner.token,
+    body: {
+      sectionId: SECTION_FIRST_VIOLIN,
+      title: "Violin I",
+      piece: { title: "Visibility Piece" },
+      xmlContent: melodyXml(["C4", "D4", "E4", "F4"]),
+    },
+  });
+  await harness.request("POST", `/api/projects/${projectId}/scores`, {
+    token: owner.token,
+    body: {
+      sectionId: SECTION_SECOND_VIOLIN,
+      title: "Violin II",
+      pieceId: source.body.data.piece_id,
+      xmlContent: melodyXml(["G4", "A4", "B4", "C5"]),
+    },
+  });
+
+  const response = await harness.request(
+    "POST",
+    `/api/scores/${source.body.data.id}/similar-passages`,
+    {
+      token: firstViolinPrincipal.token,
+      body: {
+        sourceRange: sourceRange(source.body.data.id),
+        threshold: 0.7,
+        limit: 5,
+      },
+    },
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(response.body.data.length, 1);
+});
+
 test("DELETE /scores/:scoreId: concertmaster deletes a score", async () => {
   const { owner, projectId } = await setupScenario();
   const upload = await harness.request("POST", `/api/projects/${projectId}/scores`, {
@@ -353,6 +619,119 @@ test("DELETE /scores/:scoreId: concertmaster deletes a score", async () => {
     token: owner.token,
   });
   assert.equal(refetch.status, 404);
+});
+
+test("PATCH /scores/:scoreId/musicxml: concertmaster saves inline MusicXML", async () => {
+  const { owner, projectId } = await setupScenario();
+  const upload = await harness.request("POST", `/api/projects/${projectId}/scores`, {
+    token: owner.token,
+    body: {
+      sectionId: SECTION_FIRST_VIOLIN,
+      title: "Save me",
+      piece: { title: "Editable piece" },
+      xmlContent: "<score-partwise><part/></score-partwise>",
+    },
+  });
+  const scoreId = upload.body.data.id;
+  const nextXml = "<score-partwise><part><measure number=\"1\"/></part></score-partwise>";
+
+  const saved = await harness.request("PATCH", `/api/scores/${scoreId}/musicxml`, {
+    token: owner.token,
+    body: { xmlContent: nextXml },
+  });
+
+  assert.equal(saved.status, 200);
+  assert.equal(saved.body.success, true);
+  assert.equal(saved.body.data.id, scoreId);
+  assert.equal(saved.body.data.xml_content, nextXml);
+
+  const refetched = await harness.request("GET", `/api/scores/${scoreId}`, {
+    token: owner.token,
+  });
+  assert.equal(refetched.status, 200);
+  assert.equal(refetched.body.data.xml_content, nextXml);
+});
+
+test("PATCH /scores/:scoreId/musicxml: accepts large MusicXML payloads", async () => {
+  const { owner, projectId } = await setupScenario();
+  const upload = await harness.request("POST", `/api/projects/${projectId}/scores`, {
+    token: owner.token,
+    body: {
+      sectionId: SECTION_FIRST_VIOLIN,
+      title: "Large save",
+      piece: { title: "Large editable piece" },
+      xmlContent: "<score-partwise><part/></score-partwise>",
+    },
+  });
+  const scoreId = upload.body.data.id;
+  const largeXml = `<score-partwise><part>${"<!-- large-save-payload -->".repeat(260000)}</part></score-partwise>`;
+
+  const saved = await harness.request("PATCH", `/api/scores/${scoreId}/musicxml`, {
+    token: owner.token,
+    body: { xmlContent: largeXml },
+  });
+
+  assert.notEqual(saved.status, 413);
+  assert.equal(saved.status, 200);
+  assert.equal(saved.body.data.xml_content.length, largeXml.length);
+});
+
+test("PATCH /scores/:scoreId/musicxml: 400 when xmlContent is missing", async () => {
+  const { owner, projectId } = await setupScenario();
+  const upload = await harness.request("POST", `/api/projects/${projectId}/scores`, {
+    token: owner.token,
+    body: {
+      sectionId: SECTION_FIRST_VIOLIN,
+      title: "Missing payload",
+      piece: { title: "Payload piece" },
+      xmlContent: "<score-partwise/>",
+    },
+  });
+
+  const response = await harness.request("PATCH", `/api/scores/${upload.body.data.id}/musicxml`, {
+    token: owner.token,
+    body: {},
+  });
+
+  assert.equal(response.status, 400);
+  assert.match(response.body.message, /xmlContent/);
+});
+
+test("PATCH /scores/:scoreId/musicxml: principal can edit own section only", async () => {
+  const { owner, projectId } = await setupScenario();
+  const principal = seedUserWithToken(fake, { email: "edit-principal@example.test" });
+  seedMember(projectId, principal, SECTION_SECOND_VIOLIN, "principal");
+
+  const own = await harness.request("POST", `/api/projects/${projectId}/scores`, {
+    token: owner.token,
+    body: {
+      sectionId: SECTION_SECOND_VIOLIN,
+      title: "Own section",
+      piece: { title: "Edit principal piece" },
+      xmlContent: "<score-partwise/>",
+    },
+  });
+  const other = await harness.request("POST", `/api/projects/${projectId}/scores`, {
+    token: owner.token,
+    body: {
+      sectionId: SECTION_FIRST_VIOLIN,
+      title: "Other section",
+      piece: { title: "Edit principal piece" },
+      xmlContent: "<score-partwise/>",
+    },
+  });
+
+  const ownEdit = await harness.request("PATCH", `/api/scores/${own.body.data.id}/musicxml`, {
+    token: principal.token,
+    body: { xmlContent: "<score-partwise><part-list /></score-partwise>" },
+  });
+  assert.equal(ownEdit.status, 200);
+
+  const otherEdit = await harness.request("PATCH", `/api/scores/${other.body.data.id}/musicxml`, {
+    token: principal.token,
+    body: { xmlContent: "<score-partwise><part-list /></score-partwise>" },
+  });
+  assert.equal(otherEdit.status, 403);
 });
 
 test("DELETE /scores/:scoreId: principal can delete own section only", async () => {
@@ -400,7 +779,7 @@ test("DELETE /scores/:scoreId: principal can delete own section only", async () 
   assert.equal(otherDelete.status, 403);
 });
 
-test("GET /scores/:scoreId: 403 when scope-section principal opens another section's score", async () => {
+test("GET /scores/:scoreId: principal can read another section's score", async () => {
   const { owner, projectId } = await setupScenario();
   const upload = await harness.request(
     "POST",
@@ -431,8 +810,46 @@ test("GET /scores/:scoreId: 403 when scope-section principal opens another secti
     },
   ]);
 
-  const { status } = await harness.request("GET", `/api/scores/${scoreId}`, {
+  const { status, body } = await harness.request("GET", `/api/scores/${scoreId}`, {
     token: principal.token,
   });
-  assert.equal(status, 403);
+  assert.equal(status, 200);
+  assert.equal(body.data.id, scoreId);
+});
+
+test("GET /scores/:scoreId: member can read another section's score", async () => {
+  const { owner, projectId } = await setupScenario();
+  const upload = await harness.request(
+    "POST",
+    `/api/projects/${projectId}/scores`,
+    {
+      token: owner.token,
+      body: {
+        sectionId: SECTION_FIRST_VIOLIN,
+        title: "Vln 1",
+        piece: { title: "P" },
+        xmlContent: "<x/>",
+      },
+    },
+  );
+  const scoreId = upload.body.data.id;
+
+  const member = seedUserWithToken(fake, { email: "member-section-2@example.test" });
+  fake.seedRows("project_members", [
+    {
+      id: "pm-member-2",
+      project_id: projectId,
+      user_id: member.user.id,
+      section_id: SECTION_SECOND_VIOLIN,
+      role: "member",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    },
+  ]);
+
+  const { status, body } = await harness.request("GET", `/api/scores/${scoreId}`, {
+    token: member.token,
+  });
+  assert.equal(status, 200);
+  assert.equal(body.data.id, scoreId);
 });

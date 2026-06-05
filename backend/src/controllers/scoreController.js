@@ -1,4 +1,5 @@
 const scoreService = require("../services/scoreService");
+const melodySimilarityService = require("../services/melodySimilarityService");
 const conversionService = require("../services/conversionService");
 const AppError = require("../utils/appError");
 const { extractMusicXmlFromMxlBuffer } = require("../utils/mxlUtils");
@@ -42,6 +43,15 @@ const getScoreById = async (req, res, next) => {
     scoreService.assertCanViewScore(req.score, req.projectMembership);
     const score = await scoreService.getScoreById(req.score.id);
     return sendSuccess(res, score, "Score fetched successfully");
+  } catch (error) {
+    return next(error);
+  }
+};
+
+const updateScoreMusicXml = async (req, res, next) => {
+  try {
+    const score = await scoreService.updateScoreMusicXml(req.score, req.body.xmlContent);
+    return sendSuccess(res, score, "Score MusicXML updated successfully");
   } catch (error) {
     return next(error);
   }
@@ -142,10 +152,25 @@ const deleteScore = async (req, res, next) => {
   }
 };
 
+const findSimilarPassages = async (req, res, next) => {
+  try {
+    const candidates = await melodySimilarityService.findSimilarPassages(
+      req.score,
+      req.projectMembership,
+      req.body,
+    );
+    return sendSuccess(res, candidates, "Similar passages fetched successfully");
+  } catch (error) {
+    return next(error);
+  }
+};
+
 module.exports = {
   getProjectScores,
   getScoreById,
+  updateScoreMusicXml,
   uploadScore,
   uploadScoreFile,
   deleteScore,
+  findSimilarPassages,
 };

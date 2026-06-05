@@ -32,7 +32,7 @@ const getProjectById = async (req, res, next) => {
 const createInviteCode = async (req, res, next) => {
   try {
     const { projectId } = req.params;
-    const result = await projectService.createProjectInviteCode(projectId, req.user);
+    const result = await projectService.createProjectInviteCode(projectId, req.user, req.body);
     return sendSuccess(res, result, "Invite code created successfully");
   } catch (error) {
     return next(error);

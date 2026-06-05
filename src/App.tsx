@@ -14,6 +14,7 @@ import { ProjectFormPage } from './ui/pages/ProjectFormPage'
 import { ProjectsPage } from './ui/pages/ProjectsPage'
 import { ScoreEditorPage } from './ui/pages/ScoreEditorPage'
 import { ScoreMusicXmlPage } from './ui/pages/ScoreMusicXmlPage'
+import { SettingsPage } from './ui/pages/SettingsPage'
 import { UserProfilePage } from './ui/pages/UserProfilePage'
 
 export default function App() {
@@ -45,6 +46,7 @@ export default function App() {
                   element={<ScoreMusicXmlPage />}
                 />
                 <Route path="users/:userId" element={<UserProfilePage />} />
+                <Route path="settings" element={<SettingsPage />} />
                 <Route path="admin" element={<AdminDashboardPage />} />
               </Route>
             </Route>

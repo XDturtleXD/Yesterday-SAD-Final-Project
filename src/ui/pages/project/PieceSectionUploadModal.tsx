@@ -3,6 +3,8 @@ import type { FormEvent } from 'react'
 import * as conversionsApi from '../../../api/conversions'
 import * as scoresApi from '../../../api/scores'
 import type { Piece, Project, Section } from '../../../types'
+import { useTranslation } from '../../../i18n'
+import { sectionLabel } from '../../../utils/sectionLabels'
 import { Button } from '../../primitives/Button'
 import { Modal } from '../../primitives/Modal'
 import { FileUp, Upload } from 'lucide-react'
@@ -34,17 +36,21 @@ export function PieceSectionUploadModal({
   const [conversionStatus, setConversionStatus] =
     useState<conversionsApi.ApiConversionStatus | null>(null)
   const [convertedXml, setConvertedXml] = useState('')
+  const { language, t } = useTranslation()
+  const currentSectionLabel = sectionLabel(section, language)
 
   useEffect(() => {
     if (!open) return
+    // Reset modal-local state whenever the upload dialog is opened for a new target.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setFile(null)
     setUploadError(null)
     setPreprocessMode('none')
     setConversionJob(null)
     setConversionStatus(null)
     setConvertedXml('')
-    setTitle(`${piece.title} - ${section.name}`)
-  }, [open, piece.id, piece.title, section.id, section.name])
+    setTitle(`${piece.title} - ${currentSectionLabel}`)
+  }, [currentSectionLabel, open, piece.id, piece.title, section.id])
 
   useEffect(() => {
     if (!open || !conversionJob) return
@@ -63,7 +69,7 @@ export function PieceSectionUploadModal({
         setConversionStatus(status)
       } catch (error) {
         if (!cancelled) {
-          setUploadError(error instanceof Error ? error.message : 'Failed to load conversion status')
+          setUploadError(error instanceof Error ? error.message : t('upload.statusLoadFailed'))
         }
       }
     }
@@ -90,15 +96,15 @@ export function PieceSectionUploadModal({
   async function submitUpload(event: FormEvent) {
     event.preventDefault()
     if (!file) {
-      setUploadError('請選擇檔案')
+      setUploadError(t('upload.chooseFile'))
       return
     }
     if (!/\.(pdf|xml|musicxml|mxl)$/i.test(file.name)) {
-      setUploadError('僅支援 PDF、.xml、.musicxml、.mxl')
+      setUploadError(t('upload.unsupportedFile'))
       return
     }
     if (!title.trim()) {
-      setUploadError('請填寫分譜標題')
+      setUploadError(t('upload.titleRequired'))
       return
     }
 
@@ -118,7 +124,7 @@ export function PieceSectionUploadModal({
         setConversionStatus({
           job_id: result.jobId,
           status: 'queued',
-          message: 'Conversion queued',
+          message: t('upload.conversionQueued'),
           current_page: 0,
           total_pages: 0,
           error_message: null,
@@ -130,7 +136,7 @@ export function PieceSectionUploadModal({
         onClose()
       }
     } catch (error) {
-      setUploadError(error instanceof Error ? error.message : '上傳失敗')
+      setUploadError(error instanceof Error ? error.message : t('upload.uploadFailed'))
     } finally {
       setUploading(false)
     }
@@ -151,7 +157,7 @@ export function PieceSectionUploadModal({
       await onUploaded()
       onClose()
     } catch (error) {
-      setUploadError(error instanceof Error ? error.message : '匯入失敗')
+      setUploadError(error instanceof Error ? error.message : t('upload.importFailed'))
     } finally {
       setImporting(false)
     }
@@ -159,7 +165,7 @@ export function PieceSectionUploadModal({
 
   return (
     <Modal
-      title={`上傳分譜 · ${piece.title}`}
+      title={`${t('upload.titlePrefix')} · ${piece.title}`}
       open={open}
       onClose={handleClose}
       maxWidthClassName="h-[min(640px,calc(100vh-2rem))] max-w-2xl"
@@ -172,7 +178,7 @@ export function PieceSectionUploadModal({
             onClick={handleClose}
             disabled={uploading || importing || conversionInProgress}
           >
-            Cancel
+            {t('common.cancel')}
           </Button>
           {conversionJob ? (
             <Button
@@ -180,29 +186,25 @@ export function PieceSectionUploadModal({
               onClick={importConvertedScore}
               disabled={!conversionDone || importing}
             >
-              {importing ? 'Importing…' : 'Import converted score'}
+              {importing ? t('upload.importing') : t('upload.importConverted')}
             </Button>
           ) : (
             <Button type="submit" form="piece-section-upload-form" disabled={uploading}>
               <Upload className="size-4" />
-              {uploading ? 'Uploading…' : isPdf ? 'Upload & Convert' : 'Upload'}
+              {uploading ? t('upload.uploading') : isPdf ? t('upload.uploadConvert') : t('common.upload')}
             </Button>
           )}
         </div>
       }
     >
       <form id="piece-section-upload-form" className="space-y-4" onSubmit={submitUpload}>
-        <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-          {piece.title} · {section.name}
-        </div>
-
         <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900">
-          支援 PDF（自動轉 MusicXML）、.musicxml、.xml、.mxl
+          {t('upload.supports')}
         </div>
 
         <div>
           <label className="text-sm font-medium text-slate-800" htmlFor="piece-section-file">
-            Score file
+            {t('upload.scoreFile')}
           </label>
           <input
             id="piece-section-file"
@@ -219,7 +221,7 @@ export function PieceSectionUploadModal({
 
         <div>
           <label className="text-sm font-medium text-slate-800" htmlFor="piece-section-title">
-            Score title
+            {t('upload.scoreTitle')}
           </label>
           <input
             id="piece-section-title"
@@ -232,7 +234,7 @@ export function PieceSectionUploadModal({
         {isPdf && !conversionJob && (
           <div>
             <label className="text-sm font-medium text-slate-800" htmlFor="preprocess-mode">
-              PDF cleanup
+              {t('upload.pdfCleanup')}
             </label>
             <select
               id="preprocess-mode"
@@ -240,12 +242,12 @@ export function PieceSectionUploadModal({
               onChange={(event) => setPreprocessMode(event.target.value)}
               className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
             >
-              <option value="none">None</option>
-              <option value="basic">Basic cleanup</option>
-              <option value="classical_part">Classical score cleanup</option>
-              <option value="high_contrast">High contrast</option>
-              <option value="resize">Resize pages</option>
-              <option value="thin_ink">Thin heavy ink</option>
+              <option value="none">{t('upload.none')}</option>
+              <option value="basic">{t('upload.basicCleanup')}</option>
+              <option value="classical_part">{t('upload.classicalCleanup')}</option>
+              <option value="high_contrast">{t('upload.highContrast')}</option>
+              <option value="resize">{t('upload.resizePages')}</option>
+              <option value="thin_ink">{t('upload.thinInk')}</option>
             </select>
           </div>
         )}
@@ -258,11 +260,11 @@ export function PieceSectionUploadModal({
 
         {showConversionStatus && (
           <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
-            <div className="font-medium">PDF conversion: {conversionStatus.status}</div>
+            <div className="font-medium">{t('upload.pdfConversion')}: {conversionStatus.status}</div>
             <div className="mt-1 text-xs text-sky-800">
               {conversionStatus.message}
               {conversionStatus.total_pages > 0 &&
-                ` · page ${conversionStatus.current_page}/${conversionStatus.total_pages}`}
+                ` · ${t('upload.page')} ${conversionStatus.current_page}/${conversionStatus.total_pages}`}
             </div>
             {conversionStatus.error_message && (
               <div className="mt-1 text-xs text-rose-700">{conversionStatus.error_message}</div>
@@ -274,7 +276,7 @@ export function PieceSectionUploadModal({
           <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-3 text-sm text-emerald-900">
             <div className="flex items-center gap-2 font-medium">
               <FileUp className="size-4" />
-              Conversion complete — ready to import
+              {t('upload.conversionComplete')}
             </div>
           </div>
         )}

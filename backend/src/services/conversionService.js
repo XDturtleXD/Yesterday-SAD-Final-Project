@@ -14,6 +14,17 @@ const jobs = new Map();
 
 const buildOmrUrl = (path) => `${env.omrServiceUrl.replace(/\/$/, "")}${path}`;
 
+const fetchOmr = async (path, options = {}) => {
+  try {
+    return await fetch(buildOmrUrl(path), options);
+  } catch {
+    throw new AppError(
+      "Conversion service is unavailable. Start the OMR service with `npm run dev:all` and check AUDIVERIS_BIN.",
+      502,
+    );
+  }
+};
+
 const parseOmrResponse = async (response) => {
   const text = await response.text();
   const contentType = response.headers.get("content-type") || "";
@@ -101,7 +112,7 @@ const startConversion = async ({ file, preprocessMode, projectId, userId }) => {
   form.append("preprocess_mode", normalizePreprocessMode(preprocessMode));
   form.append("engine", "audiveris");
 
-  const response = await fetch(buildOmrUrl("/upload"), {
+  const response = await fetchOmr("/upload", {
     method: "POST",
     body: form,
   });
@@ -131,7 +142,7 @@ const startConversion = async ({ file, preprocessMode, projectId, userId }) => {
 
 const getStatus = async (jobId, access = {}) => {
   const job = assertJobAccess(jobId, access);
-  const response = await fetch(buildOmrUrl(`/status/${encodeURIComponent(jobId)}`));
+  const response = await fetchOmr(`/status/${encodeURIComponent(jobId)}`);
   const status = await parseOmrResponse(response);
   updateJob(jobId, {
     status: status.status,
@@ -146,16 +157,14 @@ const getStatus = async (jobId, access = {}) => {
 
 const getFullMusicXml = async (jobId, access = {}) => {
   assertJobAccess(jobId, access);
-  const response = await fetch(buildOmrUrl(`/result/${encodeURIComponent(jobId)}/musicxml/raw`));
+  const response = await fetchOmr(`/result/${encodeURIComponent(jobId)}/musicxml/raw`);
   return parseOmrResponse(response);
 };
 
 const getPageMusicXml = async (jobId, pageNumber, access = {}) => {
   assertJobAccess(jobId, access);
-  const response = await fetch(
-    buildOmrUrl(
-      `/result/${encodeURIComponent(jobId)}/audiveris/page/${encodeURIComponent(pageNumber)}/raw`,
-    ),
+  const response = await fetchOmr(
+    `/result/${encodeURIComponent(jobId)}/audiveris/page/${encodeURIComponent(pageNumber)}/raw`,
   );
   return parseOmrResponse(response);
 };

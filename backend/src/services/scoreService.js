@@ -9,8 +9,9 @@ const SCORE_COLUMNS_WITH_CONTENT =
   "id, project_id, piece_id, section_id, title, storage_bucket, storage_path, file_type, original_filename, mime_type, file_size_bytes, xml_content, created_by, created_at, updated_at";
 
 const VALID_FILE_TYPES = ["musicxml", "xml", "mxl"];
-// 5 MB cap on inline XML payloads to keep request bodies sane.
-const MAX_INLINE_XML_BYTES = 5 * 1024 * 1024;
+// 20 MB cap on inline XML payloads to keep request bodies sane while allowing
+// larger edited MusicXML saves.
+const MAX_INLINE_XML_BYTES = 20 * 1024 * 1024;
 
 const ensureSupabaseReady = () => {
   if (!supabase) {
@@ -28,7 +29,7 @@ const canViewScore = (score, membership) => {
   }
 
   if (membership.role === "principal" || membership.role === "member") {
-    return score.section_id === membership.section_id;
+    return true;
   }
 
   return false;
@@ -46,7 +47,7 @@ const applyScoreVisibilityFilter = (query, membership) => {
   }
 
   if (membership.role === "principal" || membership.role === "member") {
-    return query.eq("section_id", membership.section_id);
+    return query;
   }
 
   return query.eq("id", "__no_access__");
@@ -87,6 +88,38 @@ const getScoreById = async (scoreId) => {
 
   if (!data) {
     throw new AppError("Score not found", 404);
+  }
+
+  return data;
+};
+
+const updateScoreMusicXml = async (score, xmlContent) => {
+  ensureSupabaseReady();
+
+  if (!score) {
+    throw new AppError("Score not found", 404);
+  }
+
+  if (typeof xmlContent !== "string" || xmlContent.trim().length === 0) {
+    throw new AppError("xmlContent must be a non-empty string", 400);
+  }
+
+  if (xmlContent.length > MAX_INLINE_XML_BYTES) {
+    throw new AppError(
+      `xmlContent exceeds maximum size of ${MAX_INLINE_XML_BYTES} bytes`,
+      413,
+    );
+  }
+
+  const { data, error } = await supabase
+    .from("scores")
+    .update({ xml_content: xmlContent })
+    .eq("id", score.id)
+    .select(SCORE_COLUMNS_WITH_CONTENT)
+    .single();
+
+  if (error) {
+    throw new AppError("Failed to update score MusicXML", 500, error);
   }
 
   return data;
@@ -394,6 +427,7 @@ module.exports = {
   getScoreById,
   canViewScore,
   assertCanViewScore,
+  updateScoreMusicXml,
   uploadScore,
   deleteScore,
   // Pure helpers exported for unit tests (no Supabase dependency required).

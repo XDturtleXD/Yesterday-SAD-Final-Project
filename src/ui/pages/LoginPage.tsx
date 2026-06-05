@@ -5,6 +5,7 @@ import { ApiError } from '../../api/client'
 import { useAuth } from '../../auth/AuthContext'
 import { GOOGLE_CLIENT_ID } from '../../config/env'
 import { useAppState } from '../../state/AppState'
+import { useTranslation } from '../../i18n'
 import { Card } from '../primitives/Card'
 import { Button } from '../primitives/Button'
 import { LogIn, Music2, UserPlus } from 'lucide-react'
@@ -17,6 +18,7 @@ const inputClassName =
 export function LoginPage() {
   const { login, register, googleLogin } = useAuth()
   const { addToast } = useAppState()
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const redirect = searchParams.get('redirect') || '/dashboard'
@@ -31,7 +33,7 @@ export function LoginPage() {
   const [confirmPassword, setConfirmPassword] = useState('')
 
   const handleSuccess = () => {
-    addToast({ title: '登入成功', message: '歡迎回來！' })
+    addToast({ title: t('auth.signedIn'), message: t('auth.welcomeBack') })
     navigate(decodeURIComponent(redirect), { replace: true })
   }
 
@@ -40,21 +42,21 @@ export function LoginPage() {
     setError('')
 
     if (!email.trim() || !password) {
-      setError('請填寫 email 與密碼')
+      setError(t('auth.emailPasswordRequired'))
       return
     }
 
     if (tab === 'register') {
       if (!name.trim()) {
-        setError('請填寫姓名')
+        setError(t('auth.nameRequired'))
         return
       }
       if (password !== confirmPassword) {
-        setError('兩次輸入的密碼不一致')
+        setError(t('auth.passwordMismatch'))
         return
       }
       if (password.length < 6) {
-        setError('密碼至少需要 6 個字元')
+        setError(t('auth.passwordTooShort'))
         return
       }
     }
@@ -72,8 +74,8 @@ export function LoginPage() {
         err instanceof ApiError
           ? err.message
           : tab === 'login'
-            ? '登入失敗，請稍後再試'
-            : '註冊失敗，請稍後再試'
+            ? t('auth.signInFailed')
+            : t('auth.signUpFailed')
       setError(message)
     } finally {
       setLoading(false)
@@ -82,7 +84,7 @@ export function LoginPage() {
 
   const handleGoogleSuccess = async (response: CredentialResponse) => {
     if (!response.credential) {
-      setError('Google 登入失敗，未取得憑證')
+      setError(t('auth.googleNoCredential'))
       return
     }
 
@@ -92,7 +94,7 @@ export function LoginPage() {
       await googleLogin(response.credential)
       handleSuccess()
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Google 登入失敗，請稍後再試')
+      setError(err instanceof ApiError ? err.message : t('auth.googleFailed'))
     } finally {
       setLoading(false)
     }
@@ -124,7 +126,7 @@ export function LoginPage() {
             }`}
           >
             <LogIn className="size-4" />
-            登入
+            {t('auth.logIn')}
           </button>
           <button
             type="button"
@@ -139,18 +141,18 @@ export function LoginPage() {
             }`}
           >
             <UserPlus className="size-4" />
-            註冊
+            {t('auth.signUp')}
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {tab === 'register' && (
             <div>
-              <label className="text-sm font-medium text-slate-800">姓名</label>
+              <label className="text-sm font-medium text-slate-800">{t('auth.name')}</label>
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="王小明"
+                placeholder="Alex Chen"
                 className={inputClassName}
                 autoComplete="name"
               />
@@ -158,7 +160,7 @@ export function LoginPage() {
           )}
 
           <div>
-            <label className="text-sm font-medium text-slate-800">Email</label>
+            <label className="text-sm font-medium text-slate-800">{t('auth.email')}</label>
             <input
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -170,7 +172,7 @@ export function LoginPage() {
           </div>
 
           <div>
-            <label className="text-sm font-medium text-slate-800">密碼</label>
+            <label className="text-sm font-medium text-slate-800">{t('auth.password')}</label>
             <input
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -183,7 +185,7 @@ export function LoginPage() {
 
           {tab === 'register' && (
             <div>
-              <label className="text-sm font-medium text-slate-800">確認密碼</label>
+              <label className="text-sm font-medium text-slate-800">{t('auth.confirmPassword')}</label>
               <input
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
@@ -202,7 +204,7 @@ export function LoginPage() {
           )}
 
           <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? '處理中...' : tab === 'login' ? '登入' : '建立帳號'}
+            {loading ? t('auth.working') : tab === 'login' ? t('auth.logIn') : t('auth.createAccount')}
           </Button>
         </form>
 
@@ -213,13 +215,13 @@ export function LoginPage() {
                 <div className="w-full border-t border-slate-200" />
               </div>
               <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-white px-2 text-slate-500">或</span>
+                <span className="bg-white px-2 text-slate-500">{t('auth.or')}</span>
               </div>
             </div>
             <div className="flex justify-center">
               <GoogleLogin
                 onSuccess={handleGoogleSuccess}
-                onError={() => setError('Google 登入失敗')}
+                onError={() => setError(t('auth.googleFailedShort'))}
                 theme="outline"
                 size="large"
                 text={tab === 'login' ? 'signin_with' : 'signup_with'}
@@ -233,7 +235,7 @@ export function LoginPage() {
 
       <p className="mt-4 text-center text-sm text-slate-600">
         <Link to="/" className="text-sky-700 hover:underline">
-          返回首頁
+          {t('common.backHome')}
         </Link>
       </p>
     </div>

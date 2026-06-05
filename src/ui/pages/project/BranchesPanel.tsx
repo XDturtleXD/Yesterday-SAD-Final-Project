@@ -5,11 +5,13 @@ import { Badge } from '../../primitives/Badge'
 import { Button } from '../../primitives/Button'
 import { Card } from '../../primitives/Card'
 import { Modal } from '../../primitives/Modal'
+import { useTranslation } from '../../../i18n'
 import { GitBranch, GitMerge, Repeat2, Trash2 } from 'lucide-react'
 
 export function BranchesPanel({ project }: { project: Project }) {
   const { createBranch, switchBranch, deleteBranch, mergeBranch, addToast } = useAppState()
   const currentUser = useRequiredUser()
+  const { t } = useTranslation()
   const [createOpen, setCreateOpen] = useState(false)
   const [mergeOpen, setMergeOpen] = useState(false)
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null)
@@ -31,40 +33,40 @@ export function BranchesPanel({ project }: { project: Project }) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
-          <div className="text-sm font-semibold text-slate-900">Branches / Versions</div>
+          <div className="text-sm font-semibold text-slate-900">{t('branches.title')}</div>
           <div className="mt-1 text-sm text-slate-600">
-            建立、切換與合併分支。僅 concertmaster 可合併。
+            {t('branches.description')}
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="secondary" onClick={() => setCreateOpen(true)}>
             <GitBranch className="size-4" />
-            Create new branch
+            {t('branches.createNew')}
           </Button>
           <Button variant="secondary" onClick={() => setMergeOpen(true)} disabled={!canMerge}>
             <GitMerge className="size-4" />
-            Merge branch
+            {t('branches.mergeBranch')}
           </Button>
         </div>
       </div>
 
       {!canMerge && (
         <Card className="p-4">
-          <div className="text-sm font-semibold text-slate-900">Merge permissions</div>
+          <div className="text-sm font-semibold text-slate-900">{t('branches.mergePermissions')}</div>
           <div className="mt-1 text-sm text-slate-600">
-            你的角色無法合併分支。僅 concertmaster 或平台管理員可合併。
+            {t('branches.mergePermissionsDescription')}
           </div>
         </Card>
       )}
 
       <Card className="p-4">
         <div className="flex items-center justify-between">
-          <div className="text-sm font-semibold text-slate-900">Branches</div>
+          <div className="text-sm font-semibold text-slate-900">{t('tabs.branches')}</div>
           <Badge tone="info">{project.currentBranchName}</Badge>
         </div>
         <div className="mt-3 space-y-2">
           {project.branches.length === 0 && (
-            <div className="text-sm text-slate-500">尚無分支。建立第一個 commit 後會自動產生 default branch。</div>
+            <div className="text-sm text-slate-500">{t('branches.noBranches')}</div>
           )}
           {project.branches.map((b) => (
             <div
@@ -73,8 +75,8 @@ export function BranchesPanel({ project }: { project: Project }) {
             >
               <div className="flex items-center gap-2">
                 <div className="text-sm font-medium text-slate-900">{b.name}</div>
-                {b.isDefault && <Badge>default</Badge>}
-                {b.id === project.currentBranchId && <Badge tone="success">active</Badge>}
+                {b.isDefault && <Badge>{t('common.default')}</Badge>}
+                {b.id === project.currentBranchId && <Badge tone="success">{t('common.active')}</Badge>}
               </div>
               <div className="flex items-center gap-2">
                 <Button
@@ -85,16 +87,16 @@ export function BranchesPanel({ project }: { project: Project }) {
                     setSwitchingBranchId(b.id)
                     try {
                       await switchBranch(project.id, b.id)
-                      addToast({ title: '已切換分支', message: b.name })
+                      addToast({ title: t('branches.switched'), message: b.name })
                     } catch {
-                      addToast({ title: '切換分支失敗', message: b.name })
+                      addToast({ title: t('branches.switchFailed'), message: b.name })
                     } finally {
                       setSwitchingBranchId(null)
                     }
                   }}
                 >
                   <Repeat2 className="size-4" />
-                  {switchingBranchId === b.id ? '切換中…' : 'Switch'}
+                  {switchingBranchId === b.id ? t('common.switching') : t('common.switch')}
                 </Button>
                 {!b.isDefault && canMerge && (
                   <Button
@@ -112,13 +114,13 @@ export function BranchesPanel({ project }: { project: Project }) {
       </Card>
 
       <Modal
-        title="Create branch"
+        title={t('branches.createTitle')}
         open={createOpen}
         onClose={() => setCreateOpen(false)}
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setCreateOpen(false)} disabled={loading}>
-              Cancel
+              {t('common.cancel')}
             </Button>
             <Button
               disabled={loading || !branchName.trim()}
@@ -127,13 +129,13 @@ export function BranchesPanel({ project }: { project: Project }) {
                 try {
                   await createBranch(project.id, branchName.trim())
                   setCreateOpen(false)
-                  addToast({ title: '分支已建立', message: branchName.trim() })
+                  addToast({ title: t('branches.created'), message: branchName.trim() })
                 } finally {
                   setLoading(false)
                 }
               }}
             >
-              Create
+              {t('common.create')}
             </Button>
           </div>
         }
@@ -142,18 +144,18 @@ export function BranchesPanel({ project }: { project: Project }) {
           value={branchName}
           onChange={(e) => setBranchName(e.target.value)}
           className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
-          placeholder="e.g. bowing-update"
+          placeholder={t('branches.namePlaceholder')}
         />
       </Modal>
 
       <Modal
-        title="刪除分支"
+        title={t('branches.deleteTitle')}
         open={deleteTargetId !== null}
         onClose={() => setDeleteTargetId(null)}
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setDeleteTargetId(null)} disabled={loading}>
-              Cancel
+              {t('common.cancel')}
             </Button>
             <Button
               disabled={loading}
@@ -164,36 +166,36 @@ export function BranchesPanel({ project }: { project: Project }) {
                 try {
                   await deleteBranch(project.id, deleteTargetId)
                   setDeleteTargetId(null)
-                  addToast({ title: '分支已刪除', message: branchName })
+                  addToast({ title: t('branches.deleted'), message: branchName })
                 } catch {
-                  addToast({ title: '刪除分支失敗', message: branchName })
+                  addToast({ title: t('branches.deleteFailed'), message: branchName })
                 } finally {
                   setLoading(false)
                 }
               }}
             >
-              確認刪除
+              {t('common.confirmDelete')}
             </Button>
           </div>
         }
       >
         <div className="text-sm text-slate-700">
-          確定要刪除分支{' '}
+          {t('branches.deletePrompt')}{' '}
           <span className="font-semibold">
             {project.branches.find((b) => b.id === deleteTargetId)?.name}
           </span>
-          ？此操作無法復原。
+          ? {t('branches.deleteWarning')}
         </div>
       </Modal>
 
       <Modal
-        title="Merge branch"
+        title={t('branches.mergeBranch')}
         open={mergeOpen}
         onClose={() => setMergeOpen(false)}
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setMergeOpen(false)} disabled={loading}>
-              Cancel
+              {t('common.cancel')}
             </Button>
             <Button
               disabled={!canMerge || loading}
@@ -202,20 +204,20 @@ export function BranchesPanel({ project }: { project: Project }) {
                 try {
                   await mergeBranch(project.id, mergeFrom, mergeInto)
                   setMergeOpen(false)
-                  addToast({ title: '合併完成' })
+                  addToast({ title: t('branches.mergeComplete') })
                 } finally {
                   setLoading(false)
                 }
               }}
             >
-              Confirm merge
+              {t('branches.confirmMerge')}
             </Button>
           </div>
         }
       >
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
-            <div className="text-sm font-medium text-slate-800">From</div>
+            <div className="text-sm font-medium text-slate-800">{t('common.from')}</div>
             <select
               value={mergeFrom}
               onChange={(e) => setMergeFrom(e.target.value)}
@@ -229,7 +231,7 @@ export function BranchesPanel({ project }: { project: Project }) {
             </select>
           </div>
           <div>
-            <div className="text-sm font-medium text-slate-800">Into</div>
+            <div className="text-sm font-medium text-slate-800">{t('common.into')}</div>
             <select
               value={mergeInto}
               onChange={(e) => setMergeInto(e.target.value)}

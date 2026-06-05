@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { useTranslation } from '../../i18n'
 import { cn } from '../utils/cn'
 
 export function Modal({
@@ -18,6 +19,8 @@ export function Modal({
   maxWidthClassName?: string
   bodyClassName?: string
 }) {
+  const { t } = useTranslation()
+
   useEffect(() => {
     if (!open) return
     const onKeyDown = (e: KeyboardEvent) => {
@@ -32,7 +35,7 @@ export function Modal({
   return (
     <div className="fixed inset-0 z-50">
       <button
-        aria-label="Close modal"
+        aria-label={t('common.closeModal')}
         onClick={onClose}
         className="absolute inset-0 bg-slate-900/30"
       />

@@ -24,14 +24,22 @@ export function createProject(input: {
   })
 }
 
-export function createInviteCode(projectId: string) {
-  return apiRequest<{ inviteCode: string }>(`/projects/${projectId}/invite-code`, {
+export function createInviteCode(
+  projectId: string,
+  input: { targetRole: 'principal' | 'member'; sectionId: string },
+) {
+  return apiRequest<{
+    inviteCode: string
+    targetRole: 'principal' | 'member'
+    sectionId: string
+    expiresAt: string
+  }>(`/projects/${projectId}/invite-code`, {
     method: 'POST',
-    body: JSON.stringify({}),
+    body: JSON.stringify(input),
   })
 }
 
-export function joinByInviteCode(input: { inviteCode: string; sectionId: string }) {
+export function joinByInviteCode(input: { inviteCode: string }) {
   return apiRequest<ApiProjectMember>(`/projects/join-by-code`, {
     method: 'POST',
     body: JSON.stringify(input),

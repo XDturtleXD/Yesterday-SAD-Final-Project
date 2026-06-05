@@ -126,6 +126,35 @@ const deletePiece = async (pieceId, projectId, membership) => {
   return { id: piece.id };
 };
 
+const updatePiece = async (pieceId, projectId, body, membership) => {
+  ensureSupabaseReady();
+  assertCanManagePieces(membership);
+
+  const title = String(body?.title || "").trim();
+  if (!title) {
+    throw new AppError("title is required", 400);
+  }
+
+  const piece = await getPieceById(pieceId, projectId);
+
+  const { data: updated, error } = await supabase
+    .from("pieces")
+    .update({ title })
+    .eq("id", piece.id)
+    .eq("project_id", projectId)
+    .select(PIECE_COLUMNS)
+    .single();
+
+  if (error) {
+    if (error.code === "23505") {
+      throw new AppError("A piece with this title already exists in the project", 409, error);
+    }
+    throw new AppError("Failed to update piece", 500, error);
+  }
+
+  return updated;
+};
+
 const reorderPieces = async (body, projectId, membership) => {
   ensureSupabaseReady();
   assertCanManagePieces(membership);
@@ -153,20 +182,32 @@ const reorderPieces = async (body, projectId, membership) => {
     throw new AppError("orderedPieceIds must not contain duplicates", 400);
   }
 
-  const updates = orderedPieceIds.map((id, index) =>
-    supabase
-      .from("pieces")
-      .update({ sort_order: index + 1 })
-      .eq("id", id)
-      .eq("project_id", projectId),
-  );
+  const updateSortOrders = async (updates) => {
+    for (const { id, sortOrder } of updates) {
+      const { error } = await supabase
+        .from("pieces")
+        .update({ sort_order: sortOrder })
+        .eq("id", id)
+        .eq("project_id", projectId);
 
-  const results = await Promise.all(updates);
-  for (const { error } of results) {
-    if (error) {
-      throw new AppError("Failed to reorder pieces", 500, error);
+      if (error) {
+        throw new AppError("Failed to reorder pieces", 500, error);
+      }
     }
-  }
+  };
+
+  const maxSortOrder = existing.reduce(
+    (max, piece) => Math.max(max, piece.sort_order || 0),
+    0,
+  );
+  const temporaryOffset = maxSortOrder + orderedPieceIds.length + 1;
+
+  await updateSortOrders(
+    orderedPieceIds.map((id, index) => ({ id, sortOrder: temporaryOffset + index })),
+  );
+  await updateSortOrders(
+    orderedPieceIds.map((id, index) => ({ id, sortOrder: index + 1 })),
+  );
 
   return listPiecesByProjectId(projectId);
 };
@@ -175,6 +216,7 @@ module.exports = {
   listPiecesByProjectId,
   createPiece,
   deletePiece,
+  updatePiece,
   reorderPieces,
   getPieceById,
   canManagePieces,

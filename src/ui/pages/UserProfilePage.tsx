@@ -7,6 +7,8 @@ import { Badge } from '../primitives/Badge'
 import { Avatar } from '../primitives/Avatar'
 import { Button } from '../primitives/Button'
 import { Card } from '../primitives/Card'
+import { roleLabel, useTranslation } from '../../i18n'
+import { memberPositionLabel, memberSectionLabel } from '../../utils/sectionLabels'
 import { FolderKanban, Pencil, UserRound } from 'lucide-react'
 
 const MAX_AVATAR_FILE_BYTES = 300 * 1024
@@ -18,6 +20,7 @@ export function UserProfilePage() {
   const navigate = useNavigate()
   const { projects, getMemberDisplayName, addToast } = useAppState()
   const currentUser = useRequiredUser()
+  const { language, t } = useTranslation()
   const { user: authUser, updateProfile } = useAuth()
 
   // eslint-disable-next-line react-hooks/preserve-manual-memoization
@@ -79,18 +82,18 @@ export function UserProfilePage() {
 
   async function handleAvatarFile(file: File) {
     if (!file.type.startsWith('image/')) {
-      setError('請上傳圖片檔（JPEG、PNG、WebP 或 GIF）')
+      setError(t('profile.imageFileError'))
       return
     }
     if (file.size > MAX_AVATAR_FILE_BYTES) {
-      setError('圖片大小需小於 300 KB')
+      setError(t('profile.imageSizeError'))
       return
     }
 
     const dataUrl = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader()
       reader.onload = () => resolve(String(reader.result))
-      reader.onerror = () => reject(new Error('無法讀取圖片'))
+      reader.onerror = () => reject(new Error(t('profile.imageReadError')))
       reader.readAsDataURL(file)
     })
 
@@ -107,10 +110,10 @@ export function UserProfilePage() {
         intro: intro.trim(),
         avatar_url: avatarUrl.trim() || null,
       })
-      addToast({ title: '個人資料已更新' })
+      addToast({ title: t('profile.updated') })
       setEditing(false)
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : '更新失敗，請稍後再試')
+      setError(err instanceof ApiError ? err.message : t('profile.updateFailed'))
     } finally {
       setSaving(false)
     }
@@ -119,10 +122,10 @@ export function UserProfilePage() {
   if (!profileUser) {
     return (
       <Card className="p-6">
-        <div className="text-sm font-semibold text-slate-900">User not found</div>
+        <div className="text-sm font-semibold text-slate-900">{t('profile.userNotFound')}</div>
         <div className="mt-2">
           <Button variant="secondary" onClick={() => navigate('/dashboard')}>
-            Back home
+            {t('common.backHome')}
           </Button>
         </div>
       </Card>
@@ -138,16 +141,16 @@ export function UserProfilePage() {
               <UserRound className="size-5" />
             </div>
             <div className="min-w-0">
-              <div className="text-xl font-semibold text-slate-950">User profile</div>
+              <div className="text-xl font-semibold text-slate-950">{t('profile.title')}</div>
               <div className="mt-1 text-sm text-slate-600">
-                {isSelf ? '你的個人資料' : '查看其他使用者的公開資訊'}
+                {isSelf ? t('profile.manage') : t('profile.viewPublic')}
               </div>
             </div>
           </div>
           {isSelf && !editing && (
             <Button variant="secondary" onClick={startEditing}>
               <Pencil className="size-4" />
-              編輯
+              {t('common.edit')}
             </Button>
           )}
         </div>
@@ -160,7 +163,7 @@ export function UserProfilePage() {
               <Avatar name={name || currentUser.name} src={avatarUrl || undefined} size={64} />
               <div className="min-w-0 flex-1 space-y-3">
                 <div>
-                  <label className="text-sm font-medium text-slate-800">頭像</label>
+                  <label className="text-sm font-medium text-slate-800">{t('profile.avatar')}</label>
                   <input
                     value={avatarUrl}
                     onChange={(e) => setAvatarUrl(e.target.value)}
@@ -185,7 +188,7 @@ export function UserProfilePage() {
                       size="sm"
                       onClick={() => fileInputRef.current?.click()}
                     >
-                      上傳圖片
+                      {t('profile.uploadImage')}
                     </Button>
                     {avatarUrl && (
                       <Button
@@ -194,19 +197,19 @@ export function UserProfilePage() {
                         size="sm"
                         onClick={() => setAvatarUrl('')}
                       >
-                        移除頭像
+                        {t('profile.removeAvatar')}
                       </Button>
                     )}
                   </div>
                   <p className="mt-1 text-xs text-slate-500">
-                    可貼上圖片網址，或上傳小於 300 KB 的圖片。
+                    {t('profile.avatarHelp')}
                   </p>
                 </div>
               </div>
             </div>
 
             <div>
-              <label className="text-sm font-medium text-slate-800">姓名</label>
+              <label className="text-sm font-medium text-slate-800">{t('profile.name')}</label>
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -216,7 +219,7 @@ export function UserProfilePage() {
             </div>
 
             <div>
-              <label className="text-sm font-medium text-slate-800">Email</label>
+              <label className="text-sm font-medium text-slate-800">{t('profile.email')}</label>
               <input
                 value={authUser?.email ?? ''}
                 disabled
@@ -225,13 +228,13 @@ export function UserProfilePage() {
             </div>
 
             <div>
-              <label className="text-sm font-medium text-slate-800">自我介紹</label>
+              <label className="text-sm font-medium text-slate-800">{t('profile.bio')}</label>
               <textarea
                 value={intro}
                 onChange={(e) => setIntro(e.target.value)}
                 rows={4}
                 maxLength={1000}
-                placeholder="介紹你的樂器、排練習慣或協作偏好..."
+                placeholder={t('profile.bioPlaceholder')}
                 className={inputClassName}
               />
               <p className="mt-1 text-xs text-slate-500">{intro.length}/1000</p>
@@ -245,10 +248,10 @@ export function UserProfilePage() {
 
             <div className="flex flex-wrap gap-2">
               <Button onClick={() => void handleSave()} disabled={saving || !name.trim()}>
-                {saving ? '儲存中...' : '儲存'}
+                {saving ? t('common.saving') : t('common.save')}
               </Button>
               <Button variant="secondary" onClick={cancelEditing} disabled={saving}>
-                取消
+                {t('common.cancel')}
               </Button>
             </div>
           </div>
@@ -265,22 +268,22 @@ export function UserProfilePage() {
                   {profileUser.name}
                 </div>
                 <div className="mt-1 flex flex-wrap gap-2">
-                  <Badge tone="info">role: {profileUser.role}</Badge>
+                  <Badge tone="info">{t('profile.role')}: {roleLabel(profileUser.role, language)}</Badge>
                 </div>
               </div>
             </div>
 
             {isSelf && authUser?.email && (
               <div className="mt-4">
-                <div className="text-sm font-medium text-slate-800">Email</div>
+                <div className="text-sm font-medium text-slate-800">{t('profile.email')}</div>
                 <div className="mt-1 text-sm text-slate-600">{authUser.email}</div>
               </div>
             )}
 
             <div className="mt-4">
-              <div className="text-sm font-medium text-slate-800">自我介紹</div>
+              <div className="text-sm font-medium text-slate-800">{t('profile.bio')}</div>
               <div className="mt-1 text-sm text-slate-600">
-                {profileUser.intro.trim() ? profileUser.intro : '尚未填寫自我介紹。'}
+                {profileUser.intro.trim() ? profileUser.intro : t('profile.noBio')}
               </div>
             </div>
           </>
@@ -290,11 +293,11 @@ export function UserProfilePage() {
       <Card className="p-5">
         <div className="flex items-center gap-2 text-sm font-semibold text-slate-950">
           <FolderKanban className="size-4 text-slate-500" />
-          Participating projects
+          {t('profile.participatingProjects')}
         </div>
         <div className="mt-3 space-y-3">
           {participating.length === 0 ? (
-            <div className="text-sm text-slate-500">No projects.</div>
+            <div className="text-sm text-slate-500">{t('profile.noProjects')}</div>
           ) : (
             participating.map((p) => {
               const m = p.members.find((mm) => mm.userId === profileUser.id)
@@ -306,12 +309,12 @@ export function UserProfilePage() {
                       <div className="mt-1 text-sm text-slate-600">{p.description}</div>
                     </div>
                     <Button size="sm" onClick={() => navigate(`/projects/${p.id}`)}>
-                      Open
+                      {t('common.open')}
                     </Button>
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2">
-                    <Badge>Role: {m?.role ?? '—'}</Badge>
-                    <Badge>Section: {m?.sectionName ?? '—'}</Badge>
+                    <Badge>{t('profile.roleLabel')}: {memberPositionLabel(m, language)}</Badge>
+                    <Badge>{t('profile.section')}: {m ? memberSectionLabel(m, language) : '—'}</Badge>
                   </div>
                 </div>
               )

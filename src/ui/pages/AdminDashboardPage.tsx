@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { useAppState, useRequiredUser } from '../../state/AppState'
+import { useTranslation } from '../../i18n'
 import { Badge } from '../primitives/Badge'
 import { Button } from '../primitives/Button'
 import { Card } from '../primitives/Card'
@@ -9,17 +10,18 @@ export function AdminDashboardPage() {
   const { projects, projectsLoading } = useAppState()
   const currentUser = useRequiredUser()
   const navigate = useNavigate()
+  const { t } = useTranslation()
 
   const isAdmin = currentUser.role === 'admin'
 
   if (!isAdmin) {
     return (
       <Card className="p-6">
-        <div className="text-sm font-semibold text-slate-900">Admin dashboard</div>
-        <div className="mt-1 text-sm text-slate-600">Permission denied.</div>
+        <div className="text-sm font-semibold text-slate-900">{t('admin.title')}</div>
+        <div className="mt-1 text-sm text-slate-600">{t('admin.permissionDenied')}</div>
         <div className="mt-4">
           <Button variant="secondary" onClick={() => navigate('/dashboard')}>
-            Back to dashboard
+            {t('admin.backToDashboard')}
           </Button>
         </div>
       </Card>
@@ -34,9 +36,9 @@ export function AdminDashboardPage() {
             <UserRoundCog className="size-5" />
           </div>
           <div>
-            <div className="text-xl font-semibold text-slate-950">Admin dashboard</div>
+            <div className="text-xl font-semibold text-slate-950">{t('admin.title')}</div>
             <div className="mt-1 text-sm text-slate-600">
-              平台管理員可檢視所有專案。
+              {t('admin.description')}
             </div>
           </div>
         </div>
@@ -45,7 +47,7 @@ export function AdminDashboardPage() {
       <Card className="p-5">
         <div className="flex items-center gap-2 text-sm font-semibold text-slate-950">
           <FolderKanban className="size-4 text-slate-500" />
-          All projects ({projectsLoading ? '…' : projects.length})
+          {t('admin.allProjects')} ({projectsLoading ? '...' : projects.length})
         </div>
         <div className="mt-4 space-y-3">
           {projects.map((p) => (
@@ -58,16 +60,16 @@ export function AdminDashboardPage() {
                 <div className="mt-1 text-sm text-slate-600">{p.description}</div>
                 <div className="mt-2 flex flex-wrap gap-2">
                   <Badge tone="info">{p.currentBranchName}</Badge>
-                  {p.detailLoaded && <Badge>{p.members.length} members</Badge>}
+                  {p.detailLoaded && <Badge>{p.members.length} {t('projects.members')}</Badge>}
                 </div>
               </div>
               <Button size="sm" variant="secondary" onClick={() => navigate(`/projects/${p.id}`)}>
-                Open
+                {t('common.open')}
               </Button>
             </div>
           ))}
           {!projectsLoading && projects.length === 0 && (
-            <div className="text-sm text-slate-500">No projects in the system.</div>
+            <div className="text-sm text-slate-500">{t('admin.noProjects')}</div>
           )}
         </div>
       </Card>

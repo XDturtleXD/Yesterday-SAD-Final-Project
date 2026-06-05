@@ -24,11 +24,16 @@ import type {
   Section,
   User,
 } from '../types'
+import { sectionLabel } from '../utils/sectionLabels'
 
 type Toast = { id: string; title: string; message?: string }
+export type LanguagePreference = 'en' | 'zh'
+export type ColorModePreference = 'light' | 'dark'
 
 type AppState = {
   currentUser: User | null
+  language: LanguagePreference
+  colorMode: ColorModePreference
   projects: Project[]
   sections: Section[]
   projectsLoading: boolean
@@ -37,6 +42,8 @@ type AppState = {
 
   applyAuthUser: (apiUser: ApiUser) => Promise<void>
   clearAuthUser: () => void
+  setLanguage: (language: LanguagePreference) => void
+  setColorMode: (colorMode: ColorModePreference) => void
   refreshProjects: () => Promise<void>
   loadSections: () => Promise<Section[]>
   loadProjectDetail: (
@@ -57,11 +64,16 @@ type AppState = {
   }) => Promise<Project>
   updateProjectDraft: (projectId: string, input: { name: string; description: string }) => void
   createPiece: (projectId: string, input: { title: string; composer?: string }) => Promise<Piece>
+  updatePiece: (projectId: string, pieceId: string, input: { title: string }) => Promise<Piece>
   deletePiece: (projectId: string, pieceId: string) => Promise<void>
   movePiece: (projectId: string, pieceId: string, direction: 'up' | 'down') => Promise<void>
+  reorderPieces: (projectId: string, orderedPieceIds: string[]) => Promise<void>
   deleteProjectScore: (projectId: string, scoreId: string) => Promise<void>
-  joinProject: (input: { inviteCode: string; sectionId: string }) => Promise<void>
-  createInviteCode: (projectId: string) => Promise<string>
+  joinProject: (input: { inviteCode: string }) => Promise<void>
+  createInviteCode: (
+    projectId: string,
+    input: { sectionId: string; targetRole: 'principal' | 'member' },
+  ) => Promise<string>
   createMemberInvite: (
     projectId: string,
     input: { sectionId: string; targetRole: 'principal' | 'member' },
@@ -79,9 +91,21 @@ type AppState = {
 }
 
 const Ctx = createContext<AppState | null>(null)
+const LANGUAGE_STORAGE_KEY = 'yesterday_language_preference'
+const COLOR_MODE_STORAGE_KEY = 'yesterday_color_mode_preference'
 
 function id(prefix: string) {
   return `${prefix}-${Math.random().toString(16).slice(2)}`
+}
+
+function readLanguagePreference(): LanguagePreference {
+  if (typeof window === 'undefined') return 'en'
+  return window.localStorage.getItem(LANGUAGE_STORAGE_KEY) === 'zh' ? 'zh' : 'en'
+}
+
+function readColorModePreference(): ColorModePreference {
+  if (typeof window === 'undefined') return 'light'
+  return window.localStorage.getItem(COLOR_MODE_STORAGE_KEY) === 'dark' ? 'dark' : 'light'
 }
 
 function mapApiUserToUser(apiUser: ApiUser): User {
@@ -103,6 +127,8 @@ const emptyUser: User = {
 
 export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [currentUser, setCurrentUser] = useState<User | null>(null)
+  const [language, setLanguageState] = useState<LanguagePreference>(readLanguagePreference)
+  const [colorMode, setColorModeState] = useState<ColorModePreference>(readColorModePreference)
   const [projects, setProjects] = useState<Project[]>([])
   const [sections, setSections] = useState<Section[]>([])
   const [projectsLoading, setProjectsLoading] = useState(false)
@@ -284,9 +310,25 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     setNameCache({})
   }, [])
 
+  const setLanguage = useCallback((nextLanguage: LanguagePreference) => {
+    setLanguageState(nextLanguage)
+    window.localStorage.setItem(LANGUAGE_STORAGE_KEY, nextLanguage)
+  }, [])
+
+  const setColorMode = useCallback((nextColorMode: ColorModePreference) => {
+    setColorModeState(nextColorMode)
+    window.localStorage.setItem(COLOR_MODE_STORAGE_KEY, nextColorMode)
+  }, [])
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = colorMode
+  }, [colorMode])
+
   const api: AppState = useMemo(
     () => ({
       currentUser,
+      language,
+      colorMode,
       projects,
       sections,
       projectsLoading,
@@ -295,6 +337,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
 
       applyAuthUser,
       clearAuthUser,
+      setLanguage,
+      setColorMode,
       refreshProjects,
       loadSections,
       loadProjectDetail,
@@ -323,7 +367,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         setProjects((prev) => [project, ...prev])
         setToasts((prev) => [
           ...prev,
-          { id: id('t'), title: '專案已建立', message: project.name },
+          { id: id('t'), title: 'Project created', message: project.name },
         ])
         const loaded = await loadProjectDetail(project.id)
         return loaded ?? project
@@ -347,7 +391,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         )
         setToasts((prev) => [
           ...prev,
-          { id: id('t'), title: '專案資料已暫存', message: '目前尚未寫回後端' },
+          { id: id('t'), title: 'Project changes saved locally', message: 'Backend update is not implemented yet.' },
         ])
       },
 
@@ -363,6 +407,26 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
               ? {
                   ...p,
                   pieces: [...p.pieces, piece].sort((a, b) => a.sortOrder - b.sortOrder),
+                }
+              : p,
+          ),
+        )
+        return piece
+      },
+
+      updatePiece: async (projectId, pieceId, input) => {
+        const updated = await piecesApi.updateProjectPiece(projectId, pieceId, {
+          title: input.title.trim(),
+        })
+        const piece = mapPiece(updated)
+        setProjects((prev) =>
+          prev.map((p) =>
+            p.id === projectId
+              ? {
+                  ...p,
+                  pieces: p.pieces
+                    .map((existing) => (existing.id === pieceId ? piece : existing))
+                    .sort((a, b) => a.sortOrder - b.sortOrder),
                 }
               : p,
           ),
@@ -405,6 +469,14 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         )
       },
 
+      reorderPieces: async (projectId, orderedPieceIds) => {
+        const reordered = await piecesApi.reorderProjectPieces(projectId, orderedPieceIds)
+        const mapped = reordered.map(mapPiece)
+        setProjects((prev) =>
+          prev.map((p) => (p.id === projectId ? { ...p, pieces: mapped } : p)),
+        )
+      },
+
       deleteProjectScore: async (projectId, scoreId) => {
         await scoresApi.deleteScore(scoreId)
         setProjects((prev) =>
@@ -421,12 +493,12 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         await refreshProjects()
         setToasts((prev) => [
           ...prev,
-          { id: id('t'), title: '已加入專案', message: '歡迎加入！' },
+          { id: id('t'), title: 'Joined project', message: 'Welcome aboard.' },
         ])
       },
 
-      createInviteCode: async (projectId) => {
-        const result = await projectsApi.createInviteCode(projectId)
+      createInviteCode: async (projectId, input) => {
+        const result = await projectsApi.createInviteCode(projectId, input)
         return result.inviteCode
       },
 
@@ -434,22 +506,18 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         const section = sections.find((s) => s.id === input.sectionId)
         if (!section || !currentUser) throw new Error('Invalid invite metadata')
 
-        const result = await projectsApi.createInviteCode(projectId)
+        const result = await projectsApi.createInviteCode(projectId, input)
         const invite: MemberInviteDraft = {
           id: id('invite'),
           projectId,
           sectionId: input.sectionId,
-          sectionName: section.name,
+          sectionName: sectionLabel(section),
           targetRole: input.targetRole,
           inviteCode: result.inviteCode,
           createdByUserId: currentUser.id,
           createdAt: new Date().toISOString(),
-          source: 'api-token-with-frontend-metadata',
+          source: 'api-bound-invite',
         }
-        // TODO API contract: POST /api/projects/:projectId/invites
-        // Request: { targetRole: 'principal' | 'member', sectionId: string, expiresIn?: string }
-        // Response: ApiResponse<{ id, inviteCode, targetRole, sectionId, expiresAt }>
-        // Current backend returns only a generic inviteCode, so role/section intent is stored in frontend state.
         setInvitesByProjectId((prev) => ({
           ...prev,
           [projectId]: [invite, ...(prev[projectId] ?? [])],
@@ -470,7 +538,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         )
         setToasts((prev) => [
           ...prev,
-          { id: id('t'), title: '成員已從畫面移除', message: '目前尚未寫回後端' },
+          { id: id('t'), title: 'Member removed from this view', message: 'Backend removal is not implemented yet.' },
         ])
       },
 
@@ -594,6 +662,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     }),
     [
       currentUser,
+      language,
+      colorMode,
       projects,
       sections,
       projectsLoading,
@@ -601,6 +671,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       toasts,
       applyAuthUser,
       clearAuthUser,
+      setLanguage,
+      setColorMode,
       refreshProjects,
       loadSections,
       loadProjectDetail,

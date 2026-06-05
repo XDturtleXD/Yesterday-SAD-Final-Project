@@ -12,6 +12,7 @@ const {
 
 const SECTION_A = "00000000-0000-0000-0000-0000000000aa";
 const SECTION_B = "00000000-0000-0000-0000-0000000000bb";
+const INLINE_XML_LIMIT_BYTES = 20 * 1024 * 1024;
 
 test("canUploadScore: platform_admin and concertmaster can upload for any section", () => {
   assert.equal(canUploadScore({ role: "platform_admin" }, SECTION_B), true);
@@ -163,8 +164,20 @@ test("normalizeUploadPayload: rejects unknown fileType", () => {
   );
 });
 
-test("normalizeUploadPayload: rejects xmlContent over 5MB with 413", () => {
-  const huge = "<x>" + "a".repeat(5 * 1024 * 1024 + 1) + "</x>";
+test("normalizeUploadPayload: accepts xmlContent over 5MB under configured limit", () => {
+  const large = "<x>" + "a".repeat(6 * 1024 * 1024) + "</x>";
+  const out = normalizeUploadPayload({
+    sectionId: SECTION_A,
+    title: "x",
+    piece: { title: "y" },
+    xmlContent: large,
+  });
+
+  assert.equal(out.xmlContent.length, large.length);
+});
+
+test("normalizeUploadPayload: rejects xmlContent over configured limit with 413", () => {
+  const huge = "<x>" + "a".repeat(INLINE_XML_LIMIT_BYTES + 1) + "</x>";
   assert.throws(
     () =>
       normalizeUploadPayload({

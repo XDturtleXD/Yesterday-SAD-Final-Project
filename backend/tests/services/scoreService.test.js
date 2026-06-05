@@ -22,16 +22,16 @@ test("canViewScore: concertmaster sees every section", () => {
   assert.equal(canViewScore(scoreInB, m), true);
 });
 
-test("canViewScore: principal only sees own section", () => {
+test("canViewScore: principal sees every project section", () => {
   const m = { role: "principal", section_id: SECTION_A };
   assert.equal(canViewScore(scoreInA, m), true);
-  assert.equal(canViewScore(scoreInB, m), false);
+  assert.equal(canViewScore(scoreInB, m), true);
 });
 
-test("canViewScore: member only sees own section", () => {
+test("canViewScore: member sees every project section", () => {
   const m = { role: "member", section_id: SECTION_A };
   assert.equal(canViewScore(scoreInA, m), true);
-  assert.equal(canViewScore(scoreInB, m), false);
+  assert.equal(canViewScore(scoreInB, m), true);
 });
 
 test("canViewScore: returns false when score is missing", () => {
@@ -45,7 +45,7 @@ test("canViewScore: unknown role returns false", () => {
 });
 
 test("assertCanViewScore throws AppError(403) when blocked", () => {
-  const m = { role: "principal", section_id: SECTION_A };
+  const m = { role: "guest", section_id: SECTION_A };
   assert.throws(() => assertCanViewScore(scoreInB, m), (err) => {
     assert.equal(err.name, "AppError");
     assert.equal(err.statusCode, 403);

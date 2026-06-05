@@ -1,10 +1,13 @@
-import { useEffect, useMemo, useState } from 'react'
+import { type DragEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { Piece, Project, Section } from '../../../types'
 import { useAppState, useRequiredUser } from '../../../state/AppState'
 import { Badge } from '../../primitives/Badge'
 import { Button } from '../../primitives/Button'
 import { Card } from '../../primitives/Card'
+import { useTranslation } from '../../../i18n'
+import { sectionLabel } from '../../../utils/sectionLabels'
+import { cn } from '../../utils/cn'
 import { PieceSectionUploadModal } from './PieceSectionUploadModal'
 import {
   ArrowDown,
@@ -12,7 +15,10 @@ import {
   ChevronDown,
   ChevronRight,
   ExternalLink,
+  GripVertical,
+  MoreHorizontal,
   Music2,
+  Pencil,
   Plus,
   Trash2,
   Upload,
@@ -22,6 +28,22 @@ type UploadTarget = {
   piece: Piece
   section: Section
 } | null
+
+function moveIdBefore(ids: string[], activeId: string, overId: string) {
+  if (activeId === overId) return ids
+  const activeIndex = ids.indexOf(activeId)
+  const overIndex = ids.indexOf(overId)
+  if (activeIndex === -1 || overIndex === -1) return ids
+
+  const next = [...ids]
+  const [moved] = next.splice(activeIndex, 1)
+  next.splice(overIndex, 0, moved)
+  return next
+}
+
+function sameOrder(a: string[], b: string[]) {
+  return a.length === b.length && a.every((id, index) => id === b[index])
+}
 
 export function PiecesPanel({ project }: { project: Project }) {
   const {
@@ -33,11 +55,14 @@ export function PiecesPanel({ project }: { project: Project }) {
     loadProjectDetail,
     loadSections,
     movePiece,
+    reorderPieces,
     sections,
     sectionsLoading,
+    updatePiece,
   } = useAppState()
   const navigate = useNavigate()
   const currentUser = useRequiredUser()
+  const { language, t } = useTranslation()
 
   const pieces = getPieces(project.id)
   const [title, setTitle] = useState('')
@@ -47,6 +72,15 @@ export function PiecesPanel({ project }: { project: Project }) {
   const [expandedPieceId, setExpandedPieceId] = useState<string | null>(null)
   const [uploadTarget, setUploadTarget] = useState<UploadTarget>(null)
   const [deletingScoreId, setDeletingScoreId] = useState<string | null>(null)
+  const [dragPieceOrder, setDragPieceOrder] = useState<string[] | null>(null)
+  const [draggingPieceId, setDraggingPieceId] = useState<string | null>(null)
+  const [dragOverPieceId, setDragOverPieceId] = useState<string | null>(null)
+  const [reordering, setReordering] = useState(false)
+  const [pieceMenuId, setPieceMenuId] = useState<string | null>(null)
+  const [renamingPieceId, setRenamingPieceId] = useState<string | null>(null)
+  const [renameTitle, setRenameTitle] = useState('')
+  const [savingRenameId, setSavingRenameId] = useState<string | null>(null)
+  const committedDragRef = useRef(false)
 
   const isManager = useMemo(() => {
     if (currentUser.role === 'admin') return true
@@ -56,6 +90,16 @@ export function PiecesPanel({ project }: { project: Project }) {
   }, [currentUser, project.members])
 
   const myMember = project.members.find((member) => member.userId === currentUser.id)
+  const pieceIds = useMemo(() => pieces.map((piece) => piece.id), [pieces])
+  const pieceById = useMemo(() => new Map(pieces.map((piece) => [piece.id, piece])), [pieces])
+  const visiblePieceIds = dragPieceOrder ?? pieceIds
+  const orderedPieces = useMemo(() => {
+    const ordered = visiblePieceIds
+      .map((pieceId) => pieceById.get(pieceId))
+      .filter((piece): piece is Piece => Boolean(piece))
+    const orderedIds = new Set(ordered.map((piece) => piece.id))
+    return [...ordered, ...pieces.filter((piece) => !orderedIds.has(piece.id))]
+  }, [pieceById, pieces, visiblePieceIds])
 
   useEffect(() => {
     void loadSections()
@@ -70,11 +114,11 @@ export function PiecesPanel({ project }: { project: Project }) {
     setError('')
     const normalizedTitle = title.trim()
     if (!normalizedTitle) {
-      setError('曲目名稱為必填')
+      setError(t('pieces.titleRequired'))
       return
     }
     if (pieces.some((piece) => piece.title.toLowerCase() === normalizedTitle.toLowerCase())) {
-      setError('此曲目已存在')
+      setError(t('pieces.alreadyExists'))
       return
     }
 
@@ -88,7 +132,7 @@ export function PiecesPanel({ project }: { project: Project }) {
       setComposer('')
       setExpandedPieceId(piece.id)
     } catch (err) {
-      setError(err instanceof Error ? err.message : '建立曲目失敗')
+      setError(err instanceof Error ? err.message : t('pieces.createFailed'))
     } finally {
       setCreating(false)
     }
@@ -97,14 +141,59 @@ export function PiecesPanel({ project }: { project: Project }) {
   async function handleDeletePiece(pieceId: string) {
     const piece = pieces.find((p) => p.id === pieceId)
     if (!piece) return
-    const confirmed = window.confirm(`Delete "${piece.title}" and all section scores?`)
+    const confirmed = window.confirm(`${t('common.delete')} "${piece.title}" ${t('pieces.deleteConfirmSuffix')}`)
     if (!confirmed) return
     await deletePiece(project.id, pieceId)
     if (expandedPieceId === pieceId) setExpandedPieceId(null)
   }
 
+  function startRenamePiece(piece: Piece) {
+    setPieceMenuId(null)
+    setError('')
+    setRenamingPieceId(piece.id)
+    setRenameTitle(piece.title)
+  }
+
+  function cancelRenamePiece() {
+    setRenamingPieceId(null)
+    setRenameTitle('')
+  }
+
+  async function submitRenamePiece(piece: Piece) {
+    const normalizedTitle = renameTitle.trim()
+    if (!normalizedTitle) {
+      setError(t('pieces.titleRequired'))
+      return
+    }
+    if (normalizedTitle === piece.title) {
+      cancelRenamePiece()
+      return
+    }
+    if (
+      pieces.some(
+        (candidate) =>
+          candidate.id !== piece.id &&
+          candidate.title.toLowerCase() === normalizedTitle.toLowerCase(),
+      )
+    ) {
+      setError(t('pieces.alreadyExists'))
+      return
+    }
+
+    setSavingRenameId(piece.id)
+    setError('')
+    try {
+      await updatePiece(project.id, piece.id, { title: normalizedTitle })
+      cancelRenamePiece()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('pieces.renameFailed'))
+    } finally {
+      setSavingRenameId(null)
+    }
+  }
+
   async function handleDeleteScore(scoreId: string, scoreTitle: string) {
-    const confirmed = window.confirm(`Delete "${scoreTitle}"?`)
+    const confirmed = window.confirm(`${t('common.delete')} "${scoreTitle}"?`)
     if (!confirmed) return
     setDeletingScoreId(scoreId)
     try {
@@ -114,40 +203,110 @@ export function PiecesPanel({ project }: { project: Project }) {
     }
   }
 
+  async function handleMovePiece(pieceId: string, direction: 'up' | 'down') {
+    setReordering(true)
+    setError('')
+    try {
+      await movePiece(project.id, pieceId, direction)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('pieces.reorderFailed'))
+    } finally {
+      setReordering(false)
+    }
+  }
+
+  function handlePieceDragStart(event: DragEvent, pieceId: string) {
+    if (!isManager || reordering) return
+    committedDragRef.current = false
+    setDragPieceOrder(pieceIds)
+    setDraggingPieceId(pieceId)
+    setDragOverPieceId(pieceId)
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', pieceId)
+  }
+
+  function handlePieceDragOver(event: DragEvent, overPieceId: string) {
+    if (!isManager || reordering || !draggingPieceId) return
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'move'
+    setDragOverPieceId(overPieceId)
+    setDragPieceOrder((current) => moveIdBefore(current ?? pieceIds, draggingPieceId, overPieceId))
+  }
+
+  async function commitPieceOrder(nextOrder: string[]) {
+    if (sameOrder(nextOrder, pieceIds)) {
+      setDragPieceOrder(null)
+      return
+    }
+
+    setReordering(true)
+    setError('')
+    try {
+      await reorderPieces(project.id, nextOrder)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('pieces.reorderFailed'))
+    } finally {
+      setDragPieceOrder(null)
+      setReordering(false)
+    }
+  }
+
+  function handlePieceDrop(event: DragEvent, overPieceId: string) {
+    if (!isManager || reordering) return
+    event.preventDefault()
+    const draggedId = draggingPieceId || event.dataTransfer.getData('text/plain')
+    if (!draggedId) return
+
+    committedDragRef.current = true
+    const nextOrder = moveIdBefore(dragPieceOrder ?? pieceIds, draggedId, overPieceId)
+    setDragPieceOrder(nextOrder)
+    setDraggingPieceId(null)
+    setDragOverPieceId(null)
+    void commitPieceOrder(nextOrder)
+  }
+
+  function handlePieceDragEnd() {
+    if (!committedDragRef.current) {
+      setDragPieceOrder(null)
+    }
+    setDraggingPieceId(null)
+    setDragOverPieceId(null)
+  }
+
   return (
     <div className="space-y-4">
       <div>
-        <div className="text-sm font-semibold text-slate-900">曲目與分譜管理</div>
+        <div className="text-sm font-semibold text-slate-900">{t('pieces.title')}</div>
         <div className="mt-1 text-sm text-slate-600">
-          先建立表演曲目，展開後可為各聲部上傳 PDF、MusicXML、XML 或 MXL 分譜。
+          {t('pieces.description')}
         </div>
       </div>
 
       <Card className="p-4">
-        <div className="text-sm font-semibold text-slate-950">新增表演曲目</div>
+        <div className="text-sm font-semibold text-slate-950">{t('pieces.addPerformancePiece')}</div>
         <div className="mt-4 grid gap-3 md:grid-cols-[1fr_1fr_auto]">
           <input
             value={title}
             onChange={(event) => setTitle(event.target.value)}
             disabled={!isManager || creating}
-            placeholder="曲目名稱，例如 Dvorak Symphony No. 9"
+            placeholder={t('pieces.titlePlaceholder')}
             className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm"
           />
           <input
             value={composer}
             onChange={(event) => setComposer(event.target.value)}
             disabled={!isManager || creating}
-            placeholder="作曲家（選填）"
+            placeholder={t('pieces.composerPlaceholder')}
             className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm"
           />
           <Button disabled={!isManager || creating} onClick={() => void submitPiece()}>
             <Plus className="size-4" />
-            {creating ? 'Adding…' : 'Add piece'}
+            {creating ? t('pieces.adding') : t('pieces.add')}
           </Button>
         </div>
         {!isManager && (
           <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-            只有 manager 可以新增、刪除或排序曲目。
+            {t('pieces.managerOnly')}
           </div>
         )}
         {error && (
@@ -159,74 +318,190 @@ export function PiecesPanel({ project }: { project: Project }) {
 
       {sectionsLoading && (
         <Card className="p-6">
-          <div className="text-sm text-slate-600">載入聲部中…</div>
+          <div className="text-sm text-slate-600">{t('pieces.loadingSections')}</div>
         </Card>
       )}
 
       {!sectionsLoading && pieces.length === 0 && (
         <Card className="p-6">
-          <div className="text-sm font-semibold text-slate-900">尚無曲目</div>
-          <div className="mt-1 text-sm text-slate-600">請先新增表演曲目，再展開上傳各聲部分譜。</div>
+          <div className="text-sm font-semibold text-slate-900">{t('pieces.noPiecesTitle')}</div>
+          <div className="mt-1 text-sm text-slate-600">{t('pieces.noPiecesDescription')}</div>
         </Card>
       )}
 
       <div className="space-y-3">
-        {pieces.map((piece, index) => {
+        {orderedPieces.map((piece, index) => {
           const expanded = expandedPieceId === piece.id
           const uploadedCount = sections.filter(
             (section) => !!getPieceScore(project.id, piece.id, section.id),
           ).length
+          const isDragging = draggingPieceId === piece.id
+          const isDragTarget = dragOverPieceId === piece.id && draggingPieceId !== piece.id
 
           return (
-            <Card key={piece.id} className="overflow-hidden">
+            <Card
+              key={piece.id}
+              onDragOver={(event) => handlePieceDragOver(event, piece.id)}
+              onDrop={(event) => handlePieceDrop(event, piece.id)}
+              className={cn(
+                'transition-all duration-200 ease-out',
+                pieceMenuId === piece.id ? 'overflow-visible' : 'overflow-hidden',
+                isManager && 'group',
+                isDragging && 'scale-[0.995] opacity-60 shadow-lg',
+                isDragTarget && 'ring-2 ring-sky-300 ring-offset-2',
+                reordering && 'pointer-events-none opacity-80',
+              )}
+            >
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3">
-                <button
-                  type="button"
-                  className="flex min-w-0 flex-1 items-center gap-3 text-left"
-                  onClick={() => setExpandedPieceId(expanded ? null : piece.id)}
-                >
-                  <span className="text-slate-500">
+                {isManager && (
+                  <button
+                    type="button"
+                    draggable={!reordering}
+                    onDragStart={(event) => handlePieceDragStart(event, piece.id)}
+                    onDragEnd={handlePieceDragEnd}
+                    className="grid size-9 shrink-0 cursor-grab place-items-center rounded-md text-slate-400 transition hover:bg-white hover:text-slate-700 active:cursor-grabbing"
+                    aria-label={`${t('pieces.dragToReorder')}: ${piece.title}`}
+                    title={t('pieces.dragToReorder')}
+                  >
+                    <GripVertical className="size-5" />
+                  </button>
+                )}
+                <div className="flex min-w-0 flex-1 items-center gap-3 text-left">
+                  <button
+                    type="button"
+                    className="text-slate-500"
+                    onClick={() => setExpandedPieceId(expanded ? null : piece.id)}
+                    aria-label={`${expanded ? t('pieces.collapse') : t('pieces.expand')} ${piece.title}`}
+                  >
                     {expanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
-                  </span>
-                  <div className="grid size-9 place-items-center rounded-md bg-white text-slate-700 shadow-sm">
+                  </button>
+                  <button
+                    type="button"
+                    className="grid size-9 shrink-0 place-items-center rounded-md bg-white text-slate-700 shadow-sm"
+                    onClick={() => setExpandedPieceId(expanded ? null : piece.id)}
+                    aria-label={`${expanded ? t('pieces.collapse') : t('pieces.expand')} ${piece.title}`}
+                  >
                     <Music2 className="size-4" />
+                  </button>
+                  <div className="min-w-0 flex-1">
+                    {renamingPieceId === piece.id ? (
+                      <form
+                        className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center"
+                        onSubmit={(event) => {
+                          event.preventDefault()
+                          void submitRenamePiece(piece)
+                        }}
+                      >
+                        <input
+                          autoFocus
+                          value={renameTitle}
+                          onChange={(event) => setRenameTitle(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Escape') {
+                              cancelRenamePiece()
+                            }
+                          }}
+                          disabled={savingRenameId === piece.id}
+                          className="h-9 min-w-0 flex-1 rounded-md border border-sky-300 bg-white px-3 text-sm font-semibold text-slate-950 shadow-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+                          aria-label={`${t('pieces.renameAria')} ${piece.title}`}
+                        />
+                        <div className="flex shrink-0 items-center gap-2">
+                          <button
+                            type="submit"
+                            disabled={savingRenameId === piece.id}
+                            className="h-8 rounded-md bg-slate-900 px-3 text-xs font-medium text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {savingRenameId === piece.id ? t('common.saving') : t('common.save')}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={savingRenameId === piece.id}
+                            className="h-8 rounded-md border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            onClick={cancelRenamePiece}
+                          >
+                            {t('common.cancel')}
+                          </button>
+                        </div>
+                      </form>
+                    ) : (
+                      <button
+                        type="button"
+                        className="block min-w-0 text-left"
+                        onClick={() => setExpandedPieceId(expanded ? null : piece.id)}
+                      >
+                        <div className="truncate text-sm font-semibold text-slate-950">
+                          {index + 1}. {piece.title}
+                        </div>
+                        <div className="text-xs text-slate-500">{piece.composer || t('pieces.composerNotSet')}</div>
+                      </button>
+                    )}
                   </div>
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-semibold text-slate-950">
-                      {piece.sortOrder}. {piece.title}
-                    </div>
-                    <div className="text-xs text-slate-500">{piece.composer || 'Composer not set'}</div>
-                  </div>
-                </button>
+                </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge>
-                    {uploadedCount}/{sections.length} sections
+                    {uploadedCount}/{sections.length} {t('pieces.sections')}
                   </Badge>
                   {isManager && (
                     <>
                       <Button
                         size="sm"
                         variant="secondary"
-                        disabled={index === 0}
-                        onClick={() => void movePiece(project.id, piece.id, 'up')}
+                        disabled={index === 0 || reordering}
+                        onClick={() => void handleMovePiece(piece.id, 'up')}
                       >
                         <ArrowUp className="size-4" />
                       </Button>
                       <Button
                         size="sm"
                         variant="secondary"
-                        disabled={index === pieces.length - 1}
-                        onClick={() => void movePiece(project.id, piece.id, 'down')}
+                        disabled={index === orderedPieces.length - 1 || reordering}
+                        onClick={() => void handleMovePiece(piece.id, 'down')}
                       >
                         <ArrowDown className="size-4" />
                       </Button>
-                      <Button
-                        size="sm"
-                        variant="danger"
-                        onClick={() => void handleDeletePiece(piece.id)}
-                      >
-                        <Trash2 className="size-4" />
-                      </Button>
+                      <div className="relative">
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          disabled={reordering || renamingPieceId === piece.id}
+                        onClick={() =>
+                            setPieceMenuId((current) => (current === piece.id ? null : piece.id))
+                          }
+                          aria-label={`${t('pieces.openActions')} ${piece.title}`}
+                          aria-haspopup="menu"
+                          aria-expanded={pieceMenuId === piece.id}
+                        >
+                          <MoreHorizontal className="size-4" />
+                        </Button>
+                        {pieceMenuId === piece.id && (
+                          <div
+                            role="menu"
+                            className="absolute right-0 top-full z-20 mt-2 w-36 overflow-hidden rounded-md border border-slate-200 bg-white py-1 shadow-lg"
+                          >
+                            <button
+                              type="button"
+                              role="menuitem"
+                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                              onClick={() => startRenamePiece(piece)}
+                            >
+                              <Pencil className="size-4" />
+                              {t('common.rename')}
+                            </button>
+                            <button
+                              type="button"
+                              role="menuitem"
+                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-rose-700 hover:bg-rose-50"
+                              onClick={() => {
+                                setPieceMenuId(null)
+                                void handleDeletePiece(piece.id)
+                              }}
+                            >
+                              <Trash2 className="size-4" />
+                              {t('common.delete')}
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </>
                   )}
                 </div>
@@ -243,18 +518,18 @@ export function PiecesPanel({ project }: { project: Project }) {
                         className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
                       >
                         <div className="min-w-0">
-                          <div className="text-sm font-medium text-slate-900">{section.name}</div>
+                          <div className="text-sm font-medium text-slate-900">{sectionLabel(section, language)}</div>
                           {score ? (
                             <div className="mt-1 text-xs text-slate-500">
                               {score.originalFilename || score.title} ·{' '}
                               {score.updatedAt.slice(0, 16).replace('T', ' ')}
                             </div>
                           ) : (
-                            <div className="mt-1 text-xs text-slate-500">尚未上傳</div>
+                            <div className="mt-1 text-xs text-slate-500">{t('pieces.notUploaded')}</div>
                           )}
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
-                          {score ? <Badge tone="success">Ready</Badge> : <Badge>Empty</Badge>}
+                          {score ? <Badge tone="success">{t('pieces.ready')}</Badge> : <Badge>{t('pieces.empty')}</Badge>}
                           {score && (
                             <>
                               <Button
@@ -267,17 +542,18 @@ export function PiecesPanel({ project }: { project: Project }) {
                                 }
                               >
                                 <ExternalLink className="size-4" />
-                                Open
+                                {t('common.open')}
                               </Button>
-                              <Button
-                                size="sm"
-                                variant="danger"
+                              <button
+                                type="button"
+                                className="inline-flex size-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-50"
                                 disabled={deletingScoreId === score.id}
                                 onClick={() => void handleDeleteScore(score.id, score.title)}
+                                aria-label={`${t('pieces.deleteScoreTitle')} ${score.title}`}
+                                title={t('pieces.deleteScoreTitle')}
                               >
                                 <Trash2 className="size-4" />
-                                {deletingScoreId === score.id ? 'Deleting…' : 'Delete'}
-                              </Button>
+                              </button>
                             </>
                           )}
                           {!score && (
@@ -288,7 +564,7 @@ export function PiecesPanel({ project }: { project: Project }) {
                               onClick={() => setUploadTarget({ piece, section })}
                             >
                               <Upload className="size-4" />
-                              Upload
+                              {t('common.upload')}
                             </Button>
                           )}
                         </div>
@@ -304,9 +580,9 @@ export function PiecesPanel({ project }: { project: Project }) {
 
       {!isManager && myMember?.role !== 'principal' && (
         <Card className="p-4">
-          <div className="text-sm font-semibold text-slate-900">上傳權限限制</div>
+          <div className="text-sm font-semibold text-slate-900">{t('pieces.uploadPermissions')}</div>
           <div className="mt-1 text-sm text-slate-600">
-            目前只有 manager 可以上傳所有聲部，首席只能上傳自己聲部，一般成員不可上傳。
+            {t('pieces.uploadPermissionsDescription')}
           </div>
         </Card>
       )}

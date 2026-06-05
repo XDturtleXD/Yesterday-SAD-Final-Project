@@ -47,6 +47,61 @@ export type Score = {
   updatedAt: string
 }
 
+export type AnnotationScope = 'shared' | 'private'
+
+export type AnnotationType = 'bowing' | 'dynamic' | 'articulation' | 'slur' | 'hairpin' | 'text'
+
+export type ScoreAnnotation = {
+  id: string
+  projectId: string
+  scoreId: string
+  ownerUserId: string
+  sectionId: string | null
+  scope: AnnotationScope
+  annotationType: AnnotationType
+  targetRef: Record<string, unknown>
+  payload: Record<string, unknown>
+  createdAt: string
+  updatedAt: string
+}
+
+export type CreateScoreAnnotationPayload = {
+  scope: AnnotationScope
+  annotationType: AnnotationType
+  targetRef: Record<string, unknown>
+  payload: Record<string, unknown>
+  sectionId?: string
+}
+
+export type UpdateScoreAnnotationPayload = {
+  targetRef?: Record<string, unknown>
+  payload?: Record<string, unknown>
+}
+
+export type SimilarPassageCandidate = {
+  targetScoreId: string
+  targetSectionId: string
+  targetSectionName: string | null
+  startRef: Record<string, unknown>
+  endRef: Record<string, unknown>
+  startMeasureNumber: number
+  endMeasureNumber: number
+  similarity: number
+  intervalScore: number
+  rhythmScore: number
+  noteCount: number
+}
+
+export type FindSimilarPassagesPayload = {
+  sourceRange: {
+    startRef: Record<string, unknown>
+    endRef: Record<string, unknown>
+  }
+  threshold?: number
+  limit?: number
+  targetSectionIds?: string[]
+}
+
 export type Branch = {
   id: string
   projectId: string
@@ -134,5 +189,5 @@ export type MemberInviteDraft = {
   inviteCode: string
   createdByUserId: string
   createdAt: string
-  source: 'api-token-with-frontend-metadata'
+  source: 'api-bound-invite'
 }

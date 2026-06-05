@@ -5,6 +5,14 @@ body {
   height: 100%;
 }
 
+html {
+  color-scheme: light;
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+}
+
 body {
   margin: 0;
   background: #f5f6f8;
@@ -13,6 +21,118 @@ body {
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+html[data-theme="dark"] body {
+  background: #020617;
+  color: #e2e8f0;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  body,
+  body * {
+    transition-property: background-color, border-color, color, box-shadow, opacity, transform;
+    transition-duration: 180ms;
+    transition-timing-function: ease-out;
+  }
+}
+
+html[data-theme="dark"] .bg-\[\#f5f6f8\] {
+  background-color: #020617;
+}
+
+html[data-theme="dark"] .bg-\[\#eef1f4\] {
+  background-color: #020617;
+}
+
+html[data-theme="dark"] .bg-\[\#e7ebef\] {
+  background-color: #0b1220;
+}
+
+html[data-theme="dark"] .bg-white {
+  background-color: #0f172a;
+}
+
+html[data-theme="dark"] .bg-white\/90,
+html[data-theme="dark"] .app-header {
+  background-color: rgb(15 23 42 / 0.92);
+}
+
+html[data-theme="dark"] .bg-slate-50 {
+  background-color: #111827;
+}
+
+html[data-theme="dark"] .bg-slate-100 {
+  background-color: #1e293b;
+}
+
+html[data-theme="dark"] .border-slate-200 {
+  border-color: #334155;
+}
+
+html[data-theme="dark"] .border-slate-300 {
+  border-color: #475569;
+}
+
+html[data-theme="dark"] .text-slate-950,
+html[data-theme="dark"] .text-slate-900,
+html[data-theme="dark"] .text-slate-800 {
+  color: #f8fafc;
+}
+
+html[data-theme="dark"] .text-slate-700,
+html[data-theme="dark"] .text-slate-600 {
+  color: #cbd5e1;
+}
+
+html[data-theme="dark"] .text-slate-500 {
+  color: #94a3b8;
+}
+
+html[data-theme="dark"] .text-slate-400 {
+  color: #64748b;
+}
+
+html[data-theme="dark"] .hover\:bg-slate-50:hover,
+html[data-theme="dark"] .hover\:bg-slate-100:hover {
+  background-color: #1e293b;
+}
+
+html[data-theme="dark"] .hover\:text-slate-950:hover {
+  color: #f8fafc;
+}
+
+html[data-theme="dark"] input,
+html[data-theme="dark"] select,
+html[data-theme="dark"] textarea {
+  background-color: #0f172a;
+  border-color: #334155;
+  color: #f8fafc;
+}
+
+html[data-theme="dark"] input::placeholder,
+html[data-theme="dark"] textarea::placeholder {
+  color: #64748b;
+}
+
+html[data-theme="dark"] .score-editor-paper,
+html[data-theme="dark"] .score-editor-paper.bg-white {
+  background-color: #ffffff;
+  border-color: #1e293b;
+  color: #0f172a;
+  box-shadow: 0 10px 36px rgb(0 0 0 / 0.28);
+}
+
+html[data-theme="dark"] .score-editor-paper .text-slate-500 {
+  color: #64748b;
+}
+
+html[data-theme="dark"] .score-editor-paper .bg-rose-50 {
+  background-color: #fff1f2;
+}
+
+html[data-theme="dark"] .score-editor-paper .text-rose-800 {
+  color: #9f1239;
 }
 
 /* Keep a calm, productivity-tool look by default */

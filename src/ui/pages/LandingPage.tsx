@@ -1,5 +1,6 @@
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../../auth/AuthContext'
+import { useTranslation } from '../../i18n'
 import { Button } from '../primitives/Button'
 import { Card } from '../primitives/Card'
 import {
@@ -11,52 +12,51 @@ import {
   Sparkles,
 } from 'lucide-react'
 
-const features = [
-  {
-    icon: FolderKanban,
-    title: '專案與成員管理',
-    description: '建立合奏專案、邀請團員，並依角色分配樂器與權限。',
-  },
-  {
-    icon: Music2,
-    title: '樂譜檢視與編輯',
-    description: '在瀏覽器中開啟 MusicXML 樂譜，支援即時檢視與編輯體驗。',
-  },
-  {
-    icon: GitBranch,
-    title: '分支與版本協作',
-    description: '以分支管理不同排練版本，追蹤變更並合併更新。（Beta）',
-  },
-  {
-    icon: Sparkles,
-    title: '練習進度追蹤',
-    description: '標記已練習段落，掌握個人與團隊的排練進度。',
-  },
-]
-
-const steps = [
-  { step: '1', title: '建立專案', description: '設定合奏類型並邀請成員加入。' },
-  { step: '2', title: '上傳樂譜', description: '匯入 MusicXML 或 PDF 分譜檔案。' },
-  { step: '3', title: '協作編輯', description: '在分支上編輯、合併，同步最新版本。' },
-]
-
 export function LandingPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { isAuthenticated } = useAuth()
+  const { t } = useTranslation()
 
   const redirect = searchParams.get('redirect')
   const loginPath = redirect
     ? `/login?redirect=${encodeURIComponent(redirect)}`
     : '/login'
+  const features = [
+    {
+      icon: FolderKanban,
+      title: t('landing.featureProjectsTitle'),
+      description: t('landing.featureProjectsDescription'),
+    },
+    {
+      icon: Music2,
+      title: t('landing.featureScoresTitle'),
+      description: t('landing.featureScoresDescription'),
+    },
+    {
+      icon: GitBranch,
+      title: t('landing.featureBranchesTitle'),
+      description: t('landing.featureBranchesDescription'),
+    },
+    {
+      icon: Sparkles,
+      title: t('landing.featurePracticeTitle'),
+      description: t('landing.featurePracticeDescription'),
+    },
+  ]
+  const steps = [
+    { step: '1', title: t('landing.stepCreateTitle'), description: t('landing.stepCreateDescription') },
+    { step: '2', title: t('landing.stepUploadTitle'), description: t('landing.stepUploadDescription') },
+    { step: '3', title: t('landing.stepCollaborateTitle'), description: t('landing.stepCollaborateDescription') },
+  ]
 
   return (
     <div className="min-h-dvh">
       {redirect && !isAuthenticated && (
         <div className="border-b border-sky-200 bg-sky-50 px-4 py-2 text-center text-sm text-sky-900">
-          請先登入以繼續前往工作區。{' '}
+          {t('landing.signInToContinue')}{' '}
           <Link to={loginPath} className="font-medium underline">
-            前往登入
+            {t('landing.goToSignIn')}
           </Link>
         </div>
       )}
@@ -71,12 +71,12 @@ export function LandingPage() {
           <div className="flex items-center gap-2">
             {isAuthenticated ? (
               <Button onClick={() => navigate('/dashboard')}>
-                進入工作區
+                {t('landing.enterWorkspace')}
                 <ArrowRight className="size-4" />
               </Button>
             ) : (
               <Button onClick={() => navigate(isAuthenticated ? '/dashboard' : loginPath)}>
-                登入
+                {t('landing.signIn')}
               </Button>
             )}
           </div>
@@ -87,17 +87,17 @@ export function LandingPage() {
         <div className="mx-auto max-w-3xl text-center">
           <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-sm text-sky-800">
             <Users className="size-3.5" />
-            合奏樂譜協作工作區
+            {t('landing.badge')}
           </div>
           <h1 className="text-4xl font-semibold tracking-tight text-slate-950 sm:text-5xl">
-            讓合奏排練的樂譜管理，變得更簡單
+            {t('landing.title')}
           </h1>
           <p className="mt-4 text-lg text-slate-600">
-            Yesterday 是專為合奏團設計的樂譜協作平台。集中管理分譜、追蹤版本、協調成員，讓每次排練都更有效率。
+            {t('landing.description')}
           </p>
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             <Button onClick={() => navigate(isAuthenticated ? '/dashboard' : loginPath)}>
-              開始使用
+              {t('landing.getStarted')}
               <ArrowRight className="size-4" />
             </Button>
             <Button
@@ -106,7 +106,7 @@ export function LandingPage() {
                 document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })
               }
             >
-              了解更多
+              {t('landing.learnMore')}
             </Button>
           </div>
         </div>
@@ -115,8 +115,8 @@ export function LandingPage() {
       <section id="features" className="border-t border-slate-200 bg-white py-16 sm:py-20">
         <div className="mx-auto max-w-6xl px-4 sm:px-6">
           <div className="mb-10 text-center">
-            <h2 className="text-2xl font-semibold text-slate-950">系統功能</h2>
-            <p className="mt-2 text-slate-600">從專案建立到樂譜協作，一站式完成</p>
+            <h2 className="text-2xl font-semibold text-slate-950">{t('landing.features')}</h2>
+            <p className="mt-2 text-slate-600">{t('landing.featuresDescription')}</p>
           </div>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {features.map((feature) => (
@@ -135,8 +135,8 @@ export function LandingPage() {
       <section className="border-t border-slate-200 py-16 sm:py-20">
         <div className="mx-auto max-w-6xl px-4 sm:px-6">
           <div className="mb-10 text-center">
-            <h2 className="text-2xl font-semibold text-slate-950">使用流程</h2>
-            <p className="mt-2 text-slate-600">三步驟開始你的合奏專案</p>
+            <h2 className="text-2xl font-semibold text-slate-950">{t('landing.workflow')}</h2>
+            <p className="mt-2 text-slate-600">{t('landing.workflowDescription')}</p>
           </div>
           <div className="grid gap-6 sm:grid-cols-3">
             {steps.map((item) => (
@@ -154,17 +154,17 @@ export function LandingPage() {
 
       <section className="border-t border-slate-200 bg-slate-950 py-16 text-white sm:py-20">
         <div className="mx-auto max-w-6xl px-4 text-center sm:px-6">
-          <h2 className="text-2xl font-semibold">準備好開始了嗎？</h2>
-          <p className="mt-2 text-slate-300">建立帳號，立即體驗 Yesterday 合奏工作區</p>
+          <h2 className="text-2xl font-semibold">{t('landing.ready')}</h2>
+          <p className="mt-2 text-slate-300">{t('landing.readyDescription')}</p>
           <div className="mt-6">
             {isAuthenticated ? (
               <Button variant="secondary" onClick={() => navigate('/dashboard')}>
-                進入工作區
+                {t('landing.enterWorkspace')}
                 <ArrowRight className="size-4" />
               </Button>
             ) : (
               <Link to={loginPath}>
-                <Button variant="secondary">免費註冊 / 登入</Button>
+                <Button variant="secondary">{t('landing.signUpSignIn')}</Button>
               </Link>
             )}
           </div>
@@ -172,7 +172,7 @@ export function LandingPage() {
       </section>
 
       <footer className="border-t border-slate-200 bg-white py-6 text-center text-sm text-slate-500">
-        Yesterday — Ensemble score workspace
+        {t('landing.footer')}
       </footer>
     </div>
   )

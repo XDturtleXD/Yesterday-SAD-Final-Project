@@ -6,6 +6,7 @@ const assert = require("node:assert/strict");
 
 const { createFakeSupabase } = require("../helpers/fakeSupabase");
 const { injectFakeSupabase, startHarness } = require("../helpers/httpHarness");
+const { signInviteToken } = require("../../src/utils/inviteToken");
 const {
   seedSections,
   seedUserWithToken,
@@ -22,6 +23,42 @@ test.after(async () => {
   await harness.stop();
 });
 
+const now = () => new Date().toISOString();
+
+const inviteBody = (overrides = {}) => ({
+  targetRole: "member",
+  sectionId: SECTION_FIRST_VIOLIN,
+  ...overrides,
+});
+
+const annotationBody = (overrides = {}) => ({
+  scope: "shared",
+  annotationType: "dynamic",
+  targetRef: {
+    partId: "P1",
+    measureNumber: 1,
+    noteIndex: 0,
+  },
+  payload: {
+    mark: "ff",
+  },
+  ...overrides,
+});
+
+const seedMember = (projectId, user, sectionId, role = "member") => {
+  fake.seedRows("project_members", [
+    {
+      id: `pm-${user.user.id}-${role}`,
+      project_id: projectId,
+      user_id: user.user.id,
+      section_id: sectionId,
+      role,
+      created_at: now(),
+      updated_at: now(),
+    },
+  ]);
+};
+
 const seedOwnedProject = async () => {
   fake.reset({});
   seedSections(fake);
@@ -33,83 +70,220 @@ const seedOwnedProject = async () => {
   return { owner, projectId: created.body.data.id };
 };
 
-test("POST /projects/:id/invite-code: concertmaster can mint a code", async () => {
-  const { owner, projectId } = await seedOwnedProject();
-  const { status, body } = await harness.request(
-    "POST",
-    `/api/projects/${projectId}/invite-code`,
-    { token: owner.token, body: {} },
-  );
-  assert.equal(status, 200);
-  assert.equal(typeof body.data.inviteCode, "string");
-  assert.ok(body.data.inviteCode.length > 20, "invite code should be a JWT");
-});
-
-test("POST /projects/:id/invite-code: 403 for non-member", async () => {
-  const { projectId } = await seedOwnedProject();
-  const stranger = seedUserWithToken(fake, { email: "stranger@example.test" });
-  const { status } = await harness.request(
-    "POST",
-    `/api/projects/${projectId}/invite-code`,
-    { token: stranger.token, body: {} },
-  );
-  assert.equal(status, 403);
-});
-
-test("POST /projects/join-by-code: 400 when inviteCode missing", async () => {
-  await seedOwnedProject();
-  const joinUser = seedUserWithToken(fake, { email: "joiner@example.test" });
-  const { status } = await harness.request("POST", "/api/projects/join-by-code", {
-    token: joinUser.token,
-    body: { sectionId: SECTION_SECOND_VIOLIN },
+const createInvite = async (token, projectId, body) =>
+  harness.request("POST", `/api/projects/${projectId}/invite-code`, {
+    token,
+    body,
   });
-  assert.equal(status, 400);
-});
 
-test("POST /projects/join-by-code: 400 on invalid code", async () => {
-  await seedOwnedProject();
-  const joinUser = seedUserWithToken(fake, { email: "joiner@example.test" });
-  const { status } = await harness.request("POST", "/api/projects/join-by-code", {
-    token: joinUser.token,
-    body: { inviteCode: "not-a-jwt", sectionId: SECTION_SECOND_VIOLIN },
+const joinInvite = async (token, inviteCode, extraBody = {}) =>
+  harness.request("POST", "/api/projects/join-by-code", {
+    token,
+    body: { inviteCode, ...extraBody },
   });
-  assert.equal(status, 400);
-});
 
-test("POST /projects/join-by-code: 201, new user becomes a `member`", async () => {
-  const { owner, projectId } = await seedOwnedProject();
-  const { body: codeBody } = await harness.request(
-    "POST",
-    `/api/projects/${projectId}/invite-code`,
-    { token: owner.token, body: {} },
-  );
-
-  const joinUser = seedUserWithToken(fake, { email: "joiner@example.test" });
-  const { status, body } = await harness.request(
-    "POST",
-    "/api/projects/join-by-code",
+const seedDbInvite = ({ projectId, owner, tokenId, targetRole = "member", sectionId, expiresAt, revokedAt = null }) => {
+  fake.seedRows("project_invites", [
     {
-      token: joinUser.token,
-      body: { inviteCode: codeBody.data.inviteCode, sectionId: SECTION_SECOND_VIOLIN },
+      id: `invite-${tokenId}`,
+      project_id: projectId,
+      target_section_id: sectionId,
+      target_role: targetRole,
+      token_id: tokenId,
+      created_by: owner.user.id,
+      expires_at: expiresAt,
+      used_by: null,
+      used_at: null,
+      revoked_at: revokedAt,
+      created_at: now(),
+      updated_at: now(),
     },
-  );
-  assert.equal(status, 201);
-  assert.equal(body.data.role, "member");
-  assert.equal(body.data.section_id, SECTION_SECOND_VIOLIN);
-  assert.equal(body.data.project_id, projectId);
+  ]);
+
+  return signInviteToken({
+    type: "project_invite",
+    projectId,
+    tokenId,
+    createdBy: owner.user.id,
+  });
+};
+
+test("concertmaster invites a principal to a specified section", async () => {
+  const { owner, projectId } = await seedOwnedProject();
+  const invite = await createInvite(owner.token, projectId, inviteBody({
+    targetRole: "principal",
+    sectionId: SECTION_SECOND_VIOLIN,
+  }));
+  assert.equal(invite.status, 200);
+  assert.equal(invite.body.data.targetRole, "principal");
+  assert.equal(invite.body.data.sectionId, SECTION_SECOND_VIOLIN);
+
+  const joinUser = seedUserWithToken(fake, { email: "principal@example.test" });
+  const joined = await joinInvite(joinUser.token, invite.body.data.inviteCode);
+
+  assert.equal(joined.status, 201);
+  assert.equal(joined.body.data.role, "principal");
+  assert.equal(joined.body.data.section_id, SECTION_SECOND_VIOLIN);
+  assert.equal(joined.body.data.project_id, projectId);
 });
 
-test("POST /projects/join-by-code: 409 when user is already a member", async () => {
+test("principal invites a member to their own section", async () => {
+  const { projectId } = await seedOwnedProject();
+  const principal = seedUserWithToken(fake, { email: "principal@example.test" });
+  seedMember(projectId, principal, SECTION_SECOND_VIOLIN, "principal");
+
+  const invite = await createInvite(principal.token, projectId, inviteBody({
+    targetRole: "member",
+    sectionId: SECTION_SECOND_VIOLIN,
+  }));
+  assert.equal(invite.status, 200);
+
+  const member = seedUserWithToken(fake, { email: "member@example.test" });
+  const joined = await joinInvite(member.token, invite.body.data.inviteCode);
+
+  assert.equal(joined.status, 201);
+  assert.equal(joined.body.data.role, "member");
+  assert.equal(joined.body.data.section_id, SECTION_SECOND_VIOLIN);
+});
+
+test("principal cannot invite another principal", async () => {
+  const { projectId } = await seedOwnedProject();
+  const principal = seedUserWithToken(fake, { email: "principal@example.test" });
+  seedMember(projectId, principal, SECTION_FIRST_VIOLIN, "principal");
+
+  const response = await createInvite(principal.token, projectId, inviteBody({
+    targetRole: "principal",
+    sectionId: SECTION_FIRST_VIOLIN,
+  }));
+
+  assert.equal(response.status, 403);
+});
+
+test("principal cannot invite a member across sections", async () => {
+  const { projectId } = await seedOwnedProject();
+  const principal = seedUserWithToken(fake, { email: "principal@example.test" });
+  seedMember(projectId, principal, SECTION_FIRST_VIOLIN, "principal");
+
+  const response = await createInvite(principal.token, projectId, inviteBody({
+    targetRole: "member",
+    sectionId: SECTION_SECOND_VIOLIN,
+  }));
+
+  assert.equal(response.status, 403);
+});
+
+test("member cannot create invite code", async () => {
+  const { projectId } = await seedOwnedProject();
+  const member = seedUserWithToken(fake, { email: "member@example.test" });
+  seedMember(projectId, member, SECTION_FIRST_VIOLIN, "member");
+
+  const response = await createInvite(member.token, projectId, inviteBody());
+
+  assert.equal(response.status, 403);
+});
+
+test("join-by-code ignores client-supplied sectionId", async () => {
   const { owner, projectId } = await seedOwnedProject();
-  const { body: codeBody } = await harness.request(
-    "POST",
-    `/api/projects/${projectId}/invite-code`,
-    { token: owner.token, body: {} },
-  );
-  // Owner is already a member (auto-added as concertmaster on project create).
-  const { status } = await harness.request("POST", "/api/projects/join-by-code", {
-    token: owner.token,
-    body: { inviteCode: codeBody.data.inviteCode, sectionId: SECTION_SECOND_VIOLIN },
+  const invite = await createInvite(owner.token, projectId, inviteBody({
+    targetRole: "member",
+    sectionId: SECTION_SECOND_VIOLIN,
+  }));
+  const joinUser = seedUserWithToken(fake, { email: "joiner@example.test" });
+
+  const joined = await joinInvite(joinUser.token, invite.body.data.inviteCode, {
+    sectionId: SECTION_FIRST_VIOLIN,
   });
-  assert.equal(status, 409);
+
+  assert.equal(joined.status, 201);
+  assert.equal(joined.body.data.role, "member");
+  assert.equal(joined.body.data.section_id, SECTION_SECOND_VIOLIN);
+});
+
+test("used invite code cannot be used again", async () => {
+  const { owner, projectId } = await seedOwnedProject();
+  const invite = await createInvite(owner.token, projectId, inviteBody());
+  const firstUser = seedUserWithToken(fake, { email: "first@example.test" });
+  const secondUser = seedUserWithToken(fake, { email: "second@example.test" });
+
+  assert.equal((await joinInvite(firstUser.token, invite.body.data.inviteCode)).status, 201);
+  const secondJoin = await joinInvite(secondUser.token, invite.body.data.inviteCode);
+
+  assert.equal(secondJoin.status, 409);
+});
+
+test("expired invite code cannot be used", async () => {
+  const { owner, projectId } = await seedOwnedProject();
+  const inviteCode = seedDbInvite({
+    projectId,
+    owner,
+    tokenId: "expired-token",
+    sectionId: SECTION_FIRST_VIOLIN,
+    expiresAt: new Date(Date.now() - 60_000).toISOString(),
+  });
+  const joinUser = seedUserWithToken(fake, { email: "expired@example.test" });
+
+  const response = await joinInvite(joinUser.token, inviteCode);
+
+  assert.equal(response.status, 410);
+});
+
+test("revoked invite code cannot be used", async () => {
+  const { owner, projectId } = await seedOwnedProject();
+  const inviteCode = seedDbInvite({
+    projectId,
+    owner,
+    tokenId: "revoked-token",
+    sectionId: SECTION_FIRST_VIOLIN,
+    expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    revokedAt: now(),
+  });
+  const joinUser = seedUserWithToken(fake, { email: "revoked@example.test" });
+
+  const response = await joinInvite(joinUser.token, inviteCode);
+
+  assert.equal(response.status, 410);
+});
+
+test("principal shared annotation is visible to same-section member joined by invite", async () => {
+  const { owner, projectId } = await seedOwnedProject();
+  const score = await harness.request("POST", `/api/projects/${projectId}/scores`, {
+    token: owner.token,
+    body: {
+      sectionId: SECTION_FIRST_VIOLIN,
+      title: "First violin",
+      piece: { title: "Piece A" },
+      xmlContent: "<score-partwise/>",
+    },
+  });
+  assert.equal(score.status, 201);
+
+  const principalInvite = await createInvite(owner.token, projectId, inviteBody({
+    targetRole: "principal",
+    sectionId: SECTION_FIRST_VIOLIN,
+  }));
+  const principal = seedUserWithToken(fake, { email: "principal@example.test" });
+  assert.equal((await joinInvite(principal.token, principalInvite.body.data.inviteCode)).status, 201);
+
+  const memberInvite = await createInvite(principal.token, projectId, inviteBody({
+    targetRole: "member",
+    sectionId: SECTION_FIRST_VIOLIN,
+  }));
+  const member = seedUserWithToken(fake, { email: "member@example.test" });
+  assert.equal((await joinInvite(member.token, memberInvite.body.data.inviteCode)).status, 201);
+
+  const shared = await harness.request("POST", `/api/scores/${score.body.data.id}/annotations`, {
+    token: principal.token,
+    body: annotationBody({ sectionId: SECTION_FIRST_VIOLIN }),
+  });
+  assert.equal(shared.status, 201);
+
+  const visible = await harness.request("GET", `/api/scores/${score.body.data.id}/annotations`, {
+    token: member.token,
+  });
+
+  assert.equal(visible.status, 200);
+  assert.equal(
+    visible.body.data.some((annotation) => annotation.id === shared.body.data.id),
+    true,
+  );
 });

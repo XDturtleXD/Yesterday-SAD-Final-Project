@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAppState } from '../../state/AppState'
+import { useTranslation } from '../../i18n'
 import { Button } from '../primitives/Button'
 import { Card } from '../primitives/Card'
 import { Modal } from '../primitives/Modal'
@@ -38,6 +39,7 @@ export function ScoreEditorPage() {
   const { projectId, scoreId } = useParams()
   const navigate = useNavigate()
   const { getProject, getScore, loadProjectDetail, addToast } = useAppState()
+  const { t } = useTranslation()
 
   const project = projectId ? getProject(projectId) : undefined
   const score = projectId && scoreId ? getScore(projectId, scoreId) : undefined
@@ -51,25 +53,37 @@ export function ScoreEditorPage() {
   const [undoCount, setUndoCount] = useState(2)
   const [redoCount, setRedoCount] = useState(0)
   const [commitOpen, setCommitOpen] = useState(false)
-  const [commitMessage, setCommitMessage] = useState('Updated markings (prototype)')
+  const [commitMessage, setCommitMessage] = useState('')
   const [copiedMarking, setCopiedMarking] = useState<null | string>(null)
   const [selectedCell, setSelectedCell] = useState<string | null>(null)
+  const toolLabels: Record<Tool, string> = {
+    draw: t('scoreEditor.draw'),
+    eraser: t('scoreEditor.eraser'),
+    eyedropper: t('scoreEditor.eyedropper'),
+    pan: t('scoreEditor.dragPan'),
+    zoomIn: t('scoreEditor.zoomIn'),
+    zoomOut: t('scoreEditor.zoomOut'),
+    undo: t('scoreEditor.undo'),
+    redo: t('scoreEditor.redo'),
+    upBow: t('scoreEditor.applyUpBow'),
+    downBow: t('scoreEditor.applyDownBow'),
+  }
 
   const measures = useMemo(() => {
     const ids = Array.from({ length: 12 }).map((_, i) => `m-${i + 1}`)
     return ids
   }, [])
 
-  const title = score?.title ?? 'Score editor'
+  const title = score?.title ?? t('scoreEditor.titleFallback')
 
   if (!project || !score) {
     return (
       <div className="p-6">
         <Card className="p-6">
-          <div className="text-sm font-semibold text-slate-900">Editor target not found</div>
+          <div className="text-sm font-semibold text-slate-900">{t('scoreEditor.editorTargetNotFound')}</div>
           <div className="mt-2">
             <Button variant="secondary" onClick={() => navigate('/projects')}>
-              Back to projects
+              {t('scoreEditor.backToProjects')}
             </Button>
           </div>
         </Card>
@@ -85,11 +99,11 @@ export function ScoreEditorPage() {
             <div className="flex flex-wrap items-center gap-2">
               <div className="truncate text-sm font-semibold text-slate-900">{title}</div>
               <Badge tone="info">{score.fileType}</Badge>
-              <Badge>Branch: {project.currentBranchName}</Badge>
-              <Badge>Zoom: {zoom}%</Badge>
+              <Badge>{t('scoreEditor.branchLabel')}: {project.currentBranchName}</Badge>
+              <Badge>{t('scoreEditor.zoomLabel')}: {zoom}%</Badge>
             </div>
             <div className="mt-1 text-xs text-slate-500">
-              Prototype editor — no real score rendering. Boxes under “notes” accept mock markings.
+              {t('scoreEditor.prototypeNotice')}
             </div>
           </div>
 
@@ -99,21 +113,21 @@ export function ScoreEditorPage() {
               onClick={() => navigate(`/projects/${project.id}?tab=pieces`)}
             >
               <ArrowLeft className="size-4" />
-              Back to score list
+              {t('scoreEditor.backToScoreList')}
             </Button>
             <Button
               variant="secondary"
               onClick={() => {
-                addToast({ title: 'Changes discarded (simulated)' })
+                addToast({ title: t('scoreEditor.changesDiscarded') })
                 navigate(`/projects/${project.id}?tab=pieces`)
               }}
             >
               <X className="size-4" />
-              Discard changes
+              {t('scoreEditor.discardChanges')}
             </Button>
             <Button onClick={() => setCommitOpen(true)}>
               <Check className="size-4" />
-              Confirm changes
+              {t('scoreEditor.confirmChanges')}
             </Button>
           </div>
         </div>
@@ -121,15 +135,15 @@ export function ScoreEditorPage() {
 
       <div className="border-b border-slate-200 bg-white">
         <div className="flex flex-wrap items-center gap-2 px-4 py-2">
-          <ToolButton active={tool === 'draw'} onClick={() => setTool('draw')} icon={<Pencil className="size-4" />} label="Draw" />
-          <ToolButton active={tool === 'eraser'} onClick={() => setTool('eraser')} icon={<Eraser className="size-4" />} label="Eraser" />
+          <ToolButton active={tool === 'draw'} onClick={() => setTool('draw')} icon={<Pencil className="size-4" />} label={t('scoreEditor.draw')} />
+          <ToolButton active={tool === 'eraser'} onClick={() => setTool('eraser')} icon={<Eraser className="size-4" />} label={t('scoreEditor.eraser')} />
           <ToolButton
             active={tool === 'eyedropper'}
             onClick={() => setTool('eyedropper')}
             icon={<Pipette className="size-4" />}
-            label="Eyedropper"
+            label={t('scoreEditor.eyedropper')}
           />
-          <ToolButton active={tool === 'pan'} onClick={() => setTool('pan')} icon={<Hand className="size-4" />} label="Drag/Pan" />
+          <ToolButton active={tool === 'pan'} onClick={() => setTool('pan')} icon={<Hand className="size-4" />} label={t('scoreEditor.dragPan')} />
           <div className="mx-1 h-6 w-px bg-slate-200" />
           <ToolButton
             active={tool === 'zoomIn'}
@@ -138,7 +152,7 @@ export function ScoreEditorPage() {
               setZoom((z) => Math.min(200, z + 10))
             }}
             icon={<ZoomIn className="size-4" />}
-            label="Zoom in"
+            label={t('scoreEditor.zoomIn')}
           />
           <ToolButton
             active={tool === 'zoomOut'}
@@ -147,7 +161,7 @@ export function ScoreEditorPage() {
               setZoom((z) => Math.max(50, z - 10))
             }}
             icon={<ZoomOut className="size-4" />}
-            label="Zoom out"
+            label={t('scoreEditor.zoomOut')}
           />
           <ToolButton
             active={tool === 'undo'}
@@ -157,7 +171,7 @@ export function ScoreEditorPage() {
               setRedoCount((c) => c + 1)
             }}
             icon={<Undo2 className="size-4" />}
-            label={`Undo (${undoCount})`}
+            label={`${t('scoreEditor.undo')} (${undoCount})`}
             disabled={undoCount === 0}
           />
           <ToolButton
@@ -168,7 +182,7 @@ export function ScoreEditorPage() {
               setUndoCount((c) => c + 1)
             }}
             icon={<Redo2 className="size-4" />}
-            label={`Redo (${redoCount})`}
+            label={`${t('scoreEditor.redo')} (${redoCount})`}
             disabled={redoCount === 0}
           />
           <div className="mx-1 h-6 w-px bg-slate-200" />
@@ -176,18 +190,18 @@ export function ScoreEditorPage() {
             active={tool === 'upBow'}
             onClick={() => setTool('upBow')}
             icon={<ArrowUp className="size-4" />}
-            label="Up-bow"
+            label={t('scoreEditor.applyUpBow')}
           />
           <ToolButton
             active={tool === 'downBow'}
             onClick={() => setTool('downBow')}
             icon={<ArrowDown className="size-4" />}
-            label="Down-bow"
+            label={t('scoreEditor.applyDownBow')}
           />
 
           <div className="ml-auto flex items-center gap-2 text-xs text-slate-500">
-            Active tool: <span className="font-medium text-slate-900">{tool}</span>
-            {copiedMarking && <Badge tone="success">Copied: {copiedMarking}</Badge>}
+            {t('scoreEditor.activeTool')}: <span className="font-medium text-slate-900">{toolLabels[tool]}</span>
+            {copiedMarking && <Badge tone="success">{t('scoreEditor.copied')}: {copiedMarking}</Badge>}
           </div>
         </div>
       </div>
@@ -197,20 +211,20 @@ export function ScoreEditorPage() {
           <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-wrap gap-2">
               <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
-                <div className="font-medium">Same passage detected</div>
+                <div className="font-medium">{t('scoreEditor.samePassageDetected')}</div>
                 <div className="text-xs text-sky-800">
-                  Suggested marking can be auto-filled.
+                  {t('scoreEditor.suggestedMarkingAutoFill')}
                 </div>
               </div>
               <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                <div className="font-medium">Warning</div>
+                <div className="font-medium">{t('scoreEditor.warning')}</div>
                 <div className="text-xs text-amber-800">
-                  This passage differs from another member’s part.
+                  {t('scoreEditor.passageDiffers')}
                 </div>
               </div>
             </div>
             <div className="text-xs text-slate-500">
-              Click a measure cell to select; type markings in the box below it.
+              {t('scoreEditor.clickMeasureHint')}
             </div>
           </div>
 
@@ -226,6 +240,8 @@ export function ScoreEditorPage() {
                     id={m}
                     index={idx + 1}
                     selected={selectedCell === m}
+                    measureLabel={t('scoreEditor.measure')}
+                    markingBoxLabel={t('scoreEditor.markingBox')}
                     onClick={() => {
                       setSelectedCell(m)
                       if (tool === 'eyedropper') setCopiedMarking('↓ bow')
@@ -239,17 +255,17 @@ export function ScoreEditorPage() {
 
         <aside className="hidden w-80 shrink-0 lg:block">
           <Card className="p-4">
-            <div className="text-sm font-semibold text-slate-900">Inspector</div>
+            <div className="text-sm font-semibold text-slate-900">{t('scoreEditor.inspector')}</div>
             <div className="mt-1 text-sm text-slate-600">
-              Selected: <span className="font-medium text-slate-900">{selectedCell ?? '—'}</span>
+              {t('scoreEditor.selected')}: <span className="font-medium text-slate-900">{selectedCell ?? '-'}</span>
             </div>
 
             <div className="mt-4">
-              <div className="text-sm font-medium text-slate-800">Marking input</div>
+              <div className="text-sm font-medium text-slate-800">{t('scoreEditor.markingInput')}</div>
               <input
                 value={selectedCell ? '↓ bow · fingering 2' : ''}
                 readOnly={!selectedCell}
-                placeholder={selectedCell ? 'Type here…' : 'Select a measure'}
+                placeholder={selectedCell ? t('scoreEditor.typeHere') : t('scoreEditor.selectMeasure')}
                 className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
                 onChange={() => {}}
               />
@@ -258,17 +274,17 @@ export function ScoreEditorPage() {
                   size="sm"
                   variant="secondary"
                   disabled={!selectedCell}
-                  onClick={() => addToast({ title: 'Auto-fill applied (simulated)', message: selectedCell ?? '' })}
+                  onClick={() => addToast({ title: t('scoreEditor.autoFillApplied'), message: selectedCell ?? '' })}
                 >
-                  Apply suggestion
+                  {t('scoreEditor.applySuggestion')}
                 </Button>
                 <Button
                   size="sm"
                   variant="ghost"
                   disabled={!selectedCell}
-                  onClick={() => addToast({ title: 'Ignored suggestion (simulated)', message: selectedCell ?? '' })}
+                  onClick={() => addToast({ title: t('scoreEditor.ignoredSuggestion'), message: selectedCell ?? '' })}
                 >
-                  Ignore
+                  {t('scoreEditor.ignore')}
                 </Button>
               </div>
             </div>
@@ -277,36 +293,36 @@ export function ScoreEditorPage() {
       </div>
 
       <Modal
-        title="Commit message"
+        title={t('scoreEditor.commitMessage')}
         open={commitOpen}
         onClose={() => setCommitOpen(false)}
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setCommitOpen(false)}>
-              Cancel
+              {t('common.cancel')}
             </Button>
             <Button
               onClick={() => {
                 setCommitOpen(false)
-                addToast({ title: 'Changes saved locally', message: commitMessage })
+                addToast({ title: t('scoreEditor.changesSavedLocally'), message: commitMessage })
                 navigate(`/projects/${project.id}?tab=versions`)
               }}
             >
-              Confirm
+              {t('common.confirm')}
             </Button>
           </div>
         }
       >
         <div className="text-sm text-slate-600">
-          This visually communicates the Git-like history concept. No real version control is used.
+          {t('scoreEditor.historyConceptHelp')}
         </div>
         <div className="mt-3">
-          <div className="text-sm font-medium text-slate-800">Commit message</div>
+          <div className="text-sm font-medium text-slate-800">{t('scoreEditor.commitMessage')}</div>
           <input
             value={commitMessage}
             onChange={(e) => setCommitMessage(e.target.value)}
             className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
-            placeholder="e.g. Updated violin bowing for measures 12–18"
+            placeholder={t('scoreEditor.commitPlaceholder')}
           />
         </div>
       </Modal>
@@ -348,11 +364,15 @@ function MeasureRow({
   id,
   index,
   selected,
+  measureLabel,
+  markingBoxLabel,
   onClick,
 }: {
   id: string
   index: number
   selected: boolean
+  measureLabel: string
+  markingBoxLabel: string
   onClick: () => void
 }) {
   return (
@@ -364,7 +384,7 @@ function MeasureRow({
       )}
     >
       <div className="flex items-center justify-between gap-3">
-        <div className="text-sm font-semibold text-slate-900">Measure {index}</div>
+        <div className="text-sm font-semibold text-slate-900">{measureLabel} {index}</div>
         <div className="text-xs text-slate-500">{id}</div>
       </div>
       <div className="mt-3 grid grid-cols-8 gap-2">
@@ -375,7 +395,7 @@ function MeasureRow({
           >
             <div className="h-6 rounded bg-white" />
             <div className="mt-2 h-8 rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600">
-              marking box
+              {markingBoxLabel}
             </div>
           </div>
         ))}
@@ -383,4 +403,3 @@ function MeasureRow({
     </button>
   )
 }
-
