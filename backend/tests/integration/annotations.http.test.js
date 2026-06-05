@@ -155,6 +155,12 @@ test("member creates private bowing annotation without mutating score XML", asyn
     duration: "1",
   };
 
+  const editAttempt = await harness.request("PATCH", `/api/scores/${scoreAId}/musicxml`, {
+    token: member.token,
+    body: { xmlContent: "<score-partwise><part-list /></score-partwise>" },
+  });
+  assert.equal(editAttempt.status, 403);
+
   const created = await harness.request("POST", `/api/scores/${scoreAId}/annotations`, {
     token: member.token,
     body: annotationBody({
@@ -175,6 +181,22 @@ test("member creates private bowing annotation without mutating score XML", asyn
   assert.deepEqual(created.body.data.targetRef, targetRef);
   assert.deepEqual(created.body.data.payload, { bowingType: "up-bow" });
   assert.equal(fake.rows("scores").find((score) => score.id === scoreAId).xml_content, beforeScore.xml_content);
+  assert.deepEqual(
+    fake.rows("score_annotations").find((annotation) => annotation.id === created.body.data.id),
+    {
+      id: created.body.data.id,
+      project_id: projectId,
+      score_id: scoreAId,
+      owner_user_id: member.user.id,
+      section_id: SECTION_FIRST_VIOLIN,
+      scope: "private",
+      annotation_type: "bowing",
+      target_ref: targetRef,
+      payload: { bowingType: "up-bow" },
+      created_at: created.body.data.createdAt,
+      updated_at: created.body.data.updatedAt,
+    },
+  );
 
   const visibleToOwner = await harness.request("GET", `/api/scores/${scoreAId}/annotations`, {
     token: member.token,
@@ -184,6 +206,11 @@ test("member creates private bowing annotation without mutating score XML", asyn
     visibleToOwner.body.data.some((annotation) => annotation.id === created.body.data.id),
     true,
   );
+  const fetchedPrivate = visibleToOwner.body.data.find(
+    (annotation) => annotation.id === created.body.data.id,
+  );
+  assert.deepEqual(fetchedPrivate.targetRef, targetRef);
+  assert.deepEqual(fetchedPrivate.payload, { bowingType: "up-bow" });
 
   const hiddenFromOtherMember = await harness.request("GET", `/api/scores/${scoreAId}/annotations`, {
     token: otherMember.token,

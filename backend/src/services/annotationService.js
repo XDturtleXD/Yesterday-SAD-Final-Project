@@ -24,11 +24,46 @@ const ensureSupabaseReady = () => {
 };
 
 const logAnnotationServiceError = (operation, error) => {
-  if (process.env.NODE_ENV === "production" || process.env.NODE_ENV === "test") {
+  if (process.env.NODE_ENV === "test") {
     return;
   }
 
   console.error(`[annotationService] ${operation} failed`, error);
+};
+
+const isMissingAnnotationStorageError = (error) => {
+  const code = String(error?.code || "");
+  const message = String(error?.message || "");
+  const details = String(error?.details || "");
+  const hint = String(error?.hint || "");
+  const text = `${message} ${details} ${hint}`.toLowerCase();
+
+  return (
+    code === "42P01" ||
+    code === "PGRST205" ||
+    (text.includes("score_annotations") &&
+      (text.includes("does not exist") ||
+        text.includes("schema cache") ||
+        text.includes("relation")))
+  );
+};
+
+const annotationStorageError = (operation, error) => {
+  logAnnotationServiceError(operation, error);
+
+  if (isMissingAnnotationStorageError(error)) {
+    return new AppError(
+      "Annotation storage is not available. Apply Supabase migration 20260604_add_score_annotations.sql.",
+      503,
+      error,
+    );
+  }
+
+  const message =
+    operation === "createAnnotation"
+      ? "Failed to create annotation"
+      : "Failed to fetch annotations";
+  return new AppError(message, 500, error);
 };
 
 const isPlainObject = (value) => {
@@ -183,8 +218,7 @@ const listVisibleAnnotations = async (score, membership, requestUser) => {
     .order("created_at", { ascending: true });
 
   if (error) {
-    logAnnotationServiceError("listVisibleAnnotations", error);
-    throw new AppError("Failed to fetch annotations", 500, error);
+    throw annotationStorageError("listVisibleAnnotations", error);
   }
 
   return (data || [])
@@ -206,8 +240,7 @@ const createAnnotation = async (score, membership, requestUser, body) => {
     .single();
 
   if (error) {
-    logAnnotationServiceError("createAnnotation", error);
-    throw new AppError("Failed to create annotation", 500, error);
+    throw annotationStorageError("createAnnotation", error);
   }
 
   return mapAnnotation(data);
@@ -262,5 +295,6 @@ module.exports = {
     normalizeCreatePayload,
     normalizeUpdatePayload,
     getMembershipForScore,
+    isMissingAnnotationStorageError,
   },
 };

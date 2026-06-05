@@ -444,7 +444,9 @@ function replaceBowing(xml: string, ref: EditableNoteRef, mark: BowingMark) {
 
 function getBowingAnnotationMark(annotation: ScoreAnnotation): BowingMark | null {
   const bowingType = annotation.payload.bowingType
-  return bowingType === 'up-bow' || bowingType === 'down-bow' ? bowingType : null
+  if (bowingType === 'up-bow' || bowingType === 'up') return 'up-bow'
+  if (bowingType === 'down-bow' || bowingType === 'down') return 'down-bow'
+  return null
 }
 
 function editableNoteRefFromTargetRef(
@@ -481,6 +483,49 @@ function editableNoteRefFromTargetRef(
   }
 }
 
+function sameAnnotationMeasure(item: IndexedXmlNote, ref: EditableNoteRef) {
+  if (ref.measureArrayIndex !== undefined) {
+    return item.measureArrayIndex === ref.measureArrayIndex
+  }
+  return item.measureNumber === ref.measureNumber
+}
+
+function optionalStaffVoiceMatches(item: IndexedXmlNote, ref: EditableNoteRef) {
+  return (
+    (!ref.staff || item.staff === ref.staff) &&
+    (!ref.voice || item.voice === ref.voice)
+  )
+}
+
+function optionalPitchDurationMatches(item: IndexedXmlNote, ref: EditableNoteRef) {
+  return (
+    (!ref.pitchStep || item.pitchStep === ref.pitchStep) &&
+    (!ref.pitchOctave || item.pitchOctave === ref.pitchOctave) &&
+    (!ref.duration || item.duration === ref.duration)
+  )
+}
+
+function findXmlNoteForPrivateAnnotation(doc: Document, ref: EditableNoteRef) {
+  const exact = findXmlNote(doc, ref)
+  if (exact) return exact
+
+  const metadataMatches = buildEditableNoteIndex(doc, ref.scoreId).filter(
+    (item) =>
+      item.scoreId === ref.scoreId &&
+      item.partId === ref.partId &&
+      sameAnnotationMeasure(item, ref) &&
+      optionalStaffVoiceMatches(item, ref),
+  )
+
+  const sameIndex = metadataMatches.find((item) => item.noteIndex === ref.noteIndex)
+  if (sameIndex) return sameIndex.note
+
+  const pitchDurationMatches = metadataMatches.filter((item) =>
+    optionalPitchDurationMatches(item, ref),
+  )
+  return pitchDurationMatches.length === 1 ? pitchDurationMatches[0].note : null
+}
+
 function applyPrivateBowingAnnotationsToXml(
   xml: string,
   scoreId: string,
@@ -500,7 +545,11 @@ function applyPrivateBowingAnnotationsToXml(
       const ref = editableNoteRefFromTargetRef(annotation.targetRef, scoreId)
       if (!mark || !ref) return
 
-      changed = applyBowingToDocument(doc, ref, mark) || changed
+      const note = findXmlNoteForPrivateAnnotation(doc, ref)
+      if (!note) return
+
+      applyBowingToXmlNote(note, mark)
+      changed = true
     })
 
     return changed ? serializeMusicXml(doc) : xml
@@ -1234,6 +1283,10 @@ export function ScoreMusicXmlPage() {
     return applyPrivateBowingAnnotationsToXml(workingXml, scoreId, privateAnnotations)
   }, [activeAnnotationLayer, privateAnnotations, scoreId, workingXml])
 
+  const privateAnnotationRenderKey = privateAnnotations
+    .map((annotation) => `${annotation.id}:${annotation.updatedAt ?? annotation.createdAt}`)
+    .join('|')
+
   useEffect(() => {
     workingXmlByScoreIdRef.current = workingXmlByScoreId
   }, [workingXmlByScoreId])
@@ -1389,6 +1442,11 @@ export function ScoreMusicXmlPage() {
     showPartNames,
     xmlEntry,
   ])
+
+  useEffect(() => {
+    if (activeAnnotationLayer !== 'private') return
+    lastRenderedXmlRef.current = null
+  }, [activeAnnotationLayer, privateAnnotationRenderKey, scoreId])
 
   useEffect(() => {
     if (status !== 'ready' || !layeredRenderXml || !osmdRef.current) return
