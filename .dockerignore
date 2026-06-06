@@ -36,3 +36,6 @@ pdf
 # Docker self-references.
 Dockerfile
 docker-compose.yml
+
+# Audiveris source — not committed; OMR Dockerfile clones from GitHub at build time.
+audiveris

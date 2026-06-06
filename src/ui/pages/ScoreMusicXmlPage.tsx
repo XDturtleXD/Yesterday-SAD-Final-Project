@@ -2196,10 +2196,7 @@ export function ScoreMusicXmlPage() {
     (canManageProjectScores ||
       (myProjectMember?.role === 'principal' &&
         myProjectMember.sectionId === activeScore.sectionId))
-  const viewOnlyMessage =
-    language === 'zh'
-      ? '你可以查看所有聲部，但只能在自己所屬的聲部上做記號。'
-      : 'You can view every section, but markings are only allowed on your assigned section.'
+  const viewOnlyMessage = t('scoreEditor.viewOnlyMessage')
   const xmlEntry = useMemo(
     () =>
       activeScore
@@ -2325,7 +2322,7 @@ export function ScoreMusicXmlPage() {
         }))
       })
       .catch((err: unknown) => {
-        const message = err instanceof Error ? err.message : 'Scan failed'
+        const message = err instanceof Error ? err.message : t('scoreEditor.scanFailed')
         setPieceSimilarityByPieceId((prev) => ({
           ...prev,
           [activePieceId]: { highlights: prev[activePieceId]?.highlights ?? [], status: 'error', error: message },
@@ -2392,12 +2389,12 @@ export function ScoreMusicXmlPage() {
         if (cancelled) return
         const isAnnotationError = err instanceof annotationsApi.AnnotationApiError
         const details = isAnnotationError ? formatAnnotationErrorDetails(err.details) : undefined
-        const baseMessage = err instanceof Error ? err.message : 'Unable to load annotation layers'
+        const baseMessage = err instanceof Error ? err.message : t('scoreEditor.loadAnnotationLayersFailed')
         const message = details ? `${baseMessage} - ${details}` : baseMessage
         setAnnotationErrorByScoreId((prev) => ({ ...prev, [scoreId]: message }))
         setAnnotationsByScoreId((prev) => ({ ...prev, [scoreId]: EMPTY_ANNOTATION_LAYERS }))
         addToastRef.current({
-          title: 'Annotation layers unavailable',
+          title: t('scoreEditor.annotationLayersUnavailable'),
           message,
         })
       })
@@ -2625,8 +2622,8 @@ export function ScoreMusicXmlPage() {
   function changeScore(nextScoreId: string) {
     if (!projectId) {
       addToast({
-        title: language === 'zh' ? '無法開啟分譜' : 'Unable to open score',
-        message: language === 'zh' ? '目前缺少專案路由資訊。' : 'The current project route context is missing.',
+        title: t('scoreEditor.unableToOpenScore'),
+        message: t('scoreEditor.missingProjectRoute'),
       })
       return
     }
@@ -2634,8 +2631,8 @@ export function ScoreMusicXmlPage() {
     const targetScore = availableScores.find((item) => item.id === nextScoreId)
     if (!targetScore) {
       addToast({
-        title: language === 'zh' ? '無法開啟分譜' : 'Unable to open score',
-        message: language === 'zh' ? '找不到目標分譜，或你沒有檢視權限。' : 'The target score was not found or is not visible to you.',
+        title: t('scoreEditor.unableToOpenScore'),
+        message: t('scoreEditor.targetScoreUnavailable'),
       })
       return
     }
@@ -2673,9 +2670,9 @@ export function ScoreMusicXmlPage() {
 
   async function findSimilarPassages() {
     if (!similarityRangeStart || !similarityRangeEnd) {
-      const message = language === 'zh' ? '請先設定旋律範圍起點與終點。' : 'Set a range start and end first.'
+      const message = t('scoreEditor.rangeNotSetMessage')
       setSimilarityError(message)
-      addToast({ title: language === 'zh' ? '尚未設定範圍' : 'Range not set', message })
+      addToast({ title: t('scoreEditor.rangeNotSet'), message })
       return
     }
 
@@ -2693,14 +2690,14 @@ export function ScoreMusicXmlPage() {
       setSimilarityCandidates(candidates)
       if (candidates.length === 0) {
         addToast({
-          title: language === 'zh' ? '沒有找到相似段落' : 'No similar passages found',
+          title: t('scoreEditor.noSimilarPassages'),
         })
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unable to find similar passages'
+      const message = err instanceof Error ? err.message : t('scoreEditor.findSimilarPassagesFailed')
       setSimilarityError(message)
       addToast({
-        title: language === 'zh' ? '尋找相似段落失敗' : 'Similar passage search failed',
+        title: t('scoreEditor.similarPassageSearchFailed'),
         message,
       })
     } finally {
@@ -2711,8 +2708,8 @@ export function ScoreMusicXmlPage() {
   async function runPieceSimilarityScan() {
     if (!projectId || !activePieceId) {
       addToast({
-        title: language === 'zh' ? '無法掃描相似段落' : 'Unable to scan similar passages',
-        message: language === 'zh' ? '目前缺少 piece 資訊。' : 'The current piece context is missing.',
+        title: t('scoreEditor.scanSimilarPassagesFailed'),
+        message: t('scoreEditor.missingPieceContext'),
       })
       return
     }
@@ -2735,7 +2732,7 @@ export function ScoreMusicXmlPage() {
         [activePieceId]: { highlights: response.highlights, status: 'ready', error: null },
       }))
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Scan failed'
+      const message = err instanceof Error ? err.message : t('scoreEditor.scanFailed')
       setPieceSimilarityByPieceId((prev) => ({
         ...prev,
         [activePieceId]: { highlights: prev[activePieceId]?.highlights ?? [], status: 'error', error: message },
@@ -2938,7 +2935,7 @@ export function ScoreMusicXmlPage() {
     if (!ref) {
       addToast({ title: t('scoreEditor.noteCannotBeEditedYet') })
       if (DEBUG_NOTE_MAPPING) {
-        addToast({ title: 'Mapping debug printed to console' })
+        addToast({ title: t('scoreEditor.mappingDebugPrinted') })
       }
       return
     }
@@ -2957,7 +2954,7 @@ export function ScoreMusicXmlPage() {
   ) {
     if (!canSaveSharedScore) {
       addToast({
-        title: language === 'zh' ? '此聲部只能檢視' : 'View-only section',
+        title: t('scoreEditor.viewOnlySection'),
         message: viewOnlyMessage,
       })
       return
@@ -3004,7 +3001,7 @@ export function ScoreMusicXmlPage() {
   async function createPrivateBowingAnnotation(ref: EditableNoteRef, mark: BowingMark) {
     if (!canAnnotateActiveScore) {
       addToast({
-        title: language === 'zh' ? '無法在此聲部做私人記號' : 'Private marking unavailable',
+        title: t('scoreEditor.privateMarkingUnavailable'),
         message: viewOnlyMessage,
       })
       return
@@ -3030,8 +3027,8 @@ export function ScoreMusicXmlPage() {
       })
 
       addToast({
-        title: mark === 'up-bow' ? 'Private up-bow saved' : 'Private down-bow saved',
-        message: 'Saved to My private layer.',
+        title: mark === 'up-bow' ? t('scoreEditor.privateUpBowSaved') : t('scoreEditor.privateDownBowSaved'),
+        message: t('scoreEditor.privateLayerSaved'),
       })
     } catch (err) {
       const isAnnotationError = err instanceof annotationsApi.AnnotationApiError
@@ -3039,7 +3036,7 @@ export function ScoreMusicXmlPage() {
       const details = isAnnotationError ? formatAnnotationErrorDetails(err.details) : undefined
       const message = err instanceof Error ? err.message : t('scoreEditor.updateFailed')
       addToast({
-        title: `Private bowing was not saved${status}`,
+        title: `${t('scoreEditor.privateBowingSaveFailed')}${status}`,
         message: details ? `${message} - ${details}` : message,
       })
     }
@@ -3047,7 +3044,7 @@ export function ScoreMusicXmlPage() {
 
   function acceptBowingSuggestion(suggestion: PendingBowingSuggestion) {
     applyXmlOperation(
-      language === 'zh' ? '已套用弓法建議' : 'Bowing suggestion accepted',
+      t('scoreEditor.bowingSuggestionAccepted'),
       (xml) => applyAcceptedBowingSuggestion(xml, suggestion.targetRef, suggestion.bowingType),
     )
     setPendingBowingSuggestionsByScoreId((prev) => ({
@@ -3059,8 +3056,11 @@ export function ScoreMusicXmlPage() {
   function acceptAllBowingSuggestions() {
     const toApply = currentPendingBowingSuggestions
     if (toApply.length === 0) return
+    const suggestionUnit = toApply.length === 1
+      ? t('scoreEditor.bowingSuggestionUnitSingular')
+      : t('scoreEditor.bowingSuggestionUnitPlural')
     applyXmlOperation(
-      language === 'zh' ? `已套用 ${toApply.length} 個弓法建議` : `Accepted ${toApply.length} bowing suggestion${toApply.length === 1 ? '' : 's'}`,
+      `${t('scoreEditor.bowingSuggestionsAccepted')} ${toApply.length} ${suggestionUnit}`,
       (xml) => toApply.reduce((acc, s) => applyAcceptedBowingSuggestion(acc, s.targetRef, s.bowingType), xml),
     )
     setPendingBowingSuggestionsByScoreId((prev) => ({ ...prev, [scoreId]: [] }))
@@ -3158,7 +3158,7 @@ export function ScoreMusicXmlPage() {
   function startSlurMode() {
     if (!canSaveSharedScore) {
       addToast({
-        title: language === 'zh' ? '此聲部只能檢視' : 'View-only section',
+        title: t('scoreEditor.viewOnlySection'),
         message: viewOnlyMessage,
       })
       return
@@ -3195,7 +3195,7 @@ export function ScoreMusicXmlPage() {
   function applyHairpin(type: HairpinType) {
     if (!canSaveSharedScore) {
       addToast({
-        title: language === 'zh' ? '此聲部只能檢視' : 'View-only section',
+        title: t('scoreEditor.viewOnlySection'),
         message: viewOnlyMessage,
       })
       return
@@ -3206,13 +3206,13 @@ export function ScoreMusicXmlPage() {
     if (selectedNote) {
       setHairpinDraft({ type, start: selectedNote })
       pendingHairpinSelectionKeyRef.current = editableNoteRefKey(selectedNote)
-      addToast({ title: `${hairpinLabel(type)} start selected`, message: t('scoreEditor.clickEndingNote') })
+      addToast({ title: `${hairpinLabel(type)} ${t('scoreEditor.hairpinStartSelected')}`, message: t('scoreEditor.clickEndingNote') })
       return
     }
 
     setHairpinDraft({ type })
     pendingHairpinSelectionKeyRef.current = null
-    addToast({ title: `Select ${hairpinLabel(type)} start`, message: t('scoreEditor.clickFirstNote') })
+    addToast({ title: `${t('scoreEditor.selectHairpinStart')} ${hairpinLabel(type)}`, message: t('scoreEditor.clickFirstNote') })
   }
 
   function handleHairpinNoteSelection(ref: EditableNoteRef) {
@@ -3221,13 +3221,13 @@ export function ScoreMusicXmlPage() {
     if (!hairpinDraft.start) {
       setHairpinDraft({ ...hairpinDraft, start: ref })
       pendingHairpinSelectionKeyRef.current = editableNoteRefKey(ref)
-      addToast({ title: `${hairpinLabel(hairpinDraft.type)} start selected`, message: t('scoreEditor.clickEndingNote') })
+      addToast({ title: `${hairpinLabel(hairpinDraft.type)} ${t('scoreEditor.hairpinStartSelected')}`, message: t('scoreEditor.clickEndingNote') })
       return
     }
 
     const start = hairpinDraft.start
     applyXmlOperation(
-      `${hairpinLabel(hairpinDraft.type)} hairpin applied`,
+      `${hairpinLabel(hairpinDraft.type)} ${t('scoreEditor.hairpinApplied')}`,
       (xml) => addHairpin(xml, hairpinDraft.type, start, ref),
     )
     setHairpinDraft(null)
@@ -3296,7 +3296,7 @@ export function ScoreMusicXmlPage() {
     if (!workingXml || !scoreId) return
     if (!canSaveSharedScore) {
       addToast({
-        title: language === 'zh' ? '無法儲存此聲部' : 'Cannot save this section',
+        title: t('scoreEditor.cannotSaveSection'),
         message: viewOnlyMessage,
       })
       return
@@ -3425,7 +3425,7 @@ export function ScoreMusicXmlPage() {
           />
 
           <div className="flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 p-1 shadow-inner">
-            <span className="px-2 text-xs font-medium text-slate-500">Layer</span>
+            <span className="px-2 text-xs font-medium text-slate-500">{t('scoreEditor.layer')}</span>
             <button
               type="button"
               aria-pressed={activeAnnotationLayer === 'shared'}
@@ -3437,7 +3437,7 @@ export function ScoreMusicXmlPage() {
                   : 'text-slate-600 hover:bg-white hover:text-slate-950',
               )}
             >
-              Shared ({sharedAnnotations.length})
+              {t('scoreEditor.sharedLayer')} ({sharedAnnotations.length})
             </button>
             <button
               type="button"
@@ -3450,10 +3450,10 @@ export function ScoreMusicXmlPage() {
                   : 'text-slate-600 hover:bg-white hover:text-slate-950',
               )}
             >
-              My private ({privateAnnotations.length})
+              {t('scoreEditor.privateLayer')} ({privateAnnotations.length})
             </button>
             {annotationsLoading && (
-              <span className="px-2 text-xs text-slate-500">Loading</span>
+              <span className="px-2 text-xs text-slate-500">{t('common.loading')}</span>
             )}
             {annotationError && !annotationsLoading && (
               <span
@@ -3486,7 +3486,7 @@ export function ScoreMusicXmlPage() {
             {ARTICULATION_TOOLS.map((tool) => (
               <SymbolButton
                 key={tool.mark}
-                title={`Apply ${tool.label}${sharedEditTitleSuffix}`}
+                title={`${t('scoreEditor.apply')} ${tool.label}${sharedEditTitleSuffix}`}
                 disabled={!selectedNote || sharedEditDisabled}
                 onClick={() => applyArticulation(tool.mark)}
               >
@@ -3501,7 +3501,7 @@ export function ScoreMusicXmlPage() {
             {HAIRPIN_TOOLS.map((tool) => (
               <SymbolButton
                 key={tool.type}
-                title={`Create ${tool.label} hairpin${sharedEditTitleSuffix}`}
+                title={`${t('scoreEditor.createHairpin')} ${tool.label}${sharedEditTitleSuffix}`}
                 disabled={sharedEditDisabled}
                 active={mode === 'hairpin' && hairpinDraft?.type === tool.type}
                 className="w-auto min-w-14 px-2.5 text-xs font-semibold"
@@ -3518,7 +3518,7 @@ export function ScoreMusicXmlPage() {
             <SymbolButton
               title={
                 activeAnnotationLayer === 'private'
-                  ? `${t('scoreEditor.applyDownBow')} - saves to My private layer${bowingTitleSuffix}`
+                  ? `${t('scoreEditor.applyDownBow')} - ${t('scoreEditor.savesToPrivateLayer')}${bowingTitleSuffix}`
                   : `${t('scoreEditor.applyDownBow')}${bowingTitleSuffix}`
               }
               disabled={bowingDisabled}
@@ -3529,7 +3529,7 @@ export function ScoreMusicXmlPage() {
             <SymbolButton
               title={
                 activeAnnotationLayer === 'private'
-                  ? `${t('scoreEditor.applyUpBow')} - saves to My private layer${bowingTitleSuffix}`
+                  ? `${t('scoreEditor.applyUpBow')} - ${t('scoreEditor.savesToPrivateLayer')}${bowingTitleSuffix}`
                   : `${t('scoreEditor.applyUpBow')}${bowingTitleSuffix}`
               }
               disabled={bowingDisabled}
@@ -3627,7 +3627,9 @@ export function ScoreMusicXmlPage() {
                 {mode === 'slur'
                   ? t('scoreEditor.slurEndpointSelection')
                   : mode === 'hairpin'
-                    ? `${hairpinDraft ? hairpinLabel(hairpinDraft.type) : 'Hairpin'} endpoint selection`
+                    ? hairpinDraft
+                      ? `${hairpinLabel(hairpinDraft.type)} ${t('scoreEditor.endpointSelection')}`
+                      : t('scoreEditor.hairpinEndpointSelection')
                     : mode === 'pan'
                       ? t('scoreEditor.pan')
                       : t('scoreEditor.select')}
@@ -3644,7 +3646,7 @@ export function ScoreMusicXmlPage() {
             {hairpinDraft?.start && (
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                 <div className="text-xs font-medium text-slate-500">
-                  {hairpinLabel(hairpinDraft.type)} start
+                  {hairpinLabel(hairpinDraft.type)} {t('scoreEditor.hairpinStart')}
                 </div>
                 <div className="mt-1 text-sm text-slate-700">
                   {noteLabel(hairpinDraft.start)}
@@ -3654,7 +3656,7 @@ export function ScoreMusicXmlPage() {
             <div className="min-w-0 rounded-lg border border-slate-200 bg-white p-3">
               <div className="flex items-center justify-between gap-1">
                 <div className="min-w-0 truncate text-xs font-medium text-slate-500">
-                  {language === 'zh' ? '相似段落' : 'Similar passages'}
+                  {t('scoreEditor.similarPassages')}
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
                   {similarityScanStatus === 'ready' && (
@@ -3671,8 +3673,8 @@ export function ScoreMusicXmlPage() {
                     className="rounded border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     {similarityScanStatus === 'scanning'
-                      ? language === 'zh' ? '掃描中…' : 'Scanning…'
-                      : language === 'zh' ? '重新掃描' : 'Rescan'}
+                      ? t('scoreEditor.scanning')
+                      : t('scoreEditor.rescan')}
                   </button>
                 </div>
               </div>
@@ -3681,12 +3683,12 @@ export function ScoreMusicXmlPage() {
               )}
               {similarityScanStatus === 'idle' && (
                 <div className="mt-2 text-xs text-slate-400">
-                  {language === 'zh' ? '載入中…' : 'Loading…'}
+                  {t('common.loading')}
                 </div>
               )}
               {similarityScanStatus === 'ready' && autoSimilarityHighlights.length === 0 && (
                 <div className="mt-2 text-xs text-slate-500">
-                  {language === 'zh' ? '沒有找到相似段落。' : 'No similar passages found.'}
+                  {t('scoreEditor.noSimilarPassages')}
                 </div>
               )}
               {autoSimilarityHighlights.length > 0 && (
@@ -3715,11 +3717,11 @@ export function ScoreMusicXmlPage() {
                               {h.rightEndMeasureNumber !== h.rightStartMeasureNumber ? `–${h.rightEndMeasureNumber}` : ''}
                             </div>
                             <div className="truncate text-[11px] text-slate-500">
-                              {percentage(h.similarity)} · interval {percentage(h.intervalScore)} · rhythm {percentage(h.rhythmScore)}
+                              {percentage(h.similarity)} · {t('scoreEditor.intervalScore')} {percentage(h.intervalScore)} · {t('scoreEditor.rhythmScore')} {percentage(h.rhythmScore)}
                             </div>
                             {(scoreId === h.leftScoreId || scoreId === h.rightScoreId) && (
                               <div className="mt-1 inline-flex rounded bg-sky-50 px-1.5 py-0.5 text-[10px] font-medium text-sky-700">
-                                {language === 'zh' ? '目前開啟' : 'Currently open'}
+                                {t('scoreEditor.currentlyOpen')}
                               </div>
                             )}
                           </div>
@@ -3730,9 +3732,7 @@ export function ScoreMusicXmlPage() {
                               title={sectionLabel(h.leftSectionId, h.leftSectionName, h.leftScoreId)}
                               onClick={() => changeScore(h.leftScoreId)}
                             >
-                              {language === 'zh'
-                                ? `開啟${sectionLabel(h.leftSectionId, h.leftSectionName, h.leftScoreId)}`
-                                : 'Open left'}
+                              {t('scoreEditor.openLeft')}
                             </button>
                             <button
                               type="button"
@@ -3740,9 +3740,7 @@ export function ScoreMusicXmlPage() {
                               title={sectionLabel(h.rightSectionId, h.rightSectionName, h.rightScoreId)}
                               onClick={() => changeScore(h.rightScoreId)}
                             >
-                              {language === 'zh'
-                                ? `開啟${sectionLabel(h.rightSectionId, h.rightSectionName, h.rightScoreId)}`
-                                : 'Open right'}
+                              {t('scoreEditor.openRight')}
                             </button>
                           </div>
                         </div>
@@ -3756,10 +3754,8 @@ export function ScoreMusicXmlPage() {
                       onClick={() => setShowAllAutoSimilarityHighlights((value) => !value)}
                     >
                       {showAllAutoSimilarityHighlights
-                        ? language === 'zh' ? '收合' : 'Show less'
-                        : language === 'zh'
-                          ? `顯示全部 ${autoSimilarityHighlights.length} 筆`
-                          : `Show all ${autoSimilarityHighlights.length}`}
+                        ? t('scoreEditor.showLess')
+                        : `${t('scoreEditor.showAll')} ${autoSimilarityHighlights.length}`}
                     </button>
                   )}
                 </div>
@@ -3768,7 +3764,7 @@ export function ScoreMusicXmlPage() {
             <div className="min-w-0 rounded-lg border border-rose-200 bg-rose-50 p-3">
               <div className="flex items-center justify-between gap-2">
                 <div className="min-w-0 truncate text-xs font-medium text-rose-700">
-                  {language === 'zh' ? '弓法同步建議' : 'Bowing sync suggestions'}
+                  {t('scoreEditor.bowingSyncSuggestions')}
                 </div>
                 <Badge tone={pendingBowingSuggestionCount ? 'warn' : 'neutral'}>
                   {pendingBowingSuggestionCount}
@@ -3784,7 +3780,7 @@ export function ScoreMusicXmlPage() {
                       className="flex w-full items-center justify-center gap-1 rounded bg-rose-600 px-2 py-1 text-[11px] font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       <CheckCheck className="size-3" />
-                      {language === 'zh' ? `全部套用 (${currentPendingBowingSuggestions.length})` : `Accept all (${currentPendingBowingSuggestions.length})`}
+                      {t('scoreEditor.acceptAll')} ({currentPendingBowingSuggestions.length})
                     </button>
                   )}
                   <div className="max-h-44 space-y-1 overflow-y-auto pr-0.5">
@@ -3797,10 +3793,10 @@ export function ScoreMusicXmlPage() {
                         <div className="min-w-0">
                           <div className="truncate text-[11px] font-medium text-rose-800">
                             <span className="mr-0.5 font-bold">{suggestion.bowingType === 'down-bow' ? 'Π' : 'V'}</span>
-                            {' '}{language === 'zh' ? '來自' : 'From'} {suggestion.sourceSectionName} {suggestion.sourceMeasureRange}
+                            {' '}{t('scoreEditor.fromSource')} {suggestion.sourceSectionName} {suggestion.sourceMeasureRange}
                           </div>
                           <div className="text-[10px] text-rose-600/75">
-                            {Math.round(suggestion.similarity * 100)}% {language === 'zh' ? '相似度' : 'similarity'}
+                            {Math.round(suggestion.similarity * 100)}% {t('scoreEditor.similarity')}
                           </div>
                         </div>
                         <button
@@ -3810,7 +3806,7 @@ export function ScoreMusicXmlPage() {
                           className="shrink-0 flex items-center gap-0.5 rounded bg-rose-600 px-1.5 py-0.5 text-[10px] font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-40"
                         >
                           <Check className="size-2.5" />
-                          {language === 'zh' ? '套用' : 'Accept'}
+                          {t('scoreEditor.accept')}
                         </button>
                       </div>
                     ))}
@@ -3818,13 +3814,13 @@ export function ScoreMusicXmlPage() {
                 </div>
               ) : (
                 <div className="mt-2 text-[11px] text-rose-600/75">
-                  {language === 'zh' ? '目前分譜沒有待顯示建議。' : 'No suggestions for the current score.'}
+                  {t('scoreEditor.noSuggestionsCurrentScore')}
                 </div>
               )}
             </div>
             <details className="rounded-lg border border-slate-200 bg-slate-50">
               <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-slate-500 hover:text-slate-700">
-                {language === 'zh' ? '進階 / 手動搜尋' : 'Advanced / Manual search'}
+                {t('scoreEditor.advancedManualSearch')}
               </summary>
               <div className="grid gap-3 px-3 pb-3 pt-1">
                 <div className="flex flex-wrap items-center gap-1 rounded-md border border-slate-200 bg-white p-1 shadow-inner">
@@ -3834,7 +3830,7 @@ export function ScoreMusicXmlPage() {
                     onClick={() => setSimilarityRangePoint('start')}
                     className="h-7 rounded px-2 text-xs font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    {language === 'zh' ? '設起點' : 'Set start'}
+                    {t('scoreEditor.setStart')}
                   </button>
                   <button
                     type="button"
@@ -3842,7 +3838,7 @@ export function ScoreMusicXmlPage() {
                     onClick={() => setSimilarityRangePoint('end')}
                     className="h-7 rounded px-2 text-xs font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    {language === 'zh' ? '設終點' : 'Set end'}
+                    {t('scoreEditor.setEnd')}
                   </button>
                   <Button
                     variant="secondary"
@@ -3852,13 +3848,13 @@ export function ScoreMusicXmlPage() {
                   >
                     <Search className="size-3.5" />
                     {isFindingSimilar
-                      ? language === 'zh' ? '搜尋中' : 'Finding'
-                      : language === 'zh' ? '尋找相似段落' : 'Find similar'}
+                      ? t('scoreEditor.finding')
+                      : t('scoreEditor.findSimilar')}
                   </Button>
                 </div>
                 <div className="rounded-lg border border-slate-200 bg-white p-3">
                   <div className="text-xs font-medium text-slate-500">
-                    {language === 'zh' ? '相似旋律範圍' : 'Range'}
+                    {t('scoreEditor.range')}
                   </div>
                   <div className="mt-1 text-sm font-medium text-slate-900">
                     {rangeLabel(similarityRangeStart, similarityRangeEnd)}
@@ -3870,7 +3866,7 @@ export function ScoreMusicXmlPage() {
                 <div className="min-w-0 rounded-lg border border-slate-200 bg-white p-3">
                   <div className="flex items-center justify-between gap-2">
                     <div className="min-w-0 truncate text-xs font-medium text-slate-500">
-                      {language === 'zh' ? '候選段落' : 'Candidates'}
+                      {t('scoreEditor.candidates')}
                     </div>
                     <Badge tone={similarityCandidates.length ? 'info' : 'neutral'}>
                       {similarityCandidates.length}
@@ -3879,7 +3875,7 @@ export function ScoreMusicXmlPage() {
                   <div className="mt-2 grid max-h-72 min-w-0 gap-2 overflow-y-auto pr-1">
                     {similarityCandidates.length === 0 ? (
                       <div className="text-xs text-slate-500">
-                        {language === 'zh' ? '尚未搜尋。' : 'No search yet.'}
+                        {t('scoreEditor.noSearchYet')}
                       </div>
                     ) : (
                       similarityCandidates.map((candidate) => (
@@ -3905,11 +3901,11 @@ export function ScoreMusicXmlPage() {
                               className="justify-self-end rounded border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100"
                               onClick={() => changeScore(candidate.targetScoreId)}
                             >
-                              {language === 'zh' ? '開啟' : 'Open'}
+                              {t('common.open')}
                             </button>
                           </div>
                           <div className="mt-1 truncate text-[11px] text-slate-500">
-                            interval {percentage(candidate.intervalScore)} · rhythm {percentage(candidate.rhythmScore)}
+                            {t('scoreEditor.intervalScore')} {percentage(candidate.intervalScore)} · {t('scoreEditor.rhythmScore')} {percentage(candidate.rhythmScore)}
                           </div>
                         </div>
                       ))

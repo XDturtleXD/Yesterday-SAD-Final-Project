@@ -6,13 +6,8 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates git openjdk-25-jdk-headless \
  && rm -rf /var/lib/apt/lists/*
 
-COPY audiveris/ ./
-
-RUN git init \
- && git config user.email "docker-build@example.invalid" \
- && git config user.name "Docker Build" \
- && git add . \
- && git commit -m "Audiveris source snapshot"
+RUN git clone --depth=1 --branch 5.10.2 \
+      https://github.com/Audiveris/audiveris.git .
 
 RUN ./gradlew --no-daemon :app:installDist -x test \
  && audiveris_bin="$(find app/build/install -path '*/bin/Audiveris' -type f -print -quit)" \
