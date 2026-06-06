@@ -88,6 +88,18 @@ type PieceSimilarityState = {
   status: SimilarityScanStatus
   error: string | null
 }
+type PendingBowingSuggestion = {
+  id: string
+  sourceScoreId: string
+  sourceSectionName: string
+  sourceMeasureRange: string
+  targetScoreId: string
+  targetSectionName: string
+  targetRef: EditableNoteRef
+  bowingType: BowingMark
+  similarity: number
+  status: 'pending'
+}
 
 const SCORE_XML_MAP: Record<string, ScoreXmlEntry> = {
   's-canon-v1': {
@@ -125,6 +137,8 @@ const AUTO_SIMILARITY_PREVIEW_LIMIT = 10
 const DEFAULT_NOTE_STAFF = '1'
 const DEFAULT_NOTE_VOICE = '1'
 const EMPTY_ANNOTATION_LAYERS: AnnotationLayerState = { shared: [], private: [] }
+const DEBUG_NOTE_MAPPING = true
+const REST_REPLACEMENT_NOTE_RADIUS = 24
 
 function parseMusicXml(xml: string) {
   const doc = new DOMParser().parseFromString(xml, 'application/xml')
@@ -566,6 +580,138 @@ function applyPrivateBowingAnnotationsToXml(
   }
 }
 
+function measureRangeText(start: number, end: number) {
+  return `m.${start}${end !== start ? `–${end}` : ''}`
+}
+
+function indexedNoteMatchesRef(item: IndexedXmlNote, ref: EditableNoteRef) {
+  return (
+    item.scoreId === ref.scoreId &&
+    item.partId === ref.partId &&
+    sameAnnotationMeasure(item, ref) &&
+    item.noteIndex === ref.noteIndex &&
+    optionalStaffVoiceMatches(item, ref)
+  )
+}
+
+function editableRefFromIndexedNote(item: IndexedXmlNote): EditableNoteRef {
+  return {
+    scoreId: item.scoreId,
+    partId: item.partId,
+    measureNumber: item.measureNumber,
+    ...(item.measureArrayIndex !== undefined ? { measureArrayIndex: item.measureArrayIndex } : {}),
+    noteIndex: item.noteIndex,
+    ...(item.staff ? { staff: item.staff } : {}),
+    ...(item.voice ? { voice: item.voice } : {}),
+    ...(item.pitchStep ? { pitchStep: item.pitchStep } : {}),
+    ...(item.pitchOctave ? { pitchOctave: item.pitchOctave } : {}),
+    ...(item.duration ? { duration: item.duration } : {}),
+  }
+}
+
+function getIndexedNotesInRange(
+  xml: string,
+  scoreId: string,
+  startTargetRef: Record<string, unknown>,
+  endTargetRef: Record<string, unknown>,
+  startMeasureNumber: number,
+  endMeasureNumber: number,
+) {
+  const doc = parseMusicXml(xml)
+  const notes = buildEditableNoteIndex(doc, scoreId)
+  const startRef = editableNoteRefFromTargetRef(startTargetRef, scoreId)
+  const endRef = editableNoteRefFromTargetRef(endTargetRef, scoreId)
+
+  if (startRef && endRef) {
+    const from = compareRefs(startRef, endRef) <= 0 ? startRef : endRef
+    const to = from === startRef ? endRef : startRef
+    return notes.filter(
+      (item) =>
+        item.partId === from.partId &&
+        compareRefs(item, from) >= 0 &&
+        compareRefs(item, to) <= 0,
+    )
+  }
+
+  const fromMeasure = Math.min(startMeasureNumber, endMeasureNumber)
+  const toMeasure = Math.max(startMeasureNumber, endMeasureNumber)
+  const partId = stringValue(startTargetRef.partId) ?? stringValue(endTargetRef.partId)
+  return notes.filter(
+    (item) =>
+      (!partId || item.partId === partId) &&
+      item.measureNumber >= fromMeasure &&
+      item.measureNumber <= toMeasure,
+  )
+}
+
+function mapRangeIndex(sourceIndex: number, sourceCount: number, targetCount: number) {
+  if (sourceIndex < 0 || sourceCount <= 0 || targetCount <= 0) return -1
+  if (sourceCount === 1 || targetCount === 1) return 0
+  return Math.min(
+    targetCount - 1,
+    Math.max(0, Math.round((sourceIndex / (sourceCount - 1)) * (targetCount - 1))),
+  )
+}
+
+function createBowingSuggestionDirection(doc: Document, note: Element, mark: BowingMark) {
+  const direction = doc.createElement('direction')
+  direction.setAttribute('placement', 'above')
+  direction.setAttribute('data-sync-suggestion', 'true')
+
+  const directionType = doc.createElement('direction-type')
+  const words = doc.createElement('words')
+  words.setAttribute('color', '#d00000')
+  words.setAttribute('font-weight', 'bold')
+  words.textContent = mark === 'up-bow' ? '𝆪' : '𝆫'
+  directionType.appendChild(words)
+  direction.appendChild(directionType)
+
+  const staff = getChildText(note, 'staff')
+  if (staff) {
+    const staffElement = doc.createElement('staff')
+    staffElement.textContent = staff
+    direction.appendChild(staffElement)
+  }
+
+  return direction
+}
+
+function applyRedBowingSuggestionToXmlNote(note: Element, mark: BowingMark) {
+  const doc = note.ownerDocument
+  const notations = ensureChild(note, 'notations')
+  const technical = ensureChild(notations, 'technical')
+  const bowing = doc.createElement(mark)
+  bowing.setAttribute('color', '#d00000')
+  bowing.setAttribute('data-sync-suggestion', 'true')
+  technical.appendChild(bowing)
+
+  note.parentElement?.insertBefore(createBowingSuggestionDirection(doc, note, mark), note)
+}
+
+function applyPendingBowingSuggestionsToXml(
+  xml: string,
+  suggestions: PendingBowingSuggestion[],
+) {
+  if (suggestions.length === 0) return xml
+
+  try {
+    const doc = parseMusicXml(xml)
+    let changed = false
+
+    suggestions.forEach((suggestion) => {
+      const note = findXmlNoteForPrivateAnnotation(doc, suggestion.targetRef)
+      if (!note) return
+
+      applyRedBowingSuggestionToXmlNote(note, suggestion.bowingType)
+      changed = true
+    })
+
+    return changed ? serializeMusicXml(doc) : xml
+  } catch {
+    return xml
+  }
+}
+
 function ensureNotations(note: Element) {
   return ensureChild(note, 'notations')
 }
@@ -952,6 +1098,29 @@ type SourceStaffEntryLike = {
     Notes: SourceNoteLike[]
   }>
 }
+type XmlFallbackNote = {
+  ref: EditableNoteRef
+  xmlOrder: number
+  rawStaff?: string
+  rawVoice?: string
+  chord: boolean
+  alter?: string
+  snippet: string
+}
+type XmlFallbackScore = {
+  candidate: XmlFallbackNote
+  score: number
+  reasons: string[]
+  misses: string[]
+}
+type CanvasScrollSnapshot = {
+  top: number
+  left: number
+}
+type PitchedGraphicalNoteCandidate = {
+  note: GraphicalNote
+  distance: number
+}
 
 function asRecord(value: unknown): UnknownRecord | null {
   return value && typeof value === 'object' ? value as UnknownRecord : null
@@ -969,6 +1138,15 @@ function numberValue(value: unknown) {
   if (typeof value === 'number' && Number.isFinite(value)) return value
   if (typeof value === 'string' && value.trim()) {
     const parsed = Number.parseInt(value, 10)
+    return Number.isFinite(parsed) ? parsed : undefined
+  }
+  return undefined
+}
+
+function finiteNumberValue(value: unknown) {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number.parseFloat(value)
     return Number.isFinite(parsed) ? parsed : undefined
   }
   return undefined
@@ -1029,13 +1207,34 @@ function getSourceNoteVoice(sourceNote: GraphicalNote['sourceNote'], voiceEntry?
   ) ?? DEFAULT_NOTE_VOICE
 }
 
-function getVoiceEntryVoice(voiceEntry: unknown) {
+function getOptionalVoiceEntryVoice(voiceEntry: unknown) {
   return firstStringValue(
     nestedValue(voiceEntry, ['VoiceId']),
     nestedValue(voiceEntry, ['voiceId']),
     nestedValue(voiceEntry, ['ParentVoice', 'VoiceId']),
     nestedValue(voiceEntry, ['ParentVoice', 'voiceId']),
-  ) ?? DEFAULT_NOTE_VOICE
+  )
+}
+
+function getVoiceEntryVoice(voiceEntry: unknown) {
+  return getOptionalVoiceEntryVoice(voiceEntry) ?? DEFAULT_NOTE_VOICE
+}
+
+function getSourceVoiceEntryFromGraphicalNote(note: GraphicalNote) {
+  return nestedValue(note, ['parentVoiceEntry', 'parentVoiceEntry']) ??
+    nestedValue(note, ['ParentVoiceEntry', 'ParentVoiceEntry'])
+}
+
+function getSourceNotesFromVoiceEntry(voiceEntry: unknown) {
+  const notes = nestedValue(voiceEntry, ['Notes']) ?? nestedValue(voiceEntry, ['notes'])
+  return Array.isArray(notes) ? notes as SourceNoteLike[] : []
+}
+
+function getSourceVoiceEntriesFromVoiceEntry(voiceEntry: unknown) {
+  const voiceEntries =
+    nestedValue(voiceEntry, ['ParentVoice', 'VoiceEntries']) ??
+    nestedValue(voiceEntry, ['parentVoice', 'voiceEntries'])
+  return Array.isArray(voiceEntries) ? voiceEntries : []
 }
 
 function getSourceMeasureArrayIndex(sourceMeasure: unknown) {
@@ -1069,6 +1268,15 @@ function sourcePitchOctave(sourceNote: GraphicalNote['sourceNote']) {
   )
 }
 
+function sourcePitchAlter(sourceNote: GraphicalNote['sourceNote']) {
+  return firstStringValue(
+    nestedValue(sourceNote, ['Pitch', 'Alteration']),
+    nestedValue(sourceNote, ['Pitch', 'alteration']),
+    nestedValue(sourceNote, ['Pitch', 'Alter']),
+    nestedValue(sourceNote, ['Pitch', 'alter']),
+  )
+}
+
 function sourceDuration(sourceNote: GraphicalNote['sourceNote']) {
   const length = nestedValue(sourceNote, ['Length']) ?? nestedValue(sourceNote, ['length'])
   const lengthRecord = asRecord(length)
@@ -1084,6 +1292,15 @@ function sourceDuration(sourceNote: GraphicalNote['sourceNote']) {
   )
 }
 
+function isSourceTiedNote(sourceNote: GraphicalNote['sourceNote']) {
+  return Boolean(
+    nestedValue(sourceNote, ['NoteTie']) ??
+    nestedValue(sourceNote, ['noteTie']) ??
+    nestedValue(sourceNote, ['Tie']) ??
+    nestedValue(sourceNote, ['tie']),
+  )
+}
+
 function isSourceGraceNote(sourceNote: GraphicalNote['sourceNote']) {
   return !!nestedValue(sourceNote, ['IsGraceNote'])
 }
@@ -1096,6 +1313,161 @@ function isSourceRestNote(sourceNote: GraphicalNote['sourceNote']) {
   const explicitRest = nestedValue(sourceNote, ['IsRest']) ?? nestedValue(sourceNote, ['isRest'])
   if (typeof explicitRest === 'boolean') return explicitRest
   return !nestedValue(sourceNote, ['Pitch'])
+}
+
+function isPitchedSourceNote(sourceNote: SourceNoteLike | null | undefined) {
+  return Boolean(sourceNote && !isSourceGraceNote(sourceNote) && !isSourceRestNote(sourceNote) && nestedValue(sourceNote, ['Pitch']))
+}
+
+function isEditablePitchedGraphicalNote(note: GraphicalNote | null | undefined) {
+  return isPitchedSourceNote(note?.sourceNote)
+}
+
+function sourceMeasureMatches(left: unknown, right: unknown) {
+  if (!left || !right) return false
+  if (left === right) return true
+
+  const leftIndex = getSourceMeasureArrayIndex(left)
+  const rightIndex = getSourceMeasureArrayIndex(right)
+  if (leftIndex !== undefined && rightIndex !== undefined) return leftIndex === rightIndex
+
+  const leftNumber = numberValue(nestedValue(left, ['MeasureNumber']) ?? nestedValue(left, ['measureNumber']))
+  const rightNumber = numberValue(nestedValue(right, ['MeasureNumber']) ?? nestedValue(right, ['measureNumber']))
+  return leftNumber !== undefined && rightNumber !== undefined && leftNumber === rightNumber
+}
+
+function safeGraphicalNoteStaff(note: GraphicalNote) {
+  try {
+    return getSourceNoteStaff(note)
+  } catch {
+    return undefined
+  }
+}
+
+function sourceStaffMatches(left: GraphicalNote, right: GraphicalNote) {
+  const leftStaff = left.sourceNote?.ParentStaff
+  const rightStaff = right.sourceNote?.ParentStaff
+  if (leftStaff && rightStaff && leftStaff === rightStaff) return true
+
+  const leftStaffLabel = safeGraphicalNoteStaff(left)
+  const rightStaffLabel = safeGraphicalNoteStaff(right)
+  if (!leftStaffLabel || !rightStaffLabel) return true
+  return leftStaffLabel === rightStaffLabel
+}
+
+function pointCoordinate(point: unknown, axis: 'x' | 'y') {
+  const upperAxis = axis.toUpperCase()
+  return finiteNumberValue(nestedValue(point, [axis]) ?? nestedValue(point, [upperAxis]))
+}
+
+function graphicalObjectCenter(value: unknown) {
+  const shape = nestedValue(value, ['PositionAndShape']) ?? nestedValue(value, ['positionAndShape'])
+  const absolutePosition =
+    nestedValue(shape, ['AbsolutePosition']) ??
+    nestedValue(shape, ['absolutePosition']) ??
+    nestedValue(value, ['PositionAndShape', 'AbsolutePosition'])
+  const relativePosition =
+    nestedValue(shape, ['RelativePosition']) ??
+    nestedValue(shape, ['relativePosition'])
+  const size = nestedValue(shape, ['Size']) ?? nestedValue(shape, ['size'])
+  const point = absolutePosition ?? relativePosition ?? shape
+  const x = pointCoordinate(point, 'x')
+  const y = pointCoordinate(point, 'y')
+  if (x === undefined || y === undefined) return null
+
+  const width = finiteNumberValue(
+    nestedValue(size, ['width']) ??
+    nestedValue(size, ['Width']) ??
+    nestedValue(shape, ['width']) ??
+    nestedValue(shape, ['Width']),
+  ) ?? 0
+  const height = finiteNumberValue(
+    nestedValue(size, ['height']) ??
+    nestedValue(size, ['Height']) ??
+    nestedValue(shape, ['height']) ??
+    nestedValue(shape, ['Height']),
+  ) ?? 0
+
+  return {
+    x: x + width / 2,
+    y: y + height / 2,
+  }
+}
+
+function graphicalNoteCenter(note: GraphicalNote) {
+  return (
+    graphicalObjectCenter(note) ??
+    graphicalObjectCenter(nestedValue(note, ['sourceNote'])) ??
+    graphicalObjectCenter(nestedValue(note, ['vfnote']))
+  )
+}
+
+function distanceToPoint(note: GraphicalNote, point: PointF2D) {
+  const center = graphicalNoteCenter(note)
+  const pointX = pointCoordinate(point, 'x')
+  const pointY = pointCoordinate(point, 'y')
+  if (!center || pointX === undefined || pointY === undefined) return Number.POSITIVE_INFINITY
+
+  return Math.hypot(center.x - pointX, center.y - pointY)
+}
+
+function summarizeGraphicalNoteCandidate(note: GraphicalNote, distance?: number) {
+  const sourceNote = note.sourceNote
+  const sourceMeasure = sourceNote?.SourceMeasure
+  return {
+    measureNumber: sourceMeasure?.MeasureNumber,
+    measureArrayIndex: getSourceMeasureArrayIndex(sourceMeasure),
+    partId: sourceNote?.ParentStaff?.ParentInstrument?.IdString,
+    staff: sourceNote ? safeGraphicalNoteStaff(note) : undefined,
+    pitchStep: sourceNote ? sourcePitchStep(sourceNote) : undefined,
+    pitchOctave: sourceNote ? sourcePitchOctave(sourceNote) : undefined,
+    pitchAlter: sourceNote ? sourcePitchAlter(sourceNote) : undefined,
+    duration: sourceNote ? sourceDuration(sourceNote) : undefined,
+    isRest: sourceNote ? isSourceRestNote(sourceNote) : undefined,
+    isGrace: sourceNote ? isSourceGraceNote(sourceNote) : undefined,
+    distance,
+  }
+}
+
+function findNearestPitchedGraphicalNoteInSameMeasure(
+  osmd: OpenSheetMusicDisplay,
+  nearestNote: GraphicalNote,
+  osmdPoint: PointF2D,
+) {
+  const nearestSourceMeasure = nearestNote.sourceNote?.SourceMeasure
+  if (!nearestSourceMeasure) return { replacement: null, candidates: [] }
+
+  const candidates: PitchedGraphicalNoteCandidate[] = []
+  for (const staffMeasures of osmd.GraphicSheet.MeasureList) {
+    for (const measure of staffMeasures) {
+      if (!measure?.staffEntries) continue
+      for (const staffEntry of measure.staffEntries) {
+        for (const voiceEntry of staffEntry.graphicalVoiceEntries) {
+          for (const graphicalNote of voiceEntry.notes) {
+            if (graphicalNote === nearestNote) continue
+            if (!isEditablePitchedGraphicalNote(graphicalNote)) continue
+            if (!sourceMeasureMatches(graphicalNote.sourceNote.SourceMeasure, nearestSourceMeasure)) continue
+            if (!sourceStaffMatches(graphicalNote, nearestNote)) continue
+
+            const distance = distanceToPoint(graphicalNote, osmdPoint)
+            if (!Number.isFinite(distance) || distance > REST_REPLACEMENT_NOTE_RADIUS) continue
+            candidates.push({ note: graphicalNote, distance })
+          }
+        }
+      }
+    }
+  }
+
+  candidates.sort((left, right) => left.distance - right.distance)
+  return {
+    replacement: candidates[0] ?? null,
+    candidates,
+  }
+}
+
+function warnRestGraphicalNoteReplacement(debugObject: unknown) {
+  if (!DEBUG_NOTE_MAPPING) return
+  console.warn('[MusicXML note mapping] nearest GraphicalNote was rest/unpitched; searched pitched replacement', debugObject)
 }
 
 function getPitchedSourceNotesInVoice(
@@ -1119,9 +1491,294 @@ function getPitchedSourceNotesInVoice(
   return notes
 }
 
+function getPitchedSourceNotesFromParentVoice(
+  sourceVoiceEntry: unknown,
+  sourceMeasure: unknown,
+) {
+  const notes: SourceNoteLike[] = []
+
+  for (const voiceEntry of getSourceVoiceEntriesFromVoiceEntry(sourceVoiceEntry)) {
+    for (const sourceEntryNote of getSourceNotesFromVoiceEntry(voiceEntry)) {
+      if (sourceEntryNote.SourceMeasure !== sourceMeasure) continue
+      if (!isSourceGraceNote(sourceEntryNote) && !isSourceRestNote(sourceEntryNote)) {
+        notes.push(sourceEntryNote)
+      }
+    }
+  }
+
+  return notes
+}
+
+function pitchedSourceNoteIndex(notes: SourceNoteLike[], sourceNote: SourceNoteLike) {
+  return notes.findIndex(
+    (note) => !isSourceGraceNote(note) && !isSourceRestNote(note) && note === sourceNote,
+  )
+}
+
+function collectXmlFallbackNotesInMeasure(
+  doc: Document,
+  baseRef: EditableNoteRef,
+): XmlFallbackNote[] {
+  const part = elementChildren(doc.documentElement, 'part')
+    .find((item) => item.getAttribute('id') === baseRef.partId)
+  if (!part) return []
+
+  const measures = elementChildren(part, 'measure')
+  const measure =
+    baseRef.measureArrayIndex !== undefined
+      ? measures[baseRef.measureArrayIndex]
+      : measures.find((item, index) => getMeasureNumber(item, index + 1) === baseRef.measureNumber)
+  if (!measure) return []
+
+  const notesByContext = new Map<string, number>()
+  const fallbackNotes: XmlFallbackNote[] = []
+  let xmlOrder = 0
+
+  elementChildren(measure, 'note').forEach((note) => {
+    if (isGraceNote(note) || isRestNote(note)) return
+
+    const rawStaff = getChildText(note, 'staff')
+    const rawVoice = getChildText(note, 'voice')
+    const staff = rawStaff ?? DEFAULT_NOTE_STAFF
+    const voice = rawVoice ?? DEFAULT_NOTE_VOICE
+    const contextKey = noteContextKey(staff, voice)
+    const noteIndex = notesByContext.get(contextKey) ?? 0
+    const { pitchStep, pitchOctave } = getXmlNotePitch(note)
+    const pitch = elementChildren(note, 'pitch')[0]
+    const alter = pitch ? getChildText(pitch, 'alter') : undefined
+
+    fallbackNotes.push({
+      ref: {
+        ...baseRef,
+        noteIndex,
+        staff,
+        voice,
+        ...(pitchStep ? { pitchStep } : {}),
+        ...(pitchOctave ? { pitchOctave } : {}),
+        duration: getChildText(note, 'duration'),
+      },
+      xmlOrder,
+      ...(rawStaff ? { rawStaff } : {}),
+      ...(rawVoice ? { rawVoice } : {}),
+      chord: elementChildren(note, 'chord').length > 0,
+      ...(alter ? { alter } : {}),
+      snippet: new XMLSerializer()
+        .serializeToString(note)
+        .replace(/\s+/g, ' ')
+        .slice(0, 240),
+    })
+
+    notesByContext.set(contextKey, noteIndex + 1)
+    xmlOrder += 1
+  })
+
+  return fallbackNotes
+}
+
+function scoreXmlFallbackNote(
+  candidate: XmlFallbackNote,
+  baseRef: EditableNoteRef,
+  preferredOrder: number | undefined,
+) {
+  let score = 0
+  const reasons: string[] = []
+  const misses: string[] = []
+
+  if (baseRef.pitchStep && candidate.ref.pitchStep === baseRef.pitchStep) {
+    score += 3
+    reasons.push('pitchStep')
+  } else {
+    misses.push(`pitchStep ${candidate.ref.pitchStep ?? 'none'} != ${baseRef.pitchStep ?? 'none'}`)
+  }
+  if (baseRef.pitchOctave && candidate.ref.pitchOctave === baseRef.pitchOctave) {
+    score += 3
+    reasons.push('pitchOctave')
+  } else {
+    misses.push(`pitchOctave ${candidate.ref.pitchOctave ?? 'none'} != ${baseRef.pitchOctave ?? 'none'}`)
+  }
+  if (baseRef.duration && candidate.ref.duration === baseRef.duration) {
+    score += 2
+    reasons.push('duration')
+  } else {
+    misses.push(`duration ${candidate.ref.duration ?? 'none'} != ${baseRef.duration ?? 'none'}`)
+  }
+  if (baseRef.staff && candidate.rawStaff && candidate.rawStaff === baseRef.staff) {
+    score += 1
+    reasons.push('staff')
+  } else if (baseRef.staff && candidate.rawStaff) {
+    misses.push(`staff ${candidate.rawStaff} != ${baseRef.staff}`)
+  } else if (baseRef.staff) {
+    misses.push(`staff missing in XML, source ${baseRef.staff}`)
+  }
+  if (baseRef.voice && candidate.rawVoice && candidate.rawVoice === baseRef.voice) {
+    score += 1
+    reasons.push('voice')
+  } else if (baseRef.voice && candidate.rawVoice) {
+    misses.push(`voice ${candidate.rawVoice} != ${baseRef.voice}`)
+  } else if (baseRef.voice) {
+    misses.push(`voice missing in XML, source ${baseRef.voice}`)
+  }
+  if (preferredOrder !== undefined) {
+    const distance = Math.abs(candidate.xmlOrder - preferredOrder)
+    const orderScore = Math.max(0, 2 - distance)
+    if (orderScore > 0) {
+      score += orderScore
+      reasons.push(`order:${orderScore}`)
+    } else {
+      misses.push(`order distance ${distance}`)
+    }
+  } else {
+    misses.push('preferredOrder unavailable')
+  }
+
+  return { score, reasons, misses }
+}
+
+function evaluateXmlFallbackMatcher(
+  xml: string | undefined,
+  baseRef: EditableNoteRef,
+  preferredOrder: number | undefined,
+) {
+  if (!xml) {
+    return {
+      ref: null,
+      reason: 'working XML unavailable',
+      xmlMeasureCandidates: [],
+      scoredCandidates: [],
+      selectedCandidate: null,
+    }
+  }
+
+  try {
+    const doc = parseMusicXml(xml)
+    const xmlMeasureCandidates = collectXmlFallbackNotesInMeasure(doc, baseRef)
+    const candidates = xmlMeasureCandidates
+      .map((candidate) => ({
+        candidate,
+        ...scoreXmlFallbackNote(candidate, baseRef, preferredOrder),
+      }))
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score
+        if (preferredOrder !== undefined) {
+          return (
+            Math.abs(a.candidate.xmlOrder - preferredOrder) -
+            Math.abs(b.candidate.xmlOrder - preferredOrder)
+          )
+        }
+        return a.candidate.xmlOrder - b.candidate.xmlOrder
+      })
+
+    const best = candidates[0]
+    if (!best) {
+      return {
+        ref: null,
+        reason: 'no XML pitched notes found in target measure',
+        xmlMeasureCandidates,
+        scoredCandidates: candidates,
+        selectedCandidate: null,
+      }
+    }
+    if (best.score < 6) {
+      return {
+        ref: null,
+        reason: `best XML candidate score ${best.score} below threshold 6`,
+        xmlMeasureCandidates,
+        scoredCandidates: candidates,
+        selectedCandidate: best,
+      }
+    }
+    const nextBest = candidates[1]
+    if (nextBest && nextBest.score === best.score && preferredOrder === undefined) {
+      return {
+        ref: null,
+        reason: `ambiguous XML candidates tied at score ${best.score} without preferred order`,
+        xmlMeasureCandidates,
+        scoredCandidates: candidates,
+        selectedCandidate: best,
+      }
+    }
+
+    return {
+      ref: best.candidate.ref,
+      reason: 'selected XML fallback candidate',
+      xmlMeasureCandidates,
+      scoredCandidates: candidates,
+      selectedCandidate: best,
+    }
+  } catch {
+    return {
+      ref: null,
+      reason: 'failed to parse or inspect working XML',
+      xmlMeasureCandidates: [],
+      scoredCandidates: [],
+      selectedCandidate: null,
+    }
+  }
+}
+
+function summarizeSourceNote(sourceNote: SourceNoteLike, identityTarget?: SourceNoteLike) {
+  return {
+    identityMatch: identityTarget ? sourceNote === identityTarget : undefined,
+    pitchStep: sourcePitchStep(sourceNote),
+    pitchOctave: sourcePitchOctave(sourceNote),
+    pitchAlter: sourcePitchAlter(sourceNote),
+    duration: sourceDuration(sourceNote),
+    isGrace: isSourceGraceNote(sourceNote),
+    isRest: isSourceRestNote(sourceNote),
+    isTied: isSourceTiedNote(sourceNote),
+  }
+}
+
+function summarizeParentVoiceEntry(sourceVoiceEntry: unknown, sourceNote: SourceNoteLike) {
+  const notes = getSourceNotesFromVoiceEntry(sourceVoiceEntry)
+  return {
+    exists: Boolean(sourceVoiceEntry),
+    voice: getOptionalVoiceEntryVoice(sourceVoiceEntry),
+    notesCount: notes.length,
+    pitchedNotesCount: notes.filter((note) => !isSourceGraceNote(note) && !isSourceRestNote(note)).length,
+    notes: notes.map((note, index) => ({
+      index,
+      ...summarizeSourceNote(note, sourceNote),
+    })),
+  }
+}
+
+function summarizeXmlFallbackNote(candidate: XmlFallbackNote) {
+  return {
+    index: candidate.xmlOrder,
+    noteIndex: candidate.ref.noteIndex,
+    step: candidate.ref.pitchStep,
+    octave: candidate.ref.pitchOctave,
+    alter: candidate.alter,
+    duration: candidate.ref.duration,
+    hasChord: candidate.chord,
+    staff: candidate.rawStaff,
+    voice: candidate.rawVoice,
+    effectiveStaff: candidate.ref.staff,
+    effectiveVoice: candidate.ref.voice,
+    snippet: candidate.snippet,
+  }
+}
+
+function summarizeScoredCandidate(candidate: XmlFallbackScore) {
+  return {
+    ...summarizeXmlFallbackNote(candidate.candidate),
+    score: candidate.score,
+    reasons: candidate.reasons,
+    misses: candidate.misses,
+  }
+}
+
+function warnNoteMappingFailure(debugObject: unknown) {
+  if (!DEBUG_NOTE_MAPPING) return
+  console.warn('[MusicXML note mapping] GraphicalNote could not be mapped to EditableNoteRef', debugObject)
+}
+
 function getEditableRefFromGraphicalNote(
   note: GraphicalNote,
   scoreId: string,
+  xml?: string,
+  debug = false,
 ): EditableNoteRef | null {
   const sourceNote = note.sourceNote
   const sourceMeasure = sourceNote.SourceMeasure
@@ -1129,7 +1786,8 @@ function getEditableRefFromGraphicalNote(
   const staffIndex = staff.idInMusicSheet
   const entries = sourceMeasure.getEntriesPerStaff(staffIndex) ?? []
   const targetStaff = getSourceNoteStaff(note)
-  let targetVoice = getSourceNoteVoice(sourceNote)
+  const directSourceVoiceEntry = getSourceVoiceEntryFromGraphicalNote(note)
+  let targetVoice = getOptionalVoiceEntryVoice(directSourceVoiceEntry) ?? getSourceNoteVoice(sourceNote)
 
   for (const entry of entries) {
     const containingVoiceEntry = entry.VoiceEntries.find((voiceEntry) =>
@@ -1142,28 +1800,105 @@ function getEditableRefFromGraphicalNote(
   }
 
   const pitchedNotes = getPitchedSourceNotesInVoice(entries, targetVoice)
-  const noteIndex = pitchedNotes.indexOf(sourceNote)
-  if (noteIndex < 0) return null
+  let noteIndex = pitchedNotes.indexOf(sourceNote)
 
-  // noteIndex is 0-based within staff/voice pitched notes only.
-  return {
+  if (noteIndex < 0) {
+    const parentVoiceNotes = getPitchedSourceNotesFromParentVoice(
+      directSourceVoiceEntry,
+      sourceMeasure,
+    )
+    noteIndex = parentVoiceNotes.indexOf(sourceNote)
+  }
+
+  const baseRef = {
     scoreId,
     partId: staff.ParentInstrument.IdString,
     measureNumber: sourceMeasure.MeasureNumber,
     measureArrayIndex: getSourceMeasureArrayIndex(sourceMeasure),
-    noteIndex,
+    noteIndex: Math.max(0, noteIndex),
     staff: targetStaff,
     voice: targetVoice,
     pitchStep: sourcePitchStep(sourceNote),
     pitchOctave: sourcePitchOctave(sourceNote),
     duration: sourceDuration(sourceNote),
   }
+
+  if (noteIndex >= 0) {
+    // noteIndex is 0-based within staff/voice pitched notes only.
+    return baseRef
+  }
+
+  const directVoiceNotes = getSourceNotesFromVoiceEntry(directSourceVoiceEntry)
+    .filter((item) => !isSourceGraceNote(item) && !isSourceRestNote(item))
+  const parentVoiceNotes = getPitchedSourceNotesFromParentVoice(
+    directSourceVoiceEntry,
+    sourceMeasure,
+  )
+  const directVoiceOrder = pitchedSourceNoteIndex(directVoiceNotes, sourceNote)
+  const parentVoiceOrder = pitchedSourceNoteIndex(parentVoiceNotes, sourceNote)
+  const preferredOrder =
+    directVoiceOrder >= 0
+      ? directVoiceOrder
+      : parentVoiceOrder >= 0
+        ? parentVoiceOrder
+        : undefined
+
+  const fallbackResult = evaluateXmlFallbackMatcher(xml, baseRef, preferredOrder)
+  if (fallbackResult.ref) return fallbackResult.ref
+
+  if (debug) {
+    const sourceEntries = sourceMeasure.getEntriesPerStaff(staffIndex) ?? []
+    warnNoteMappingFailure({
+      reason: fallbackResult.reason,
+      graphicalNoteSummary: {
+        className: note.constructor?.name,
+        vfnoteIndex: numberValue(nestedValue(note, ['vfnoteIndex'])),
+        staffLine: numberValue(nestedValue(note, ['staffLine'])),
+      },
+      sourceNoteSummary: {
+        ...summarizeSourceNote(sourceNote),
+        isChordLike: getSourceNotesFromVoiceEntry(directSourceVoiceEntry)
+          .filter((item) => !isSourceGraceNote(item) && !isSourceRestNote(item)).length > 1,
+      },
+      parentVoiceEntrySummary: summarizeParentVoiceEntry(directSourceVoiceEntry, sourceNote),
+      sourceMeasureSummary: {
+        measureNumber: sourceMeasure.MeasureNumber,
+        measureArrayIndex: getSourceMeasureArrayIndex(sourceMeasure),
+        partId: staff.ParentInstrument.IdString,
+        staff: targetStaff,
+        voice: targetVoice,
+        staffIndex,
+        entriesCount: sourceEntries.length,
+        entries: sourceEntries.map((entry, entryIndex) => ({
+          entryIndex,
+          voiceEntriesCount: entry.VoiceEntries.length,
+          voiceEntries: entry.VoiceEntries.map((voiceEntry, voiceEntryIndex) => ({
+            voiceEntryIndex,
+            voice: getVoiceEntryVoice(voiceEntry),
+            notesCount: voiceEntry.Notes.length,
+            notes: voiceEntry.Notes.map((entryNote, noteIndex) => ({
+              noteIndex,
+              ...summarizeSourceNote(entryNote, sourceNote),
+            })),
+          })),
+        })),
+      },
+      xmlMeasureCandidates: fallbackResult.xmlMeasureCandidates.map(summarizeXmlFallbackNote),
+      scoredCandidates: fallbackResult.scoredCandidates.map(summarizeScoredCandidate),
+      selectedCandidate: fallbackResult.selectedCandidate
+        ? summarizeScoredCandidate(fallbackResult.selectedCandidate)
+        : null,
+    })
+  }
+
+  return null
 }
 
 function findGraphicalNoteFromRef(
   osmd: OpenSheetMusicDisplay,
   scoreId: string,
   ref: EditableNoteRef,
+  xml?: string,
 ): GraphicalNote | null {
   for (const staffMeasures of osmd.GraphicSheet.MeasureList) {
     for (const measure of staffMeasures) {
@@ -1171,7 +1906,7 @@ function findGraphicalNoteFromRef(
       for (const staffEntry of measure.staffEntries) {
         for (const voiceEntry of staffEntry.graphicalVoiceEntries) {
           for (const graphicalNote of voiceEntry.notes) {
-            const noteRef = getEditableRefFromGraphicalNote(graphicalNote, scoreId)
+            const noteRef = getEditableRefFromGraphicalNote(graphicalNote, scoreId, xml)
             if (refsEqual(noteRef, ref)) return graphicalNote
           }
         }
@@ -1230,11 +1965,13 @@ export function ScoreMusicXmlPage() {
   }, [projectId, loadProjectDetail])
 
   const containerRef = useRef<HTMLDivElement | null>(null)
+  const canvasRef = useRef<HTMLDivElement | null>(null)
   const osmdRef = useRef<OpenSheetMusicDisplay | null>(null)
   const selectedGraphicalNoteRef = useRef<GraphicalNote | null>(null)
   const selectedNoteRef = useRef<EditableNoteRef | null>(null)
   const pendingHairpinSelectionKeyRef = useRef<string | null>(null)
   const workingXmlByScoreIdRef = useRef<Record<string, string>>({})
+  const scoreXmlCacheRef = useRef<Record<string, string>>({})
   const lastRenderedXmlRef = useRef<string | null>(null)
   const backgroundRenderTokenRef = useRef(0)
   const zoomRef = useRef(90)
@@ -1277,6 +2014,9 @@ export function ScoreMusicXmlPage() {
   const [similarityError, setSimilarityError] = useState<string | null>(null)
   const [pieceSimilarityByPieceId, setPieceSimilarityByPieceId] = useState<Record<string, PieceSimilarityState>>({})
   const [showAllAutoSimilarityHighlights, setShowAllAutoSimilarityHighlights] = useState(false)
+  const [pendingBowingSuggestionsByScoreId, setPendingBowingSuggestionsByScoreId] = useState<
+    Record<string, PendingBowingSuggestion[]>
+  >({})
   const [slurDraft, setSlurDraft] = useState<SlurDraft | null>(null)
   const [hairpinDraft, setHairpinDraft] = useState<HairpinDraft | null>(null)
   const [showMeasureNumbers, setShowMeasureNumbers] = useState(true)
@@ -1301,19 +2041,33 @@ export function ScoreMusicXmlPage() {
   const privateAnnotations = annotationLayers.private
   const annotationsLoading = !!annotationsLoadingByScoreId[scoreId]
   const annotationError = annotationErrorByScoreId[scoreId]
+  const currentPendingBowingSuggestions = pendingBowingSuggestionsByScoreId[scoreId] ?? []
   const layeredRenderXml = useMemo(() => {
     if (!workingXml) return undefined
-    if (activeAnnotationLayer !== 'private') return workingXml
 
-    return applyPrivateBowingAnnotationsToXml(workingXml, scoreId, privateAnnotations)
-  }, [activeAnnotationLayer, privateAnnotations, scoreId, workingXml])
+    const bowingLayerXml =
+      activeAnnotationLayer === 'private'
+        ? applyPrivateBowingAnnotationsToXml(workingXml, scoreId, privateAnnotations)
+        : workingXml
+
+    return applyPendingBowingSuggestionsToXml(
+      bowingLayerXml,
+      currentPendingBowingSuggestions,
+    )
+  }, [activeAnnotationLayer, currentPendingBowingSuggestions, privateAnnotations, scoreId, workingXml])
 
   const privateAnnotationRenderKey = privateAnnotations
     .map((annotation) => `${annotation.id}:${annotation.updatedAt ?? annotation.createdAt}`)
     .join('|')
+  const pendingBowingSuggestionRenderKey = currentPendingBowingSuggestions
+    .map((suggestion) => `${suggestion.id}:${suggestion.targetRef.measureNumber}:${suggestion.targetRef.noteIndex}`)
+    .join('|')
 
   useEffect(() => {
     workingXmlByScoreIdRef.current = workingXmlByScoreId
+    Object.entries(workingXmlByScoreId).forEach(([cachedScoreId, xml]) => {
+      scoreXmlCacheRef.current[cachedScoreId] = xml
+    })
   }, [workingXmlByScoreId])
 
   useEffect(() => {
@@ -1510,9 +2264,8 @@ export function ScoreMusicXmlPage() {
   ])
 
   useEffect(() => {
-    if (activeAnnotationLayer !== 'private') return
     lastRenderedXmlRef.current = null
-  }, [activeAnnotationLayer, privateAnnotationRenderKey, scoreId])
+  }, [activeAnnotationLayer, pendingBowingSuggestionRenderKey, privateAnnotationRenderKey, scoreId])
 
   useEffect(() => {
     if (status !== 'ready' || !layeredRenderXml || !osmdRef.current) return
@@ -1527,15 +2280,17 @@ export function ScoreMusicXmlPage() {
 
     async function applyWorkingXmlUpdate() {
       try {
+        const scrollSnapshot = getCanvasScrollSnapshot()
         const renderXml = sanitizeRestPlacementForRender(renderXmlSource)
         await osmd.load(renderXml, xmlEntry.title)
         if (cancelled || renderToken !== backgroundRenderTokenRef.current) return
         osmd.Zoom = zoomRef.current / 100
         osmd.renderAndScrollBack()
+        restoreCanvasScroll(scrollSnapshot)
         lastRenderedXmlRef.current = renderXmlSource
 
         if (noteToReselect) {
-          const graphicalNote = findGraphicalNoteFromRef(osmd, scoreId, noteToReselect)
+          const graphicalNote = findGraphicalNoteFromRef(osmd, scoreId, noteToReselect, renderXmlSource)
           if (graphicalNote) {
             highlightGraphicalNote(graphicalNote, selectedGraphicalNoteRef)
           }
@@ -1570,17 +2325,40 @@ export function ScoreMusicXmlPage() {
   useEffect(() => {
     if (status !== 'ready' || !osmdRef.current) return
     const osmd = osmdRef.current
+    const scrollSnapshot = getCanvasScrollSnapshot()
     osmd.Zoom = zoom / 100
     osmd.renderAndScrollBack()
+    restoreCanvasScroll(scrollSnapshot)
 
     const ref = selectedNoteRef.current
     if (ref) {
-      const graphicalNote = findGraphicalNoteFromRef(osmd, scoreId, ref)
+      const graphicalNote = findGraphicalNoteFromRef(
+        osmd,
+        scoreId,
+        ref,
+        lastRenderedXmlRef.current ?? undefined,
+      )
       if (graphicalNote) {
         highlightGraphicalNote(graphicalNote, selectedGraphicalNoteRef)
       }
     }
   }, [status, zoom, scoreId])
+
+  function getCanvasScrollSnapshot(): CanvasScrollSnapshot | null {
+    const canvas = canvasRef.current
+    return canvas ? { top: canvas.scrollTop, left: canvas.scrollLeft } : null
+  }
+
+  function restoreCanvasScroll(snapshot: CanvasScrollSnapshot | null) {
+    if (!snapshot) return
+
+    window.requestAnimationFrame(() => {
+      const canvas = canvasRef.current
+      if (!canvas) return
+      canvas.scrollTop = snapshot.top
+      canvas.scrollLeft = snapshot.left
+    })
+  }
 
   if (!project || !activeScore) {
     return (
@@ -1726,6 +2504,139 @@ export function ScoreMusicXmlPage() {
     return score?.title ?? scoreIdForFallback
   }
 
+  async function getScoreXmlForSuggestion(targetScoreId: string) {
+    const cached =
+      workingXmlByScoreIdRef.current[targetScoreId] ??
+      scoreXmlCacheRef.current[targetScoreId]
+    if (cached) return cached
+
+    const targetScore = availableScores.find((item) => item.id === targetScoreId)
+    if (targetScore?.xmlContent) {
+      scoreXmlCacheRef.current[targetScoreId] = targetScore.xmlContent
+      return targetScore.xmlContent
+    }
+
+    const xmlUrl = targetScore ? resolveXmlUrl(targetScore) : null
+    if (xmlUrl) {
+      const response = await fetch(xmlUrl)
+      if (!response.ok) return null
+      const xml = await response.text()
+      scoreXmlCacheRef.current[targetScoreId] = xml
+      return xml
+    }
+
+    const apiScore = await scoresApi.getScore(targetScoreId)
+    if (!apiScore.xml_content) return null
+    scoreXmlCacheRef.current[targetScoreId] = apiScore.xml_content
+    return apiScore.xml_content
+  }
+
+  async function createBowingSyncSuggestionsFromSimilarPassages(
+    sourceRef: EditableNoteRef,
+    bowingType: BowingMark,
+  ) {
+    const sourceXml = workingXmlByScoreIdRef.current[sourceRef.scoreId]
+    if (!sourceXml || autoSimilarityHighlights.length === 0) return
+
+    const suggestions: PendingBowingSuggestion[] = []
+
+    for (const highlight of autoSimilarityHighlights) {
+      const sourceIsLeft = highlight.leftScoreId === sourceRef.scoreId
+      const sourceIsRight = highlight.rightScoreId === sourceRef.scoreId
+      if (!sourceIsLeft && !sourceIsRight) continue
+
+      const sourceStartRef = sourceIsLeft ? highlight.leftStartRef : highlight.rightStartRef
+      const sourceEndRef = sourceIsLeft ? highlight.leftEndRef : highlight.rightEndRef
+      const sourceStartMeasure = sourceIsLeft
+        ? highlight.leftStartMeasureNumber
+        : highlight.rightStartMeasureNumber
+      const sourceEndMeasure = sourceIsLeft
+        ? highlight.leftEndMeasureNumber
+        : highlight.rightEndMeasureNumber
+      const targetScoreId = sourceIsLeft ? highlight.rightScoreId : highlight.leftScoreId
+      const targetStartRef = sourceIsLeft ? highlight.rightStartRef : highlight.leftStartRef
+      const targetEndRef = sourceIsLeft ? highlight.rightEndRef : highlight.leftEndRef
+      const targetStartMeasure = sourceIsLeft
+        ? highlight.rightStartMeasureNumber
+        : highlight.leftStartMeasureNumber
+      const targetEndMeasure = sourceIsLeft
+        ? highlight.rightEndMeasureNumber
+        : highlight.leftEndMeasureNumber
+
+      const sourceRangeNotes = getIndexedNotesInRange(
+        sourceXml,
+        sourceRef.scoreId,
+        sourceStartRef,
+        sourceEndRef,
+        sourceStartMeasure,
+        sourceEndMeasure,
+      )
+      const sourceIndex = sourceRangeNotes.findIndex((item) => indexedNoteMatchesRef(item, sourceRef))
+      if (sourceIndex < 0) continue
+
+      const targetXml = await getScoreXmlForSuggestion(targetScoreId)
+      if (!targetXml) continue
+
+      const targetRangeNotes = getIndexedNotesInRange(
+        targetXml,
+        targetScoreId,
+        targetStartRef,
+        targetEndRef,
+        targetStartMeasure,
+        targetEndMeasure,
+      )
+      const targetIndex = mapRangeIndex(sourceIndex, sourceRangeNotes.length, targetRangeNotes.length)
+      const targetNote = targetIndex >= 0 ? targetRangeNotes[targetIndex] : undefined
+      if (!targetNote) continue
+
+      const sourceSectionName = sourceIsLeft
+        ? sectionLabel(highlight.leftSectionId, highlight.leftSectionName, highlight.leftScoreId)
+        : sectionLabel(highlight.rightSectionId, highlight.rightSectionName, highlight.rightScoreId)
+      const targetSectionName = sourceIsLeft
+        ? sectionLabel(highlight.rightSectionId, highlight.rightSectionName, highlight.rightScoreId)
+        : sectionLabel(highlight.leftSectionId, highlight.leftSectionName, highlight.leftScoreId)
+      const targetRef = editableRefFromIndexedNote(targetNote)
+      const sourceMeasureRange = measureRangeText(sourceStartMeasure, sourceEndMeasure)
+
+      suggestions.push({
+        id: [
+          sourceRef.scoreId,
+          targetScoreId,
+          editableNoteRefKey(targetRef),
+          bowingType,
+        ].join(':'),
+        sourceScoreId: sourceRef.scoreId,
+        sourceSectionName,
+        sourceMeasureRange,
+        targetScoreId,
+        targetSectionName,
+        targetRef,
+        bowingType,
+        similarity: highlight.similarity,
+        status: 'pending',
+      })
+    }
+
+    if (suggestions.length === 0) return
+
+    setPendingBowingSuggestionsByScoreId((prev) => {
+      const next = { ...prev }
+      suggestions.forEach((suggestion) => {
+        const current = next[suggestion.targetScoreId] ?? []
+        const duplicate = current.some(
+          (item) =>
+            item.sourceScoreId === suggestion.sourceScoreId &&
+            item.bowingType === suggestion.bowingType &&
+            editableNoteRefKey(item.targetRef) === editableNoteRefKey(suggestion.targetRef),
+        )
+        if (!duplicate) {
+          next[suggestion.targetScoreId] = [...current, suggestion]
+        }
+      })
+      return next
+    })
+  }
+
   function getClickedGraphicalNote(event: React.MouseEvent<HTMLDivElement>) {
     const osmd = osmdRef.current
     const svg = getScoreSvgElement()
@@ -1740,7 +2651,25 @@ export function ScoreMusicXmlPage() {
     const svgPoint = point.matrixTransform(matrix.inverse())
     const osmdPoint = osmd.GraphicSheet.svgToOsmd(new PointF2D(svgPoint.x, svgPoint.y))
 
-    return osmd.GraphicSheet.GetNearestNote(osmdPoint, new PointF2D(12, 12)) ?? null
+    const nearestNote = osmd.GraphicSheet.GetNearestNote(osmdPoint, new PointF2D(12, 12)) ?? null
+    if (!nearestNote || isEditablePitchedGraphicalNote(nearestNote)) return nearestNote
+
+    const { replacement, candidates } = findNearestPitchedGraphicalNoteInSameMeasure(
+      osmd,
+      nearestNote,
+      osmdPoint,
+    )
+    warnRestGraphicalNoteReplacement({
+      nearestNoteWasRestOrUnpitched: true,
+      nearestNote: summarizeGraphicalNoteCandidate(nearestNote, distanceToPoint(nearestNote, osmdPoint)),
+      replacementFound: Boolean(replacement),
+      replacement: replacement ? summarizeGraphicalNoteCandidate(replacement.note, replacement.distance) : null,
+      candidates: candidates.slice(0, 8).map((candidate) =>
+        summarizeGraphicalNoteCandidate(candidate.note, candidate.distance),
+      ),
+    })
+
+    return replacement?.note ?? nearestNote
   }
 
   function getScoreSvgElement() {
@@ -1758,9 +2687,12 @@ export function ScoreMusicXmlPage() {
       return
     }
 
-    const ref = getEditableRefFromGraphicalNote(graphicalNote, scoreId)
+    const ref = getEditableRefFromGraphicalNote(graphicalNote, scoreId, workingXml, true)
     if (!ref) {
       addToast({ title: t('scoreEditor.noteCannotBeEditedYet') })
+      if (DEBUG_NOTE_MAPPING) {
+        addToast({ title: 'Mapping debug printed to console' })
+      }
       return
     }
 
@@ -1777,11 +2709,11 @@ export function ScoreMusicXmlPage() {
     updateXml: (xml: string) => string,
   ) {
     const currentXml = workingXmlByScoreId[scoreId]
-    if (!currentXml) return
+    if (!currentXml) return false
 
     try {
       const nextXml = updateXml(currentXml)
-      if (nextXml === currentXml) return
+      if (nextXml === currentXml) return false
 
       setWorkingXmlByScoreId((prev) => ({ ...prev, [scoreId]: nextXml }))
       setHistoryByScoreId((prev) => {
@@ -1795,11 +2727,13 @@ export function ScoreMusicXmlPage() {
         }
       })
       addToast({ title })
+      return true
     } catch (err) {
       addToast({
         title: t('scoreEditor.editFailed'),
         message: language === 'en' && err instanceof Error ? err.message : t('scoreEditor.updateFailed'),
       })
+      return false
     }
   }
 
@@ -1856,10 +2790,13 @@ export function ScoreMusicXmlPage() {
       return
     }
 
-    applyXmlOperation(
+    const applied = applyXmlOperation(
       mark === 'up-bow' ? t('scoreEditor.upBowApplied') : t('scoreEditor.downBowApplied'),
       (xml) => replaceBowing(xml, ref, mark),
     )
+    if (applied && activeAnnotationLayer === 'shared') {
+      void createBowingSyncSuggestionsFromSimilarPassages(ref, mark)
+    }
   }
 
   function applyArticulation(type: ArticulationMark) {
@@ -2051,6 +2988,8 @@ export function ScoreMusicXmlPage() {
   const visibleAutoSimilarityHighlights = showAllAutoSimilarityHighlights
     ? autoSimilarityHighlights
     : autoSimilarityHighlights.slice(0, AUTO_SIMILARITY_PREVIEW_LIMIT)
+  const pendingBowingSuggestionCount = Object.values(pendingBowingSuggestionsByScoreId)
+    .reduce((sum, suggestions) => sum + suggestions.length, 0)
 
   return (
     <div className="score-editor-page flex h-dvh flex-col bg-[#eef1f4]">
@@ -2471,6 +3410,33 @@ export function ScoreMusicXmlPage() {
                 </div>
               )}
             </div>
+            <div className="min-w-0 rounded-lg border border-rose-200 bg-rose-50 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0 truncate text-xs font-medium text-rose-700">
+                  {language === 'zh' ? '弓法同步建議' : 'Bowing sync suggestions'}
+                </div>
+                <Badge tone={pendingBowingSuggestionCount ? 'warn' : 'neutral'}>
+                  {pendingBowingSuggestionCount}
+                </Badge>
+              </div>
+              {currentPendingBowingSuggestions.length > 0 ? (
+                <div className="mt-2 grid max-h-32 gap-1 overflow-y-auto pr-1">
+                  {currentPendingBowingSuggestions.map((suggestion) => (
+                    <div
+                      key={suggestion.id}
+                      className="truncate text-[11px] font-medium text-rose-800"
+                      title={`${suggestion.sourceSectionName} ${suggestion.sourceMeasureRange}`}
+                    >
+                      {language === 'zh' ? '來自' : 'From'} {suggestion.sourceSectionName} {suggestion.sourceMeasureRange}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="mt-2 text-[11px] text-rose-600/75">
+                  {language === 'zh' ? '目前分譜沒有待顯示建議。' : 'No suggestions for the current score.'}
+                </div>
+              )}
+            </div>
             <details className="rounded-lg border border-slate-200 bg-slate-50">
               <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-slate-500 hover:text-slate-700">
                 {language === 'zh' ? '進階 / 手動搜尋' : 'Advanced / Manual search'}
@@ -2581,6 +3547,7 @@ export function ScoreMusicXmlPage() {
 
         <main className="min-w-0 flex-1">
           <div
+            ref={canvasRef}
             className={cn(
               'score-editor-canvas relative h-full overflow-auto bg-[#e7ebef] p-4 sm:p-6',
               mode === 'pan' ? 'cursor-grab' : 'cursor-default',
