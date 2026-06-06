@@ -1991,6 +1991,26 @@ export function ScoreMusicXmlPage() {
   const activeScoreId = scoreId || defaultScoreId
   const activeScore = project?.scores.find((s) => s.id === activeScoreId)
   const activePieceId = activeScore?.pieceId ?? ''
+  const myProjectMember = useMemo(
+    () => project?.members.find((member) => member.userId === currentUser.id),
+    [currentUser.id, project],
+  )
+  const canManageProjectScores =
+    currentUser.role === 'admin' || myProjectMember?.role === 'concertmaster'
+  const canAnnotateActiveScore =
+    !!activeScore &&
+    (canManageProjectScores ||
+      ((myProjectMember?.role === 'member' || myProjectMember?.role === 'principal') &&
+        myProjectMember.sectionId === activeScore.sectionId))
+  const canSaveSharedScore =
+    !!activeScore &&
+    (canManageProjectScores ||
+      (myProjectMember?.role === 'principal' &&
+        myProjectMember.sectionId === activeScore.sectionId))
+  const viewOnlyMessage =
+    language === 'zh'
+      ? '你可以查看所有聲部，但只能在自己所屬的聲部上做記號。'
+      : 'You can view every section, but markings are only allowed on your assigned section.'
   const xmlEntry = useMemo(
     () =>
       activeScore
@@ -2042,6 +2062,15 @@ export function ScoreMusicXmlPage() {
   const privateAnnotations = annotationLayers.private
   const annotationsLoading = !!annotationsLoadingByScoreId[scoreId]
   const annotationError = annotationErrorByScoreId[scoreId]
+  const sharedEditDisabled = !canSaveSharedScore
+  const sharedEditTitleSuffix = sharedEditDisabled ? ` - ${viewOnlyMessage}` : ''
+  const bowingDisabled =
+    !selectedNote ||
+    (activeAnnotationLayer === 'private' ? !canAnnotateActiveScore : !canSaveSharedScore)
+  const bowingTitleSuffix =
+    activeAnnotationLayer === 'private'
+      ? !canAnnotateActiveScore ? ` - ${viewOnlyMessage}` : ''
+      : sharedEditTitleSuffix
   const currentPendingBowingSuggestions = pendingBowingSuggestionsByScoreId[scoreId] ?? []
   const layeredRenderXml = useMemo(() => {
     if (!workingXml) return undefined

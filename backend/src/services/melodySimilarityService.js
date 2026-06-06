@@ -474,8 +474,15 @@ const listProjectPieceScoresWithXml = async (projectId, pieceId, membership, tar
     throw new AppError("Failed to fetch piece scores", 500, error);
   }
 
+  const canViewInPieceScan = (score) => {
+    if (!membership) return false;
+    const role = membership.role;
+    if (role === "concertmaster" || role === "platform_admin") return true;
+    return score.section_id === membership.section_id;
+  };
+
   return (data || [])
-    .filter((score) => score.xml_content && scoreService.canViewScore(score, membership))
+    .filter((score) => score.xml_content && canViewInPieceScan(score))
     .map((score) => ({
       ...score,
       section_name: score.sections?.name || null,
