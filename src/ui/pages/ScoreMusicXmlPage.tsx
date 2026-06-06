@@ -189,6 +189,58 @@ function isRestNote(note: Element) {
   return elementChildren(note, 'rest').length > 0
 }
 
+// Audiveris (OMR) can emit an <octave-shift> "start" (type up/down) without the
+// matching type="stop", or a stray "stop". OSMD's calculateOctaveShifts() then
+// dereferences an undefined end timestamp and throws "Cannot read properties of
+// undefined (reading 'realValue')", which aborts the ENTIRE render. Drop any
+// unpaired octave-shift (matched per part, per `number`) so the rest of the
+// score still renders. These are OMR artifacts here, so dropping them is safe.
+function removeUnpairedOctaveShifts(doc: Document) {
+  elementChildren(doc.documentElement, 'part').forEach((part) => {
+    const shifts = Array.from(part.getElementsByTagName('*')).filter((element) =>
+      isElementNamed(element, 'octave-shift'),
+    )
+    const openByNumber = new Map<string, Element>()
+    const orphans: Element[] = []
+
+    shifts.forEach((shift) => {
+      const type = shift.getAttribute('type') ?? ''
+      const number = shift.getAttribute('number') || '1'
+
+      if (type === 'stop') {
+        if (openByNumber.has(number)) {
+          openByNumber.delete(number) // properly paired start…stop
+        } else {
+          orphans.push(shift) // stop with no preceding start
+        }
+        return
+      }
+
+      if (type === 'continue') {
+        if (!openByNumber.has(number)) orphans.push(shift)
+        return
+      }
+
+      // type "up" / "down": a (re)start. A still-open start with the same number
+      // never received its stop, so that earlier start is itself an orphan.
+      const previousOpen = openByNumber.get(number)
+      if (previousOpen) orphans.push(previousOpen)
+      openByNumber.set(number, shift)
+    })
+
+    // Starts still open at end-of-part were never terminated.
+    openByNumber.forEach((shift) => orphans.push(shift))
+
+    orphans.forEach((shift) => {
+      const directionType = shift.parentElement
+      const direction = directionType?.parentElement
+      shift.remove()
+      removeElementIfEmpty(directionType)
+      removeElementIfEmpty(direction)
+    })
+  })
+}
+
 function sanitizeRestPlacementForRender(xml: string) {
   try {
     const doc = parseMusicXml(xml)
@@ -206,6 +258,9 @@ function sanitizeRestPlacementForRender(xml: string) {
         elementChildren(rest, 'display-octave').forEach((child) => child.remove())
       })
     })
+
+    // Unpaired octave shifts crash OSMD's layout; strip them before loading.
+    removeUnpairedOctaveShifts(doc)
 
     return serializeMusicXml(doc)
   } catch {
