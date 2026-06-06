@@ -51,10 +51,7 @@ class AudiverisEngine(BaseEngine):
                 musicxml_path=None,
                 stdout="",
                 stderr="",
-                error_message=(
-                    "Audiveris is not installed or AUDIVERIS_BIN points to a missing file. "
-                    f"Tried audiveris_bin: {audiveris_bin}"
-                ),
+                error_message=f"Audiveris binary missing: {audiveris_bin}",
             )
         if not audiveris_bin.is_file():
             return EngineResult(

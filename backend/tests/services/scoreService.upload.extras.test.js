@@ -27,25 +27,65 @@ const membershipCM = { role: "concertmaster", section_id: SECTION_A };
 
 const seedSection = () => {
   fake.reset({
-    sections: [{ id: SECTION_A, code: "first_violin", name: "Vln 1", sort_order: 1 }],
+    sections: [{ id: SECTION_A, code: "second_violin", name: "Violin II", sort_order: 2 }],
   });
 };
 
-test("uploadScore: xml_content is persisted verbatim on the row", async () => {
+test("uploadScore: normalizes MusicXML metadata before persisting xml_content", async () => {
   seedSection();
-  const xml = '<?xml version="1.0" encoding="UTF-8"?><score-partwise version="4.0"/>';
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="4.0">
+  <work>
+    <work-title>Music21 Fragment</work-title>
+  </work>
+  <movement-title>Music21 Fragment</movement-title>
+  <identification>
+    <creator type="composer">Music21</creator>
+  </identification>
+  <credit page="1">
+    <credit-type>title</credit-type>
+    <credit-words>Music21 Fragment</credit-words>
+  </credit>
+  <credit page="1">
+    <credit-type>composer</credit-type>
+    <credit-words>Music21</credit-words>
+  </credit>
+  <part-list>
+    <score-part id="P1">
+      <part-name>Voice</part-name>
+      <score-instrument id="P1-I1">
+        <instrument-name>Voice</instrument-name>
+      </score-instrument>
+    </score-part>
+  </part-list>
+  <part id="P1">
+    <measure number="1">
+      <note><rest/><duration>1</duration></note>
+    </measure>
+  </part>
+</score-partwise>`;
   const score = await scoreService.uploadScore(
     {
       sectionId: SECTION_A,
-      title: "Vln 1 — A",
-      piece: { title: "Piece A" },
+      title: "String Quartet - Second Violin",
+      piece: { title: "String Quartet", composer: "Haydn" },
       xmlContent: xml,
     },
     PROJECT,
     { id: USER_CM },
     membershipCM,
   );
-  assert.equal(score.xml_content, xml);
+  assert.match(score.xml_content, /<work-title>String Quartet - Second Violin<\/work-title>/);
+  assert.match(score.xml_content, /<movement-title>String Quartet - Second Violin<\/movement-title>/);
+  assert.match(score.xml_content, /<credit-words[^>]*>String Quartet - Second Violin<\/credit-words>/);
+  assert.match(score.xml_content, /<creator type="composer">Haydn<\/creator>/);
+  assert.match(score.xml_content, /<credit-words[^>]*>Haydn<\/credit-words>/);
+  assert.match(score.xml_content, /<part-name>Violin II<\/part-name>/);
+  assert.match(score.xml_content, /<instrument-name>Violin II<\/instrument-name>/);
+  assert.doesNotMatch(score.xml_content, /Music21 Fragment/);
+  assert.doesNotMatch(score.xml_content, />Music21</);
+  assert.doesNotMatch(score.xml_content, />Voice</);
+  assert.match(score.xml_content, /<note><rest\/><duration>1<\/duration><\/note>/);
 });
 
 test("uploadScore: storage_bucket override is preserved", async () => {

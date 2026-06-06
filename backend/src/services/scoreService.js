@@ -1,5 +1,6 @@
 const supabase = require("../config/supabase");
 const AppError = require("../utils/appError");
+const { normalizeMusicXmlMetadata } = require("../utils/musicXmlMetadata");
 
 const SCORE_COLUMNS =
   "id, project_id, piece_id, section_id, title, storage_bucket, storage_path, file_type, original_filename, mime_type, file_size_bytes, created_by, created_at, updated_at";
@@ -310,10 +311,10 @@ const findOrCreatePiece = async (projectId, { pieceId, pieceTitle, pieceComposer
   return created;
 };
 
-const ensureSectionExists = async (sectionId) => {
+const getSectionById = async (sectionId) => {
   const { data, error } = await supabase
     .from("sections")
-    .select("id")
+    .select("id, code, name")
     .eq("id", sectionId)
     .maybeSingle();
   if (error) {
@@ -322,6 +323,7 @@ const ensureSectionExists = async (sectionId) => {
   if (!data) {
     throw new AppError("Invalid sectionId: section does not exist", 400);
   }
+  return data;
 };
 
 const synthesizeInlineStoragePath = ({ projectId, pieceId, sectionId, fileType }) => {
@@ -337,7 +339,7 @@ const uploadScore = async (body, projectId, requestUser, membership) => {
 
   const payload = normalizeUploadPayload(body);
   assertCanUploadScore(membership, payload.sectionId);
-  await ensureSectionExists(payload.sectionId);
+  const section = await getSectionById(payload.sectionId);
 
   const piece = await findOrCreatePiece(
     projectId,
@@ -357,6 +359,14 @@ const uploadScore = async (body, projectId, requestUser, membership) => {
       sectionId: payload.sectionId,
       fileType: payload.fileType,
     });
+  const normalizedXmlContent = payload.xmlContent
+    ? normalizeMusicXmlMetadata(payload.xmlContent, {
+        scoreTitle: payload.title,
+        pieceTitle: piece.title,
+        composerName: piece.composer,
+        section,
+      })
+    : null;
 
   const { data: created, error: insertError } = await supabase
     .from("scores")
@@ -371,7 +381,7 @@ const uploadScore = async (body, projectId, requestUser, membership) => {
       original_filename: payload.originalFilename,
       mime_type: payload.mimeType,
       file_size_bytes: payload.fileSizeBytes,
-      xml_content: payload.xmlContent,
+      xml_content: normalizedXmlContent,
       created_by: requestUser.id,
     })
     .select(SCORE_COLUMNS_WITH_CONTENT)
@@ -436,5 +446,6 @@ module.exports = {
     assertCanUploadScore,
     normalizeUploadPayload,
     synthesizeInlineStoragePath,
+    getSectionById,
   },
 };

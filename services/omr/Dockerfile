@@ -1,15 +1,50 @@
+FROM python:3.11-slim AS audiveris-builder
+
+WORKDIR /tmp/audiveris-src
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates git openjdk-25-jdk-headless \
+ && rm -rf /var/lib/apt/lists/*
+
+COPY audiveris/ ./
+
+RUN git init \
+ && git config user.email "docker-build@example.invalid" \
+ && git config user.name "Docker Build" \
+ && git add . \
+ && git commit -m "Audiveris source snapshot"
+
+RUN ./gradlew --no-daemon :app:installDist -x test \
+ && audiveris_bin="$(find app/build/install -path '*/bin/Audiveris' -type f -print -quit)" \
+ && test -n "$audiveris_bin" \
+ && audiveris_dist="$(dirname "$(dirname "$audiveris_bin")")" \
+ && cp -a "$audiveris_dist" /tmp/audiveris-dist \
+ && test -f /tmp/audiveris-dist/bin/Audiveris
+
+
 FROM python:3.11-slim
 
 WORKDIR /app
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends poppler-utils default-jre-headless \
+ && apt-get install -y --no-install-recommends \
+      fontconfig \
+      libfreetype6 \
+      libasound2t64 \
+      libgtk-3-0 \
+      openjdk-25-jre-headless \
+      poppler-utils \
+      tesseract-ocr-eng \
  && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt ./
+COPY --from=audiveris-builder /tmp/audiveris-dist /opt/audiveris
+RUN test -f /opt/audiveris/bin/Audiveris \
+ && chmod +x /opt/audiveris/bin/Audiveris
+
+COPY services/omr/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+COPY services/omr/ ./
 
 ENV OMR_TEST_MAX_PAGES=all \
     AUDIVERIS_BIN=/opt/audiveris/bin/Audiveris

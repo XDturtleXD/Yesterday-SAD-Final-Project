@@ -369,6 +369,24 @@ def selected_engine_summary(
     return any_musicxml, any_failed
 
 
+def selected_engine_error_message(
+    status: dict[str, Any],
+    engine_names: list[str],
+) -> str:
+    for engine_name in engine_names:
+        engine_status = status.get("engine_results", {}).get(engine_name, {})
+        pages = engine_status.get("pages", {})
+        for page_status in pages.values():
+            error_message = page_status.get("error_message")
+            if error_message:
+                return str(error_message)
+        error_message = engine_status.get("error_message")
+        if error_message:
+            return str(error_message)
+
+    return "Audiveris failed to produce MusicXML."
+
+
 def process_job(
     job_id: str,
     preprocess_mode: str | None = None,
@@ -515,7 +533,7 @@ def process_job(
                     "current_page": total_pages,
                     "total_pages": total_pages,
                     "message": "Job failed",
-                    "error_message": "Audiveris failed to produce MusicXML.",
+                    "error_message": selected_engine_error_message(final_status, engine_names),
                 }
             )
         write_status(job_dir, final_status)

@@ -13,6 +13,7 @@ build
 
 # Other workspace + tooling state.
 .git
+**/.git
 .gitignore
 .vscode
 .idea

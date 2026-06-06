@@ -45,7 +45,8 @@ services:
 
   omr:
     build:
-      context: ./services/omr
+      context: .
+      dockerfile: services/omr/Dockerfile
     image: yesterday-omr:latest
     container_name: yesterday-omr
     restart: unless-stopped
