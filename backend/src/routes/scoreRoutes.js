@@ -22,6 +22,12 @@ router.post(
   annotationController.createScoreAnnotation
 );
 router.post(
+  "/:scoreId/similar-passages/scan",
+  loadScoreMiddleware,
+  projectPermissionMiddleware("score"),
+  scoreController.scanWholeScoreSimilarPassages
+);
+router.post(
   "/:scoreId/similar-passages",
   loadScoreMiddleware,
   projectPermissionMiddleware("score"),

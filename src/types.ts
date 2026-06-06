@@ -102,6 +102,62 @@ export type FindSimilarPassagesPayload = {
   targetSectionIds?: string[]
 }
 
+export type WholeScoreSimilarityHighlight = {
+  sourceScoreId: string
+  sourceStartRef: Record<string, unknown>
+  sourceEndRef: Record<string, unknown>
+  sourceStartMeasureNumber: number
+  sourceEndMeasureNumber: number
+  targetScoreId: string
+  targetSectionId: string | null
+  targetSectionName: string | null
+  targetStartRef: Record<string, unknown>
+  targetEndRef: Record<string, unknown>
+  targetStartMeasureNumber: number
+  targetEndMeasureNumber: number
+  similarity: number
+  intervalScore: number
+  rhythmScore: number
+  noteCount: number
+}
+
+export type ScanSimilarPassagesPayload = {
+  threshold?: number
+  windowSizes?: number[]
+  limitPerWindow?: number
+  maxHighlights?: number
+  targetSectionIds?: string[]
+}
+
+export type ScanSimilarPassagesResponse = {
+  highlights: WholeScoreSimilarityHighlight[]
+}
+
+export type PieceSimilarityHighlight = {
+  leftScoreId: string
+  leftSectionId: string | null
+  leftSectionName: string | null
+  leftStartMeasureNumber: number
+  leftEndMeasureNumber: number
+  leftStartRef: Record<string, unknown>
+  leftEndRef: Record<string, unknown>
+  rightScoreId: string
+  rightSectionId: string | null
+  rightSectionName: string | null
+  rightStartMeasureNumber: number
+  rightEndMeasureNumber: number
+  rightStartRef: Record<string, unknown>
+  rightEndRef: Record<string, unknown>
+  similarity: number
+  intervalScore: number
+  rhythmScore: number
+  noteCount: number
+}
+
+export type PieceScanSimilarPassagesResponse = {
+  highlights: PieceSimilarityHighlight[]
+}
+
 export type Branch = {
   id: string
   projectId: string

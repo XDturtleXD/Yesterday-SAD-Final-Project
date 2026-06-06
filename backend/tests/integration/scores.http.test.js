@@ -12,6 +12,7 @@ const {
   seedUserWithToken,
   SECTION_FIRST_VIOLIN,
   SECTION_SECOND_VIOLIN,
+  SECTION_VIOLA,
 } = require("../helpers/fixtures");
 
 const fake = createFakeSupabase();
@@ -402,6 +403,88 @@ test("POST /scores: principal can upload only to own section", async () => {
   assert.equal(otherSection.status, 403);
 });
 
+test("POST /projects/:projectId/pieces/:pieceId/similar-passages/scan: returns piece-level visible highlights", async () => {
+  const { owner, projectId } = await setupScenario();
+  const first = await harness.request("POST", `/api/projects/${projectId}/scores`, {
+    token: owner.token,
+    body: {
+      sectionId: SECTION_SECOND_VIOLIN,
+      title: "Violin II",
+      piece: { title: "Global Similarity Piece" },
+      xmlContent: melodyXml(["C4", "D4", "E4", "F4", "G4", "A4", "B4", "C5"]),
+    },
+  });
+  assert.equal(first.status, 201);
+
+  const second = await harness.request("POST", `/api/projects/${projectId}/scores`, {
+    token: owner.token,
+    body: {
+      sectionId: SECTION_VIOLA,
+      title: "Viola",
+      pieceId: first.body.data.piece_id,
+      xmlContent: melodyXml(["C5", "D5", "E5", "F5", "G5", "A5", "B5", "C6"]),
+    },
+  });
+  assert.equal(second.status, 201);
+
+  const { status, body } = await harness.request(
+    "POST",
+    `/api/projects/${projectId}/pieces/${first.body.data.piece_id}/similar-passages/scan`,
+    {
+      token: owner.token,
+      body: { threshold: 0.95, windowSizes: [8], maxHighlights: 5 },
+    },
+  );
+
+  assert.equal(status, 200);
+  assert.equal(body.success, true);
+  assert.equal(body.data.highlights.length, 1);
+  assert.equal(body.data.highlights[0].leftScoreId, first.body.data.id);
+  assert.equal(body.data.highlights[0].rightScoreId, second.body.data.id);
+  assert.equal(body.data.highlights[0].similarity, 1);
+});
+
+test("POST /projects/:projectId/pieces/:pieceId/similar-passages/scan: does not expose hidden target scores", async () => {
+  const { owner, projectId } = await setupScenario();
+  const first = await harness.request("POST", `/api/projects/${projectId}/scores`, {
+    token: owner.token,
+    body: {
+      sectionId: SECTION_FIRST_VIOLIN,
+      title: "Violin I",
+      piece: { title: "Visibility Piece" },
+      xmlContent: melodyXml(["C4", "D4", "E4", "F4", "G4", "A4", "B4", "C5"]),
+    },
+  });
+  assert.equal(first.status, 201);
+
+  const hidden = await harness.request("POST", `/api/projects/${projectId}/scores`, {
+    token: owner.token,
+    body: {
+      sectionId: SECTION_VIOLA,
+      title: "Viola",
+      pieceId: first.body.data.piece_id,
+      xmlContent: melodyXml(["C5", "D5", "E5", "F5", "G5", "A5", "B5", "C6"]),
+    },
+  });
+  assert.equal(hidden.status, 201);
+
+  const member = seedUserWithToken(fake, { email: "member@example.test" });
+  seedMember(projectId, member, SECTION_FIRST_VIOLIN, "member");
+
+  const { status, body } = await harness.request(
+    "POST",
+    `/api/projects/${projectId}/pieces/${first.body.data.piece_id}/similar-passages/scan`,
+    {
+      token: member.token,
+      body: { threshold: 0.95, windowSizes: [8], maxHighlights: 5 },
+    },
+  );
+
+  assert.equal(status, 200);
+  assert.equal(body.success, true);
+  assert.deepEqual(body.data.highlights, []);
+});
+
 // ---------------------------------------------------------------------------
 // List + read
 // ---------------------------------------------------------------------------
@@ -707,4 +790,105 @@ test("GET /scores/:scoreId: 403 when scope-section principal opens another secti
     token: principal.token,
   });
   assert.equal(status, 403);
+});
+
+// ---------------------------------------------------------------------------
+// POST /scores/:scoreId/similar-passages/scan
+// ---------------------------------------------------------------------------
+
+test("POST /scores/:scoreId/similar-passages/scan returns highlights when similar score exists", async () => {
+  const { owner, projectId } = await setupScenario();
+  // 8-note ascending scale
+  const scale8 = ["C4", "D4", "E4", "F4", "G4", "A4", "B4", "C5"];
+  const source = await harness.request("POST", `/api/projects/${projectId}/scores`, {
+    token: owner.token,
+    body: {
+      sectionId: SECTION_FIRST_VIOLIN,
+      title: "Scan source",
+      piece: { title: "Scan piece" },
+      xmlContent: melodyXml(scale8),
+    },
+  });
+  const pieceId = source.body.data.piece_id;
+  // Target: same melody (different section/score) — guaranteed similarity = 1
+  const scale8up5 = scale8;
+  await harness.request("POST", `/api/projects/${projectId}/scores`, {
+    token: owner.token,
+    body: {
+      sectionId: SECTION_SECOND_VIOLIN,
+      title: "Scan target",
+      pieceId,
+      xmlContent: melodyXml(scale8up5),
+    },
+  });
+
+  const response = await harness.request(
+    "POST",
+    `/api/scores/${source.body.data.id}/similar-passages/scan`,
+    {
+      token: owner.token,
+      body: { threshold: 0.7, windowSizes: [8], maxHighlights: 5 },
+    },
+  );
+
+  assert.equal(response.status, 200);
+  assert.ok(Array.isArray(response.body.data.highlights));
+  assert.ok(response.body.data.highlights.length >= 1);
+  const h = response.body.data.highlights[0];
+  assert.ok(h.similarity >= 0.7);
+  assert.equal(h.sourceScoreId, source.body.data.id);
+  assert.ok(h.targetStartMeasureNumber >= 1);
+});
+
+test("POST /scores/:scoreId/similar-passages/scan returns empty when no other score in same piece", async () => {
+  const { owner, projectId } = await setupScenario();
+  const scale8 = ["C4", "D4", "E4", "F4", "G4", "A4", "B4", "C5"];
+  const source = await harness.request("POST", `/api/projects/${projectId}/scores`, {
+    token: owner.token,
+    body: {
+      sectionId: SECTION_FIRST_VIOLIN,
+      title: "Lonely scan",
+      piece: { title: "Solo piece" },
+      xmlContent: melodyXml(scale8),
+    },
+  });
+
+  const response = await harness.request(
+    "POST",
+    `/api/scores/${source.body.data.id}/similar-passages/scan`,
+    {
+      token: owner.token,
+      body: { threshold: 0.78 },
+    },
+  );
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(response.body.data.highlights, []);
+});
+
+test("POST /scores/:scoreId/similar-passages/scan: 400 when score has no inline xml_content", async () => {
+  const { owner, projectId } = await setupScenario();
+  const upload = await harness.request("POST", `/api/projects/${projectId}/scores`, {
+    token: owner.token,
+    body: {
+      sectionId: SECTION_FIRST_VIOLIN,
+      title: "Storage only score",
+      piece: { title: "No XML piece" },
+      storagePath: "/scores/test.musicxml",
+      storageBucket: "public",
+      fileType: "musicxml",
+    },
+  });
+
+  const response = await harness.request(
+    "POST",
+    `/api/scores/${upload.body.data.id}/similar-passages/scan`,
+    {
+      token: owner.token,
+      body: {},
+    },
+  );
+
+  assert.equal(response.status, 400);
+  assert.ok(response.body.message.toLowerCase().includes("xml"));
 });

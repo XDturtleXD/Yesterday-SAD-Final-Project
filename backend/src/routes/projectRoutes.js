@@ -37,6 +37,11 @@ router.patch(
   projectPermissionMiddleware("params"),
   pieceController.reorderProjectPieces,
 );
+router.post(
+  "/:projectId/pieces/:pieceId/similar-passages/scan",
+  projectPermissionMiddleware("params"),
+  scoreController.scanPieceSimilarPassages,
+);
 router.patch(
   "/:projectId/pieces/:pieceId",
   projectPermissionMiddleware("params"),

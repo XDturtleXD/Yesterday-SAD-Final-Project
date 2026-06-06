@@ -141,3 +141,107 @@ test("findSimilarInScore returns top-level candidate refs and measure range", ()
   assert.equal(candidates[0].endMeasureNumber, 1);
   assert.equal(candidates[0].noteCount, 4);
 });
+
+// ---------------------------------------------------------------------------
+// Whole-score scan helpers
+// ---------------------------------------------------------------------------
+
+test("normalizeScanOptions: applies defaults when body is empty", () => {
+  const opts = _helpers.normalizeScanOptions({});
+  assert.deepEqual(opts.windowSizes, [8, 12, 16]);
+  assert.equal(opts.maxHighlights, 20);
+  assert.equal(opts.limitPerWindow, 1);
+  assert.ok(opts.threshold >= 0.7 && opts.threshold <= 1);
+  assert.equal(opts.targetSectionIds, null);
+});
+
+test("normalizeScanOptions: respects custom values", () => {
+  const opts = _helpers.normalizeScanOptions({
+    threshold: 0.85,
+    windowSizes: [6, 10],
+    maxHighlights: 5,
+    limitPerWindow: 2,
+    targetSectionIds: ["sec-a", "sec-b"],
+  });
+  assert.equal(opts.threshold, 0.85);
+  assert.deepEqual(opts.windowSizes, [6, 10]);
+  assert.equal(opts.maxHighlights, 5);
+  assert.equal(opts.limitPerWindow, 2);
+  assert.deepEqual(opts.targetSectionIds, ["sec-a", "sec-b"]);
+});
+
+test("sourceRangeOverlapRatio: identical ranges return 1", () => {
+  const a = { sourceStartMeasureNumber: 3, sourceEndMeasureNumber: 6 };
+  const ratio = _helpers.sourceRangeOverlapRatio(a, a);
+  assert.equal(ratio, 1);
+});
+
+test("sourceRangeOverlapRatio: non-overlapping ranges return 0", () => {
+  const a = { sourceStartMeasureNumber: 1, sourceEndMeasureNumber: 4 };
+  const b = { sourceStartMeasureNumber: 5, sourceEndMeasureNumber: 8 };
+  const ratio = _helpers.sourceRangeOverlapRatio(a, b);
+  assert.equal(ratio, 0);
+});
+
+test("pruneScanHighlights: keeps highest similarity when source ranges overlap ≥60%", () => {
+  const makeHighlight = (sourceStart, sourceEnd, similarity) => ({
+    sourceStartMeasureNumber: sourceStart,
+    sourceEndMeasureNumber: sourceEnd,
+    similarity,
+    noteCount: sourceEnd - sourceStart + 1,
+    targetScoreId: "t1",
+    targetSectionId: null,
+    targetSectionName: null,
+    sourceScoreId: "s1",
+    sourceStartRef: {},
+    sourceEndRef: {},
+    targetStartRef: {},
+    targetEndRef: {},
+    targetStartMeasureNumber: 1,
+    targetEndMeasureNumber: 4,
+    intervalScore: similarity,
+    rhythmScore: 1,
+  });
+
+  // Measures 1-4 and 2-5 overlap by 3/4 = 75% (≥60%) — keep only the higher similarity one
+  const high = makeHighlight(1, 4, 0.95);
+  const low  = makeHighlight(2, 5, 0.80);
+  const unrelated = makeHighlight(10, 14, 0.88);
+
+  const pruned = _helpers.pruneScanHighlights([low, high, unrelated]);
+  assert.equal(pruned.length, 2);
+  assert.equal(pruned[0].similarity, 0.95);
+  assert.equal(pruned[1].similarity, 0.88);
+});
+
+test("pruneGlobalScanHighlights: keeps highest similarity for overlapping score-pair ranges", () => {
+  const makeHighlight = (leftStart, leftEnd, rightStart, rightEnd, similarity) => ({
+    leftScoreId: "left",
+    rightScoreId: "right",
+    leftSectionId: "section-left",
+    leftSectionName: "Left",
+    leftStartMeasureNumber: leftStart,
+    leftEndMeasureNumber: leftEnd,
+    leftStartRef: {},
+    leftEndRef: {},
+    rightSectionId: "section-right",
+    rightSectionName: "Right",
+    rightStartMeasureNumber: rightStart,
+    rightEndMeasureNumber: rightEnd,
+    rightStartRef: {},
+    rightEndRef: {},
+    similarity,
+    intervalScore: similarity,
+    rhythmScore: 1,
+    noteCount: leftEnd - leftStart + 1,
+  });
+
+  const high = makeHighlight(1, 4, 10, 13, 0.96);
+  const low = makeHighlight(2, 5, 11, 14, 0.84);
+  const separate = makeHighlight(20, 24, 30, 34, 0.9);
+
+  const pruned = _helpers.pruneGlobalScanHighlights([low, separate, high]);
+  assert.equal(pruned.length, 2);
+  assert.equal(pruned[0].similarity, 0.96);
+  assert.equal(pruned[1].similarity, 0.9);
+});

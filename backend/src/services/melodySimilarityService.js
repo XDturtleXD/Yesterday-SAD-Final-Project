@@ -310,6 +310,107 @@ const findSimilarInScore = (sourceNotes, targetScore, { threshold = DEFAULT_THRE
   return candidates;
 };
 
+const MIN_SCAN_SOURCE_NOTES = 8;
+const DEFAULT_SCAN_THRESHOLD = 0.78;
+const DEFAULT_SCAN_WINDOW_SIZES = [8, 12, 16];
+const DEFAULT_SCAN_LIMIT_PER_WINDOW = 1;
+const DEFAULT_SCAN_MAX_HIGHLIGHTS = 20;
+
+const normalizeScanOptions = (body = {}) => {
+  const threshold =
+    typeof body.threshold === "number" && Number.isFinite(body.threshold)
+      ? Math.min(Math.max(body.threshold, 0), 1)
+      : DEFAULT_SCAN_THRESHOLD;
+  const windowSizes = Array.isArray(body.windowSizes)
+    ? body.windowSizes.filter((n) => Number.isFinite(n) && n > 0).map((n) => Math.floor(n))
+    : DEFAULT_SCAN_WINDOW_SIZES;
+  const limitPerWindow =
+    typeof body.limitPerWindow === "number" && Number.isFinite(body.limitPerWindow)
+      ? Math.min(Math.max(Math.floor(body.limitPerWindow), 1), 10)
+      : DEFAULT_SCAN_LIMIT_PER_WINDOW;
+  const maxHighlights =
+    typeof body.maxHighlights === "number" && Number.isFinite(body.maxHighlights)
+      ? Math.min(Math.max(Math.floor(body.maxHighlights), 1), 100)
+      : DEFAULT_SCAN_MAX_HIGHLIGHTS;
+  const targetSectionIds = Array.isArray(body.targetSectionIds)
+    ? body.targetSectionIds.filter((value) => typeof value === "string" && value.trim())
+    : null;
+  return { threshold, windowSizes, limitPerWindow, maxHighlights, targetSectionIds };
+};
+
+const sourceRangeOverlapRatio = (a, b) => {
+  const overlapStart = Math.max(a.sourceStartMeasureNumber, b.sourceStartMeasureNumber);
+  const overlapEnd = Math.min(a.sourceEndMeasureNumber, b.sourceEndMeasureNumber);
+  const overlapLength = Math.max(0, overlapEnd - overlapStart + 1);
+  const aLength = a.sourceEndMeasureNumber - a.sourceStartMeasureNumber + 1;
+  const bLength = b.sourceEndMeasureNumber - b.sourceStartMeasureNumber + 1;
+  const minLength = Math.min(aLength, bLength);
+  return minLength > 0 ? overlapLength / minLength : 0;
+};
+
+const pruneScanHighlights = (highlights) => {
+  const sorted = [...highlights].sort((a, b) => {
+    const simDiff = b.similarity - a.similarity;
+    if (Math.abs(simDiff) > 0.0001) return simDiff;
+    return b.noteCount - a.noteCount;
+  });
+  const kept = [];
+  for (const candidate of sorted) {
+    const overlapsExisting = kept.some(
+      (existing) => sourceRangeOverlapRatio(candidate, existing) >= 0.6,
+    );
+    if (!overlapsExisting) {
+      kept.push(candidate);
+    }
+  }
+  return kept;
+};
+
+const measureRangeOverlapRatio = (aStart, aEnd, bStart, bEnd) => {
+  const overlapStart = Math.max(aStart, bStart);
+  const overlapEnd = Math.min(aEnd, bEnd);
+  const overlapLength = Math.max(0, overlapEnd - overlapStart + 1);
+  const aLength = aEnd - aStart + 1;
+  const bLength = bEnd - bStart + 1;
+  const minLength = Math.min(aLength, bLength);
+  return minLength > 0 ? overlapLength / minLength : 0;
+};
+
+const globalRangeOverlapRatio = (a, b) => {
+  if (a.leftScoreId !== b.leftScoreId || a.rightScoreId !== b.rightScoreId) return 0;
+  const leftOverlap = measureRangeOverlapRatio(
+    a.leftStartMeasureNumber,
+    a.leftEndMeasureNumber,
+    b.leftStartMeasureNumber,
+    b.leftEndMeasureNumber,
+  );
+  const rightOverlap = measureRangeOverlapRatio(
+    a.rightStartMeasureNumber,
+    a.rightEndMeasureNumber,
+    b.rightStartMeasureNumber,
+    b.rightEndMeasureNumber,
+  );
+  return Math.min(leftOverlap, rightOverlap);
+};
+
+const pruneGlobalScanHighlights = (highlights) => {
+  const sorted = [...highlights].sort((a, b) => {
+    const simDiff = b.similarity - a.similarity;
+    if (Math.abs(simDiff) > 0.0001) return simDiff;
+    return b.noteCount - a.noteCount;
+  });
+  const kept = [];
+  for (const candidate of sorted) {
+    const overlapsExisting = kept.some(
+      (existing) => globalRangeOverlapRatio(candidate, existing) >= 0.6,
+    );
+    if (!overlapsExisting) {
+      kept.push(candidate);
+    }
+  }
+  return kept;
+};
+
 const normalizeSearchOptions = (body = {}) => {
   const threshold =
     typeof body.threshold === "number" && Number.isFinite(body.threshold)
@@ -354,6 +455,33 @@ const listPieceScoresWithXml = async (sourceScore, membership, targetSectionIds)
     }));
 };
 
+const listProjectPieceScoresWithXml = async (projectId, pieceId, membership, targetSectionIds) => {
+  ensureSupabaseReady();
+
+  let query = supabase
+    .from("scores")
+    .select(SCORE_COLUMNS_WITH_SECTION)
+    .eq("project_id", projectId)
+    .eq("piece_id", pieceId)
+    .order("created_at", { ascending: true });
+
+  if (targetSectionIds && targetSectionIds.length > 0) {
+    query = query.in("section_id", targetSectionIds);
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    throw new AppError("Failed to fetch piece scores", 500, error);
+  }
+
+  return (data || [])
+    .filter((score) => score.xml_content && scoreService.canViewScore(score, membership))
+    .map((score) => ({
+      ...score,
+      section_name: score.sections?.name || null,
+    }));
+};
+
 const findSimilarPassages = async (sourceScore, membership, body = {}) => {
   scoreService.assertCanViewScore(sourceScore, membership);
   if (!sourceScore.xml_content) {
@@ -373,8 +501,156 @@ const findSimilarPassages = async (sourceScore, membership, body = {}) => {
     .slice(0, limit);
 };
 
+const scanSourceScoreAgainstTargets = (
+  sourceScore,
+  targetScores,
+  { threshold, windowSizes, limitPerWindow },
+) => {
+  const sourceNotes = extractPitchedNotes(sourceScore.xml_content, sourceScore.id);
+
+  if (sourceNotes.length < MIN_SCAN_SOURCE_NOTES) {
+    return [];
+  }
+
+  if (targetScores.length === 0) return [];
+
+  const targetNotesCache = new Map(
+    targetScores.map((t) => [t.id, extractPitchedNotes(t.xml_content, t.id)]),
+  );
+
+  const allHighlights = [];
+
+  for (const windowSize of windowSizes) {
+    if (windowSize > sourceNotes.length) continue;
+
+    for (let i = 0; i <= sourceNotes.length - windowSize; i++) {
+      const sourceWindow = sourceNotes.slice(i, i + windowSize);
+      const sourceStart = sourceWindow[0];
+      const sourceEnd = sourceWindow[windowSize - 1];
+
+      for (const targetScore of targetScores) {
+        const targetNotes = targetNotesCache.get(targetScore.id);
+        if (!targetNotes || targetNotes.length < windowSize) continue;
+
+        const windowCandidates = [];
+        for (let j = 0; j <= targetNotes.length - windowSize; j++) {
+          const targetWindow = targetNotes.slice(j, j + windowSize);
+          const scores = scoreSegments(sourceWindow, targetWindow);
+          if (scores.similarity < threshold) continue;
+          windowCandidates.push({ targetWindow, scores });
+        }
+
+        windowCandidates.sort((a, b) => b.scores.similarity - a.scores.similarity);
+        const best = windowCandidates.slice(0, limitPerWindow);
+
+        for (const { targetWindow, scores } of best) {
+          const targetStart = targetWindow[0];
+          const targetEnd = targetWindow[windowSize - 1];
+          allHighlights.push({
+            sourceScoreId: sourceScore.id,
+            sourceStartRef: noteRef(sourceStart),
+            sourceEndRef: noteRef(sourceEnd),
+            sourceStartMeasureNumber: sourceStart.measureNumber,
+            sourceEndMeasureNumber: sourceEnd.measureNumber,
+            targetScoreId: targetScore.id,
+            targetSectionId: targetScore.section_id,
+            targetSectionName: targetScore.section_name || null,
+            targetStartRef: noteRef(targetStart),
+            targetEndRef: noteRef(targetEnd),
+            targetStartMeasureNumber: targetStart.measureNumber,
+            targetEndMeasureNumber: targetEnd.measureNumber,
+            similarity: Number(scores.similarity.toFixed(4)),
+            intervalScore: Number(scores.intervalScore.toFixed(4)),
+            rhythmScore: Number(scores.rhythmScore.toFixed(4)),
+            noteCount: windowSize,
+          });
+        }
+      }
+    }
+  }
+
+  return allHighlights;
+};
+
+const scanWholeScoreSimilarPassages = async (sourceScore, membership, body = {}) => {
+  scoreService.assertCanViewScore(sourceScore, membership);
+  if (!sourceScore.xml_content) {
+    throw new AppError("Source score does not have inline MusicXML content", 400);
+  }
+
+  const { threshold, windowSizes, limitPerWindow, maxHighlights, targetSectionIds } =
+    normalizeScanOptions(body);
+  const targetScores = await listPieceScoresWithXml(sourceScore, membership, targetSectionIds);
+  const allHighlights = scanSourceScoreAgainstTargets(sourceScore, targetScores, {
+    threshold,
+    windowSizes,
+    limitPerWindow,
+  });
+
+  const pruned = pruneScanHighlights(allHighlights);
+  return pruned.slice(0, maxHighlights);
+};
+
+const toGlobalHighlight = (highlight, leftScore, rightScore) => ({
+  leftScoreId: highlight.sourceScoreId,
+  leftSectionId: leftScore.section_id,
+  leftSectionName: leftScore.section_name || null,
+  leftStartMeasureNumber: highlight.sourceStartMeasureNumber,
+  leftEndMeasureNumber: highlight.sourceEndMeasureNumber,
+  leftStartRef: highlight.sourceStartRef,
+  leftEndRef: highlight.sourceEndRef,
+  rightScoreId: highlight.targetScoreId,
+  rightSectionId: rightScore.section_id,
+  rightSectionName: rightScore.section_name || null,
+  rightStartMeasureNumber: highlight.targetStartMeasureNumber,
+  rightEndMeasureNumber: highlight.targetEndMeasureNumber,
+  rightStartRef: highlight.targetStartRef,
+  rightEndRef: highlight.targetEndRef,
+  similarity: highlight.similarity,
+  intervalScore: highlight.intervalScore,
+  rhythmScore: highlight.rhythmScore,
+  noteCount: highlight.noteCount,
+});
+
+const scanPieceSimilarPassages = async (projectId, pieceId, membership, body = {}) => {
+  const { threshold, windowSizes, limitPerWindow, maxHighlights, targetSectionIds } =
+    normalizeScanOptions(body);
+  const scores = await listProjectPieceScoresWithXml(
+    projectId,
+    pieceId,
+    membership,
+    targetSectionIds,
+  );
+
+  if (scores.length < 2) return [];
+
+  const allHighlights = [];
+  for (let i = 0; i < scores.length - 1; i += 1) {
+    const leftScore = scores[i];
+    if (!leftScore.xml_content) continue;
+
+    for (let j = i + 1; j < scores.length; j += 1) {
+      const rightScore = scores[j];
+      if (!rightScore.xml_content) continue;
+
+      const pairHighlights = scanSourceScoreAgainstTargets(leftScore, [rightScore], {
+        threshold,
+        windowSizes,
+        limitPerWindow,
+      });
+      for (const highlight of pairHighlights) {
+        allHighlights.push(toGlobalHighlight(highlight, leftScore, rightScore));
+      }
+    }
+  }
+
+  return pruneGlobalScanHighlights(allHighlights).slice(0, maxHighlights);
+};
+
 module.exports = {
   findSimilarPassages,
+  scanWholeScoreSimilarPassages,
+  scanPieceSimilarPassages,
   _helpers: {
     extractPitchedNotes,
     extractRange,
@@ -383,5 +659,12 @@ module.exports = {
     intervals,
     rhythmRatios,
     MIN_SOURCE_NOTES,
+    normalizeScanOptions,
+    sourceRangeOverlapRatio,
+    pruneScanHighlights,
+    measureRangeOverlapRatio,
+    globalRangeOverlapRatio,
+    pruneGlobalScanHighlights,
+    MIN_SCAN_SOURCE_NOTES,
   },
 };

@@ -2,7 +2,13 @@ import { apiRequest, getStoredToken, ApiError } from './client'
 import { API_URL } from '../config/env'
 import type { ApiConversionStart } from './conversions'
 import type { ApiScore } from './types'
-import type { FindSimilarPassagesPayload, SimilarPassageCandidate } from '../types'
+import type {
+  FindSimilarPassagesPayload,
+  PieceScanSimilarPassagesResponse,
+  ScanSimilarPassagesPayload,
+  ScanSimilarPassagesResponse,
+  SimilarPassageCandidate,
+} from '../types'
 
 export function listProjectScores(projectId: string) {
   return apiRequest<ApiScore[]>(`/projects/${projectId}/scores`)
@@ -28,6 +34,30 @@ export function saveScoreMusicXml(scoreId: string, xmlContent: string) {
 export function findSimilarPassages(scoreId: string, payload: FindSimilarPassagesPayload) {
   return apiRequest<SimilarPassageCandidate[]>(
     `/scores/${encodeURIComponent(scoreId)}/similar-passages`,
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    },
+  )
+}
+
+export function scanSimilarPassages(scoreId: string, payload: ScanSimilarPassagesPayload) {
+  return apiRequest<ScanSimilarPassagesResponse>(
+    `/scores/${encodeURIComponent(scoreId)}/similar-passages/scan`,
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    },
+  )
+}
+
+export function scanPieceSimilarPassages(
+  projectId: string,
+  pieceId: string,
+  payload: ScanSimilarPassagesPayload,
+) {
+  return apiRequest<PieceScanSimilarPassagesResponse>(
+    `/projects/${encodeURIComponent(projectId)}/pieces/${encodeURIComponent(pieceId)}/similar-passages/scan`,
     {
       method: 'POST',
       body: JSON.stringify(payload),

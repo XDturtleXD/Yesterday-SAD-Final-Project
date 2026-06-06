@@ -9,7 +9,7 @@ import * as annotationsApi from '../../api/annotations'
 import * as scoresApi from '../../api/scores'
 import { useAppState } from '../../state/AppState'
 import { useTranslation } from '../../i18n'
-import type { AnnotationScope, Score, ScoreAnnotation, SimilarPassageCandidate } from '../../types'
+import type { AnnotationScope, PieceSimilarityHighlight, Score, ScoreAnnotation, SimilarPassageCandidate } from '../../types'
 import { Badge } from '../primitives/Badge'
 import { Button } from '../primitives/Button'
 import { Card } from '../primitives/Card'
@@ -82,6 +82,12 @@ type IndexedXmlNote = EditableNoteRef & {
 }
 
 type RenderStatus = 'idle' | 'loading' | 'ready' | 'error'
+type SimilarityScanStatus = 'idle' | 'scanning' | 'ready' | 'error'
+type PieceSimilarityState = {
+  highlights: PieceSimilarityHighlight[]
+  status: SimilarityScanStatus
+  error: string | null
+}
 
 const SCORE_XML_MAP: Record<string, ScoreXmlEntry> = {
   's-canon-v1': {
@@ -115,6 +121,7 @@ const HAIRPIN_TOOLS: Array<{ type: HairpinType; label: string; symbol: string }>
 const HIGHLIGHT_COLOR = '#0284c7'
 const DEFAULT_MUSIC_COLOR = '#000000'
 const OSMD_BACKGROUND_RENDER_DELAY_MS = 650
+const AUTO_SIMILARITY_PREVIEW_LIMIT = 10
 const DEFAULT_NOTE_STAFF = '1'
 const DEFAULT_NOTE_VOICE = '1'
 const EMPTY_ANNOTATION_LAYERS: AnnotationLayerState = { shared: [], private: [] }
@@ -1213,7 +1220,7 @@ function resolveXmlUrl(score: Score) {
 
 export function ScoreMusicXmlPage() {
   const { projectId, scoreId: scoreIdParam } = useParams()
-  const [searchParams, setSearchParams] = useSearchParams()
+  const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const { getProject, loadProjectDetail, addToast } = useAppState()
   const { language, t } = useTranslation()
@@ -1245,6 +1252,7 @@ export function ScoreMusicXmlPage() {
   const defaultScoreId = availableScores[0]?.id ?? scoreId
   const activeScoreId = scoreId || defaultScoreId
   const activeScore = project?.scores.find((s) => s.id === activeScoreId)
+  const activePieceId = activeScore?.pieceId ?? ''
   const xmlEntry = useMemo(
     () =>
       activeScore
@@ -1267,6 +1275,8 @@ export function ScoreMusicXmlPage() {
   const [similarityCandidates, setSimilarityCandidates] = useState<SimilarPassageCandidate[]>([])
   const [isFindingSimilar, setIsFindingSimilar] = useState(false)
   const [similarityError, setSimilarityError] = useState<string | null>(null)
+  const [pieceSimilarityByPieceId, setPieceSimilarityByPieceId] = useState<Record<string, PieceSimilarityState>>({})
+  const [showAllAutoSimilarityHighlights, setShowAllAutoSimilarityHighlights] = useState(false)
   const [slurDraft, setSlurDraft] = useState<SlurDraft | null>(null)
   const [hairpinDraft, setHairpinDraft] = useState<HairpinDraft | null>(null)
   const [showMeasureNumbers, setShowMeasureNumbers] = useState(true)
@@ -1316,6 +1326,40 @@ export function ScoreMusicXmlPage() {
     setSimilarityCandidates([])
     setSimilarityError(null)
   }, [scoreId])
+
+  useEffect(() => {
+    setShowAllAutoSimilarityHighlights(false)
+  }, [activePieceId])
+
+  useEffect(() => {
+    if (!projectId || !activePieceId) return
+    const current = pieceSimilarityByPieceId[activePieceId]
+    if (current && current.status !== 'idle') return
+
+    setPieceSimilarityByPieceId((prev) => ({
+      ...prev,
+      [activePieceId]: { highlights: prev[activePieceId]?.highlights ?? [], status: 'scanning', error: null },
+    }))
+
+    scoresApi.scanPieceSimilarPassages(projectId, activePieceId, {
+      threshold: 0.78,
+      maxHighlights: 30,
+    })
+      .then((response) => {
+        setPieceSimilarityByPieceId((prev) => ({
+          ...prev,
+          [activePieceId]: { highlights: response.highlights, status: 'ready', error: null },
+        }))
+      })
+      .catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : 'Scan failed'
+        setPieceSimilarityByPieceId((prev) => ({
+          ...prev,
+          [activePieceId]: { highlights: prev[activePieceId]?.highlights ?? [], status: 'error', error: message },
+        }))
+      })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, activePieceId])
 
   useEffect(() => {
     zoomRef.current = zoom
@@ -1554,12 +1598,29 @@ export function ScoreMusicXmlPage() {
   }
 
   function changeScore(nextScoreId: string) {
+    if (!projectId) {
+      addToast({
+        title: language === 'zh' ? '無法開啟分譜' : 'Unable to open score',
+        message: language === 'zh' ? '目前缺少專案路由資訊。' : 'The current project route context is missing.',
+      })
+      return
+    }
+
+    const targetScore = availableScores.find((item) => item.id === nextScoreId)
+    if (!targetScore) {
+      addToast({
+        title: language === 'zh' ? '無法開啟分譜' : 'Unable to open score',
+        message: language === 'zh' ? '找不到目標分譜，或你沒有檢視權限。' : 'The target score was not found or is not visible to you.',
+      })
+      return
+    }
+
     setSelectedNote(null)
     setSlurDraft(null)
     setHairpinDraft(null)
     pendingHairpinSelectionKeyRef.current = null
     selectedGraphicalNoteRef.current = null
-    setSearchParams({ scoreId: nextScoreId })
+    navigate(`/projects/${encodeURIComponent(projectId)}/scores/${encodeURIComponent(nextScoreId)}/musicxml`)
   }
 
   function setSimilarityRangePoint(point: 'start' | 'end') {
@@ -1620,6 +1681,49 @@ export function ScoreMusicXmlPage() {
     } finally {
       setIsFindingSimilar(false)
     }
+  }
+
+  async function runPieceSimilarityScan() {
+    if (!projectId || !activePieceId) {
+      addToast({
+        title: language === 'zh' ? '無法掃描相似段落' : 'Unable to scan similar passages',
+        message: language === 'zh' ? '目前缺少 piece 資訊。' : 'The current piece context is missing.',
+      })
+      return
+    }
+
+    const current = pieceSimilarityByPieceId[activePieceId]
+    if (current?.status === 'scanning') return
+
+    setPieceSimilarityByPieceId((prev) => ({
+      ...prev,
+      [activePieceId]: { highlights: prev[activePieceId]?.highlights ?? [], status: 'scanning', error: null },
+    }))
+
+    try {
+      const response = await scoresApi.scanPieceSimilarPassages(projectId, activePieceId, {
+        threshold: 0.78,
+        maxHighlights: 30,
+      })
+      setPieceSimilarityByPieceId((prev) => ({
+        ...prev,
+        [activePieceId]: { highlights: response.highlights, status: 'ready', error: null },
+      }))
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Scan failed'
+      setPieceSimilarityByPieceId((prev) => ({
+        ...prev,
+        [activePieceId]: { highlights: prev[activePieceId]?.highlights ?? [], status: 'error', error: message },
+      }))
+    }
+  }
+
+  function sectionLabel(sectionId: string | null, sectionName: string | null, scoreIdForFallback: string) {
+    if (sectionName) return sectionName
+    const member = project?.members.find((m) => m.sectionId === sectionId)
+    if (member) return member.sectionName
+    const score = availableScores.find((s) => s.id === scoreIdForFallback)
+    return score?.title ?? scoreIdForFallback
   }
 
   function getClickedGraphicalNote(event: React.MouseEvent<HTMLDivElement>) {
@@ -1937,6 +2041,17 @@ export function ScoreMusicXmlPage() {
     containerRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' })
   }
 
+  const pieceSimilarity = activePieceId
+    ? pieceSimilarityByPieceId[activePieceId] ?? { highlights: [], status: 'idle' as SimilarityScanStatus, error: null }
+    : { highlights: [], status: 'idle' as SimilarityScanStatus, error: null }
+  const autoSimilarityHighlights = pieceSimilarity.highlights
+  const similarityScanStatus = pieceSimilarity.status
+  const autoSimilarityError = pieceSimilarity.error
+  const hasMoreAutoSimilarityHighlights = autoSimilarityHighlights.length > AUTO_SIMILARITY_PREVIEW_LIMIT
+  const visibleAutoSimilarityHighlights = showAllAutoSimilarityHighlights
+    ? autoSimilarityHighlights
+    : autoSimilarityHighlights.slice(0, AUTO_SIMILARITY_PREVIEW_LIMIT)
+
   return (
     <div className="score-editor-page flex h-dvh flex-col bg-[#eef1f4]">
       <header className="border-b border-slate-200 bg-white">
@@ -2056,38 +2171,6 @@ export function ScoreMusicXmlPage() {
                 !
               </span>
             )}
-          </div>
-
-          <Divider />
-
-          <div className="flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 p-1 shadow-inner">
-            <button
-              type="button"
-              disabled={!selectedNote}
-              onClick={() => setSimilarityRangePoint('start')}
-              className="h-7 rounded px-2 text-xs font-medium text-slate-600 transition hover:bg-white hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {language === 'zh' ? '設起點' : 'Set start'}
-            </button>
-            <button
-              type="button"
-              disabled={!selectedNote}
-              onClick={() => setSimilarityRangePoint('end')}
-              className="h-7 rounded px-2 text-xs font-medium text-slate-600 transition hover:bg-white hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {language === 'zh' ? '設終點' : 'Set end'}
-            </button>
-            <Button
-              variant="secondary"
-              className="h-7 px-2 text-xs"
-              disabled={!similarityRangeStart || !similarityRangeEnd || isFindingSimilar}
-              onClick={() => void findSimilarPassages()}
-            >
-              <Search className="size-3.5" />
-              {isFindingSimilar
-                ? language === 'zh' ? '搜尋中' : 'Finding'
-                : language === 'zh' ? '尋找相似段落' : 'Find similar passages'}
-            </Button>
           </div>
 
           <Divider />
@@ -2235,7 +2318,7 @@ export function ScoreMusicXmlPage() {
       </div>
 
       <div className="flex min-h-0 flex-1">
-        <aside className="hidden w-64 shrink-0 border-r border-slate-200 bg-white p-4 lg:block">
+        <aside className="hidden w-80 min-w-[20rem] max-w-[20rem] shrink-0 overflow-y-auto border-r border-slate-200 bg-white p-4 lg:block">
           <div className="text-sm font-semibold text-slate-950">{t('scoreEditor.selection')}</div>
           <div className="mt-3 grid gap-3">
             <div>
@@ -2274,66 +2357,216 @@ export function ScoreMusicXmlPage() {
                 </div>
               </div>
             )}
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-              <div className="text-xs font-medium text-slate-500">
-                {language === 'zh' ? '相似旋律範圍' : 'Similar melody range'}
-              </div>
-              <div className="mt-1 text-sm font-medium text-slate-900">
-                {rangeLabel(similarityRangeStart, similarityRangeEnd)}
-              </div>
-              {similarityError && (
-                <div className="mt-2 text-xs font-medium text-amber-700">{similarityError}</div>
-              )}
-            </div>
-            <div className="rounded-lg border border-slate-200 bg-white p-3">
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-xs font-medium text-slate-500">
-                  {language === 'zh' ? '候選段落' : 'Candidates'}
+            <div className="min-w-0 rounded-lg border border-slate-200 bg-white p-3">
+              <div className="flex items-center justify-between gap-1">
+                <div className="min-w-0 truncate text-xs font-medium text-slate-500">
+                  {language === 'zh' ? '相似段落' : 'Similar passages'}
                 </div>
-                <Badge tone={similarityCandidates.length ? 'info' : 'neutral'}>
-                  {similarityCandidates.length}
-                </Badge>
+                <div className="flex shrink-0 items-center gap-1">
+                  {similarityScanStatus === 'ready' && (
+                    <Badge tone={autoSimilarityHighlights.length ? 'info' : 'neutral'}>
+                      {autoSimilarityHighlights.length}
+                    </Badge>
+                  )}
+                  <button
+                    type="button"
+                    disabled={similarityScanStatus === 'scanning'}
+                    onClick={() => {
+                      void runPieceSimilarityScan()
+                    }}
+                    className="rounded border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {similarityScanStatus === 'scanning'
+                      ? language === 'zh' ? '掃描中…' : 'Scanning…'
+                      : language === 'zh' ? '重新掃描' : 'Rescan'}
+                  </button>
+                </div>
               </div>
-              <div className="mt-2 grid gap-2">
-                {similarityCandidates.length === 0 ? (
-                  <div className="text-xs text-slate-500">
-                    {language === 'zh' ? '尚未搜尋。' : 'No search yet.'}
-                  </div>
-                ) : (
-                  similarityCandidates.map((candidate) => (
-                    <div
-                      key={`${candidate.targetScoreId}-${candidate.startMeasureNumber}-${candidate.endMeasureNumber}-${candidate.similarity}`}
-                      className="rounded-md border border-slate-200 bg-slate-50 p-2"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <div className="text-sm font-semibold text-slate-900">
-                            {candidateSectionLabel(candidate)}
+              {autoSimilarityError && (
+                <div className="mt-2 text-xs font-medium text-amber-700">{autoSimilarityError}</div>
+              )}
+              {similarityScanStatus === 'idle' && (
+                <div className="mt-2 text-xs text-slate-400">
+                  {language === 'zh' ? '載入中…' : 'Loading…'}
+                </div>
+              )}
+              {similarityScanStatus === 'ready' && autoSimilarityHighlights.length === 0 && (
+                <div className="mt-2 text-xs text-slate-500">
+                  {language === 'zh' ? '沒有找到相似段落。' : 'No similar passages found.'}
+                </div>
+              )}
+              {autoSimilarityHighlights.length > 0 && (
+                <div className="mt-2 max-h-80 min-w-0 overflow-y-auto pr-1">
+                  <div className="grid min-w-0 gap-2">
+                    {visibleAutoSimilarityHighlights.map((h) => (
+                      <div
+                        key={`${h.leftScoreId}-${h.rightScoreId}-${h.leftStartMeasureNumber}-${h.rightStartMeasureNumber}-${h.similarity}`}
+                        className="min-w-0 rounded-md border border-slate-200 bg-slate-50 p-2"
+                      >
+                        <div className="grid min-w-0 gap-1.5">
+                          <div className="min-w-0">
+                            <div
+                              className="truncate text-xs font-semibold text-slate-900"
+                              title={`${sectionLabel(h.leftSectionId, h.leftSectionName, h.leftScoreId)} m.${h.leftStartMeasureNumber}${
+                                h.leftEndMeasureNumber !== h.leftStartMeasureNumber ? `-${h.leftEndMeasureNumber}` : ''
+                              } -> ${sectionLabel(h.rightSectionId, h.rightSectionName, h.rightScoreId)} m.${h.rightStartMeasureNumber}${
+                                h.rightEndMeasureNumber !== h.rightStartMeasureNumber ? `-${h.rightEndMeasureNumber}` : ''
+                              }`}
+                            >
+                              {sectionLabel(h.leftSectionId, h.leftSectionName, h.leftScoreId)} m.{h.leftStartMeasureNumber}
+                              {h.leftEndMeasureNumber !== h.leftStartMeasureNumber ? `–${h.leftEndMeasureNumber}` : ''}
+                            </div>
+                            <div className="truncate text-xs font-medium text-slate-700">
+                              ↔ {sectionLabel(h.rightSectionId, h.rightSectionName, h.rightScoreId)} m.{h.rightStartMeasureNumber}
+                              {h.rightEndMeasureNumber !== h.rightStartMeasureNumber ? `–${h.rightEndMeasureNumber}` : ''}
+                            </div>
+                            <div className="truncate text-[11px] text-slate-500">
+                              {percentage(h.similarity)} · interval {percentage(h.intervalScore)} · rhythm {percentage(h.rhythmScore)}
+                            </div>
+                            {(scoreId === h.leftScoreId || scoreId === h.rightScoreId) && (
+                              <div className="mt-1 inline-flex rounded bg-sky-50 px-1.5 py-0.5 text-[10px] font-medium text-sky-700">
+                                {language === 'zh' ? '目前開啟' : 'Currently open'}
+                              </div>
+                            )}
                           </div>
-                          <div className="text-xs text-slate-600">
-                            m.{candidate.startMeasureNumber}
-                            {candidate.endMeasureNumber !== candidate.startMeasureNumber
-                              ? `-${candidate.endMeasureNumber}`
-                              : ''}{' '}
-                            · {percentage(candidate.similarity)}
+                          <div className="flex min-w-0 justify-end gap-1">
+                            <button
+                              type="button"
+                              className="min-w-0 truncate rounded border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100"
+                              title={sectionLabel(h.leftSectionId, h.leftSectionName, h.leftScoreId)}
+                              onClick={() => changeScore(h.leftScoreId)}
+                            >
+                              {language === 'zh'
+                                ? `開啟${sectionLabel(h.leftSectionId, h.leftSectionName, h.leftScoreId)}`
+                                : 'Open left'}
+                            </button>
+                            <button
+                              type="button"
+                              className="min-w-0 truncate rounded border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100"
+                              title={sectionLabel(h.rightSectionId, h.rightSectionName, h.rightScoreId)}
+                              onClick={() => changeScore(h.rightScoreId)}
+                            >
+                              {language === 'zh'
+                                ? `開啟${sectionLabel(h.rightSectionId, h.rightSectionName, h.rightScoreId)}`
+                                : 'Open right'}
+                            </button>
                           </div>
                         </div>
-                        <button
-                          type="button"
-                          className="rounded border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100"
-                          onClick={() => changeScore(candidate.targetScoreId)}
-                        >
-                          {language === 'zh' ? '開啟' : 'Open'}
-                        </button>
                       </div>
-                      <div className="mt-1 text-[11px] text-slate-500">
-                        interval {percentage(candidate.intervalScore)} · rhythm {percentage(candidate.rhythmScore)}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
+                    ))}
+                  </div>
+                  {hasMoreAutoSimilarityHighlights && (
+                    <button
+                      type="button"
+                      className="mt-2 w-full rounded border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                      onClick={() => setShowAllAutoSimilarityHighlights((value) => !value)}
+                    >
+                      {showAllAutoSimilarityHighlights
+                        ? language === 'zh' ? '收合' : 'Show less'
+                        : language === 'zh'
+                          ? `顯示全部 ${autoSimilarityHighlights.length} 筆`
+                          : `Show all ${autoSimilarityHighlights.length}`}
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
+            <details className="rounded-lg border border-slate-200 bg-slate-50">
+              <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-slate-500 hover:text-slate-700">
+                {language === 'zh' ? '進階 / 手動搜尋' : 'Advanced / Manual search'}
+              </summary>
+              <div className="grid gap-3 px-3 pb-3 pt-1">
+                <div className="flex flex-wrap items-center gap-1 rounded-md border border-slate-200 bg-white p-1 shadow-inner">
+                  <button
+                    type="button"
+                    disabled={!selectedNote}
+                    onClick={() => setSimilarityRangePoint('start')}
+                    className="h-7 rounded px-2 text-xs font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {language === 'zh' ? '設起點' : 'Set start'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!selectedNote}
+                    onClick={() => setSimilarityRangePoint('end')}
+                    className="h-7 rounded px-2 text-xs font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {language === 'zh' ? '設終點' : 'Set end'}
+                  </button>
+                  <Button
+                    variant="secondary"
+                    className="h-7 px-2 text-xs"
+                    disabled={!similarityRangeStart || !similarityRangeEnd || isFindingSimilar}
+                    onClick={() => void findSimilarPassages()}
+                  >
+                    <Search className="size-3.5" />
+                    {isFindingSimilar
+                      ? language === 'zh' ? '搜尋中' : 'Finding'
+                      : language === 'zh' ? '尋找相似段落' : 'Find similar'}
+                  </Button>
+                </div>
+                <div className="rounded-lg border border-slate-200 bg-white p-3">
+                  <div className="text-xs font-medium text-slate-500">
+                    {language === 'zh' ? '相似旋律範圍' : 'Range'}
+                  </div>
+                  <div className="mt-1 text-sm font-medium text-slate-900">
+                    {rangeLabel(similarityRangeStart, similarityRangeEnd)}
+                  </div>
+                  {similarityError && (
+                    <div className="mt-2 text-xs font-medium text-amber-700">{similarityError}</div>
+                  )}
+                </div>
+                <div className="min-w-0 rounded-lg border border-slate-200 bg-white p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0 truncate text-xs font-medium text-slate-500">
+                      {language === 'zh' ? '候選段落' : 'Candidates'}
+                    </div>
+                    <Badge tone={similarityCandidates.length ? 'info' : 'neutral'}>
+                      {similarityCandidates.length}
+                    </Badge>
+                  </div>
+                  <div className="mt-2 grid max-h-72 min-w-0 gap-2 overflow-y-auto pr-1">
+                    {similarityCandidates.length === 0 ? (
+                      <div className="text-xs text-slate-500">
+                        {language === 'zh' ? '尚未搜尋。' : 'No search yet.'}
+                      </div>
+                    ) : (
+                      similarityCandidates.map((candidate) => (
+                        <div
+                          key={`${candidate.targetScoreId}-${candidate.startMeasureNumber}-${candidate.endMeasureNumber}-${candidate.similarity}`}
+                          className="min-w-0 rounded-md border border-slate-200 bg-slate-50 p-2"
+                        >
+                          <div className="grid min-w-0 gap-1.5">
+                            <div className="min-w-0">
+                              <div className="truncate text-sm font-semibold text-slate-900">
+                                {candidateSectionLabel(candidate)}
+                              </div>
+                              <div className="truncate text-xs text-slate-600">
+                                m.{candidate.startMeasureNumber}
+                                {candidate.endMeasureNumber !== candidate.startMeasureNumber
+                                  ? `-${candidate.endMeasureNumber}`
+                                  : ''}{' '}
+                                · {percentage(candidate.similarity)}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              className="justify-self-end rounded border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100"
+                              onClick={() => changeScore(candidate.targetScoreId)}
+                            >
+                              {language === 'zh' ? '開啟' : 'Open'}
+                            </button>
+                          </div>
+                          <div className="mt-1 truncate text-[11px] text-slate-500">
+                            interval {percentage(candidate.intervalScore)} · rhythm {percentage(candidate.rhythmScore)}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            </details>
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
               <div className="text-xs font-medium text-slate-500">{t('scoreEditor.changes')}</div>
               <div className="mt-1 flex flex-wrap gap-2">

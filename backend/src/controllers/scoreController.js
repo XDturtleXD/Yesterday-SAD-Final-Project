@@ -165,6 +165,34 @@ const findSimilarPassages = async (req, res, next) => {
   }
 };
 
+const scanWholeScoreSimilarPassages = async (req, res, next) => {
+  try {
+    const highlights = await melodySimilarityService.scanWholeScoreSimilarPassages(
+      req.score,
+      req.projectMembership,
+      req.body,
+    );
+    return sendSuccess(res, { highlights }, "Scan completed successfully");
+  } catch (error) {
+    return next(error);
+  }
+};
+
+const scanPieceSimilarPassages = async (req, res, next) => {
+  try {
+    const { projectId, pieceId } = req.params;
+    const highlights = await melodySimilarityService.scanPieceSimilarPassages(
+      projectId,
+      pieceId,
+      req.projectMembership,
+      req.body,
+    );
+    return sendSuccess(res, { highlights }, "Piece scan completed successfully");
+  } catch (error) {
+    return next(error);
+  }
+};
+
 module.exports = {
   getProjectScores,
   getScoreById,
@@ -173,4 +201,6 @@ module.exports = {
   uploadScoreFile,
   deleteScore,
   findSimilarPassages,
+  scanWholeScoreSimilarPassages,
+  scanPieceSimilarPassages,
 };
