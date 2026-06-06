@@ -193,6 +193,21 @@ const scanPieceSimilarPassages = async (req, res, next) => {
   }
 };
 
+const scanBowingSuggestions = async (req, res, next) => {
+  try {
+    const { projectId, pieceId } = req.params;
+    const result = await melodySimilarityService.scanBowingSuggestions(
+      projectId,
+      pieceId,
+      req.projectMembership,
+      req.body,
+    );
+    return sendSuccess(res, result, "Bowing suggestions scan completed");
+  } catch (error) {
+    return next(error);
+  }
+};
+
 module.exports = {
   getProjectScores,
   getScoreById,
@@ -203,4 +218,5 @@ module.exports = {
   findSimilarPassages,
   scanWholeScoreSimilarPassages,
   scanPieceSimilarPassages,
+  scanBowingSuggestions,
 };

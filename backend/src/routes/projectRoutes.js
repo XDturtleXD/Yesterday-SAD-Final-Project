@@ -38,6 +38,11 @@ router.patch(
   pieceController.reorderProjectPieces,
 );
 router.post(
+  "/:projectId/pieces/:pieceId/bowing-suggestions/scan",
+  projectPermissionMiddleware("params"),
+  scoreController.scanBowingSuggestions,
+);
+router.post(
   "/:projectId/pieces/:pieceId/similar-passages/scan",
   projectPermissionMiddleware("params"),
   scoreController.scanPieceSimilarPassages,

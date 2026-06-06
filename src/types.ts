@@ -158,6 +158,31 @@ export type PieceScanSimilarPassagesResponse = {
   highlights: PieceSimilarityHighlight[]
 }
 
+export type ApiBowingSuggestion = {
+  id: string
+  sourceScoreId: string
+  sourceSectionName: string
+  sourceMeasureRange: string
+  targetScoreId: string
+  targetSectionName: string
+  targetRef: {
+    scoreId: string
+    partId: string
+    measureNumber: number
+    measureArrayIndex?: number
+    noteIndex: number
+    staff?: string
+    voice?: string
+  }
+  bowingType: 'up-bow' | 'down-bow'
+  similarity: number
+  status: 'pending'
+}
+
+export type BowingSuggestionsResponse = {
+  suggestions: ApiBowingSuggestion[]
+}
+
 export type Branch = {
   id: string
   projectId: string

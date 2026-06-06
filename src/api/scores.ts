@@ -3,6 +3,7 @@ import { API_URL } from '../config/env'
 import type { ApiConversionStart } from './conversions'
 import type { ApiScore } from './types'
 import type {
+  BowingSuggestionsResponse,
   FindSimilarPassagesPayload,
   PieceScanSimilarPassagesResponse,
   ScanSimilarPassagesPayload,
@@ -62,6 +63,17 @@ export function scanPieceSimilarPassages(
       method: 'POST',
       body: JSON.stringify(payload),
     },
+  )
+}
+
+export function scanBowingSuggestions(
+  projectId: string,
+  pieceId: string,
+  payload: ScanSimilarPassagesPayload,
+) {
+  return apiRequest<BowingSuggestionsResponse>(
+    `/projects/${encodeURIComponent(projectId)}/pieces/${encodeURIComponent(pieceId)}/bowing-suggestions/scan`,
+    { method: 'POST', body: JSON.stringify(payload) },
   )
 }
 

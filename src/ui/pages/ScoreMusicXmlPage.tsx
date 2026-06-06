@@ -17,6 +17,8 @@ import { Modal } from '../primitives/Modal'
 import { cn } from '../utils/cn'
 import {
   ArrowLeft,
+  Check,
+  CheckCheck,
   Download,
   Eraser,
   FileText,
@@ -439,28 +441,88 @@ function removeBowingFromNote(note: Element) {
   return bowings.length > 0
 }
 
-function applyBowingToXmlNote(note: Element, mark: BowingMark) {
+function applyBowingToXmlNote(note: Element, mark: BowingMark, sharedLayer = false) {
   removeBowingFromNote(note)
   const notations = ensureChild(note, 'notations')
   const technical = ensureChild(notations, 'technical')
-
-  technical.appendChild(note.ownerDocument.createElement(mark))
+  const bowing = note.ownerDocument.createElement(mark)
+  if (sharedLayer) {
+    bowing.setAttribute('data-user-bowing', 'true')
+    bowing.setAttribute('data-bowing-layer', 'shared')
+  }
+  technical.appendChild(bowing)
 }
 
-function applyBowingToDocument(doc: Document, ref: EditableNoteRef, mark: BowingMark) {
-  const note = findXmlNote(doc, ref)
-  if (!note) return false
-
-  applyBowingToXmlNote(note, mark)
-  return true
-}
 
 function replaceBowing(xml: string, ref: EditableNoteRef, mark: BowingMark) {
   const doc = parseMusicXml(xml)
-  if (!applyBowingToDocument(doc, ref, mark)) {
+  const note = findXmlNote(doc, ref)
+
+  if (!note) {
+    console.error('[BowingDebug] replaceBowing: note NOT found. ref=', JSON.stringify(ref))
     throw new Error('Could not find the selected note in MusicXML.')
   }
 
+  // ── DEBUG ─────────────────────────────────────────────────────────────────
+  const allIndexed = buildEditableNoteIndex(doc, ref.scoreId)
+  const measureNotes = allIndexed.filter(
+    (n) =>
+      n.partId === ref.partId &&
+      (ref.measureArrayIndex !== undefined
+        ? n.measureArrayIndex === ref.measureArrayIndex
+        : n.measureNumber === ref.measureNumber),
+  )
+  const hasSameBowing = noteHasBowingType(note, mark)
+  const chordGroupBowing = findChordGroupNoteWithBowing(note, mark)
+  console.group(`[BowingDebug] replaceBowing  mark=${mark}`)
+  console.log('1. ref:', JSON.stringify(ref))
+  console.log('2. note XML before:', note.outerHTML)
+  console.log('4. measure notes:',
+    measureNotes.map((n) => {
+      const technicals = elementChildren(n.note, 'notations').flatMap((no) =>
+        elementChildren(no, 'technical'),
+      )
+      const bowings = technicals
+        .flatMap((t) => elementChildren(t))
+        .filter((e) => e.localName === 'up-bow' || e.localName === 'down-bow')
+      const isChord = elementChildren(n.note, 'chord').length > 0
+      return (
+        `[${n.noteIndex}] ${n.pitchStep}${n.pitchOctave} dur=${n.duration} ` +
+        `staff=${n.staff} voice=${n.voice} chord=${isChord} ` +
+        `bowings=[${bowings.map((b) => `${b.localName}(user=${b.getAttribute('data-user-bowing') ?? ''})`).join(',')}]`
+      )
+    }).join('\n  '),
+  )
+  console.log('6. selected note has this bowing type:', hasSameBowing)
+  console.log(
+    '7. chord group note with this bowing:',
+    chordGroupBowing ? (chordGroupBowing === note ? 'same note' : `sibling — ${chordGroupBowing.outerHTML}`) : 'none',
+  )
+  console.groupEnd()
+  // ── END DEBUG ─────────────────────────────────────────────────────────────
+
+  // Toggle off — selected note already has this bowing type: just remove it
+  if (hasSameBowing) {
+    const removed = removeBowingFromNote(note)
+    console.log('[BowingDebug] 5. toggled OFF selected note, removed:', removed)
+    console.log('[BowingDebug] 3. note XML after:', note.outerHTML)
+    return serializeMusicXml(doc)
+  }
+
+  // Chord-sibling toggle — selected note is clean but a sibling in the same chord
+  // group carries this bowing (e.g. OCR placed it on the chord leader while OSMD
+  // reports a different chord note as the click target).
+  if (chordGroupBowing && chordGroupBowing !== note) {
+    const removed = removeBowingFromNote(chordGroupBowing)
+    console.log('[BowingDebug] 5. toggled OFF chord sibling, removed:', removed)
+    console.log('[BowingDebug] 3. sibling XML after:', chordGroupBowing.outerHTML)
+    return serializeMusicXml(doc)
+  }
+
+  // Apply new bowing to the selected note
+  applyBowingToXmlNote(note, mark, true)
+  console.log('[BowingDebug] 3. note XML after (new bowing):', note.outerHTML)
+  console.log('[BowingDebug] 5. removed count: 0 (new bowing added)')
   return serializeMusicXml(doc)
 }
 
@@ -653,7 +715,95 @@ function mapRangeIndex(sourceIndex: number, sourceCount: number, targetCount: nu
   )
 }
 
-function createBowingSuggestionDirection(doc: Document, note: Element, mark: BowingMark) {
+
+function noteHasRealBowing(note: Element): boolean {
+  return elementChildren(note, 'notations').some((notations) =>
+    elementChildren(notations, 'technical').some((technical) =>
+      elementChildren(technical).some(
+        (child) => child.localName === 'up-bow' || child.localName === 'down-bow',
+      ),
+    ),
+  )
+}
+
+function noteHasBowingType(note: Element, mark: BowingMark): boolean {
+  return elementChildren(note, 'notations').some((notations) =>
+    elementChildren(notations, 'technical').some((technical) =>
+      elementChildren(technical).some((child) => child.localName === mark),
+    ),
+  )
+}
+
+// Returns the first note in the chord group (including `note` itself) that carries
+// `mark`. Chord group = consecutive <note> siblings where all except the first
+// have a <chord/> child.  Returns null if none in the group has `mark`.
+function findChordGroupNoteWithBowing(note: Element, mark: BowingMark): Element | null {
+  // Walk backwards to the chord leader
+  let leader: Element = note
+  while (elementChildren(leader, 'chord').length > 0) {
+    const prev = leader.previousElementSibling
+    if (!prev || prev.localName !== 'note') break
+    leader = prev
+  }
+  // Collect full chord group
+  const group: Element[] = [leader]
+  let cursor: Element | null = leader.nextElementSibling
+  while (cursor?.localName === 'note' && elementChildren(cursor, 'chord').length > 0) {
+    group.push(cursor)
+    cursor = cursor.nextElementSibling
+  }
+  return group.find((n) => noteHasBowingType(n, mark)) ?? null
+}
+
+// Write a suggestion bowing directly into the XML as a real shared bowing.
+// Uses the flexible finder (same as private annotations) and skips if the
+// chord group already has any real bowing.
+function applyAcceptedBowingSuggestion(
+  xml: string,
+  ref: EditableNoteRef,
+  mark: BowingMark,
+): string {
+  const doc = parseMusicXml(xml)
+  const note = findXmlNoteForPrivateAnnotation(doc, ref)
+  if (!note) return xml
+
+  // Skip if this note or any sibling in its chord group already has real bowing
+  const groupHasReal = (() => {
+    if (noteHasRealBowing(note)) return true
+    let leader: Element = note
+    while (elementChildren(leader, 'chord').length > 0) {
+      const prev = leader.previousElementSibling
+      if (!prev || prev.localName !== 'note') break
+      leader = prev
+    }
+    const group: Element[] = [leader]
+    let cursor: Element | null = leader.nextElementSibling
+    while (cursor !== null && cursor.localName === 'note' && elementChildren(cursor, 'chord').length > 0) {
+      group.push(cursor)
+      cursor = cursor.nextElementSibling
+    }
+    return group.some((n) => noteHasRealBowing(n))
+  })()
+  if (groupHasReal) return xml
+
+  applyBowingToXmlNote(note, mark, true) // sharedLayer = true: adds data-user-bowing + data-bowing-layer
+  return serializeMusicXml(doc)
+}
+
+function applyRedBowingSuggestionToXmlNote(note: Element, mark: BowingMark) {
+  const doc = note.ownerDocument
+
+  // If this note is part of a chord (has <chord/>), walk back to the chord leader
+  // so the direction lands at the correct beat position in OSMD.
+  let insertAnchor: Element = note
+  if (elementChildren(note, 'chord').length > 0) {
+    let prev = note.previousElementSibling
+    while (prev?.localName === 'note' && elementChildren(prev, 'chord').length > 0) {
+      prev = prev.previousElementSibling
+    }
+    if (prev?.localName === 'note') insertAnchor = prev
+  }
+
   const direction = doc.createElement('direction')
   direction.setAttribute('placement', 'above')
   direction.setAttribute('data-sync-suggestion', 'true')
@@ -662,30 +812,29 @@ function createBowingSuggestionDirection(doc: Document, note: Element, mark: Bow
   const words = doc.createElement('words')
   words.setAttribute('color', '#d00000')
   words.setAttribute('font-weight', 'bold')
-  words.textContent = mark === 'up-bow' ? '𝆪' : '𝆫'
+  words.setAttribute('font-size', '12')
+  words.setAttribute('relative-y', '20')
+  const defaultX = note.getAttribute('default-x')
+  if (defaultX) words.setAttribute('default-x', defaultX)
+  words.textContent = mark === 'up-bow' ? 'V' : 'Π'
   directionType.appendChild(words)
   direction.appendChild(directionType)
 
   const staff = getChildText(note, 'staff')
   if (staff) {
-    const staffElement = doc.createElement('staff')
-    staffElement.textContent = staff
-    direction.appendChild(staffElement)
+    const staffEl = doc.createElement('staff')
+    staffEl.textContent = staff
+    direction.appendChild(staffEl)
   }
 
-  return direction
-}
+  const voice = getChildText(note, 'voice')
+  if (voice) {
+    const voiceEl = doc.createElement('voice')
+    voiceEl.textContent = voice
+    direction.appendChild(voiceEl)
+  }
 
-function applyRedBowingSuggestionToXmlNote(note: Element, mark: BowingMark) {
-  const doc = note.ownerDocument
-  const notations = ensureChild(note, 'notations')
-  const technical = ensureChild(notations, 'technical')
-  const bowing = doc.createElement(mark)
-  bowing.setAttribute('color', '#d00000')
-  bowing.setAttribute('data-sync-suggestion', 'true')
-  technical.appendChild(bowing)
-
-  note.parentElement?.insertBefore(createBowingSuggestionDirection(doc, note, mark), note)
+  insertAnchor.parentElement?.insertBefore(direction, insertAnchor)
 }
 
 function applyPendingBowingSuggestionsToXml(
@@ -699,8 +848,47 @@ function applyPendingBowingSuggestionsToXml(
     let changed = false
 
     suggestions.forEach((suggestion) => {
-      const note = findXmlNoteForPrivateAnnotation(doc, suggestion.targetRef)
-      if (!note) return
+      const tRef = suggestion.targetRef
+      const note = findXmlNoteForPrivateAnnotation(doc, tRef)
+      if (!note) {
+        console.log(
+          `[BowingDebug:suppress] ${suggestion.bowingType} @m${tRef.measureNumber}[idx=${tRef.noteIndex}]: note NOT FOUND in XML → shown`,
+        )
+        return
+      }
+      const hasReal = noteHasRealBowing(note)
+
+      // C: check whether any note in the same chord group has real bowing —
+      //    the exact-note check misses this when the click landed on a sibling.
+      let chordGroupHasReal = false
+      if (!hasReal) {
+        let leader: Element = note
+        while (elementChildren(leader, 'chord').length > 0) {
+          const prev = leader.previousElementSibling
+          if (!prev || prev.localName !== 'note') break
+          leader = prev
+        }
+        const group: Element[] = [leader]
+        let cursor: Element | null = leader.nextElementSibling
+        while (cursor !== null && cursor.localName === 'note' && elementChildren(cursor, 'chord').length > 0) {
+          group.push(cursor)
+          cursor = cursor.nextElementSibling
+        }
+        chordGroupHasReal = group.some((n) => noteHasRealBowing(n))
+      }
+
+      console.log(
+        `[BowingDebug:suppress] ${suggestion.bowingType} @m${tRef.measureNumber}[idx=${tRef.noteIndex}]:`,
+        `hasRealBowing=${hasReal}`,
+        `chordGroupHasReal=${chordGroupHasReal}`,
+        hasReal
+          ? '→ SUPPRESSED ✓'
+          : chordGroupHasReal
+            ? '→ SHOWN ⚠️  (chord sibling has real bowing — suppress check too narrow)'
+            : '→ shown (no real bowing found)',
+      )
+
+      if (hasReal) return
 
       applyRedBowingSuggestionToXmlNote(note, suggestion.bowingType)
       changed = true
@@ -1977,6 +2165,7 @@ export function ScoreMusicXmlPage() {
   const backgroundRenderTokenRef = useRef(0)
   const zoomRef = useRef(90)
   const addToastRef = useRef(addToast)
+  const bowingSuggestionScanPiecesRef = useRef(new Set<string>())
 
   const project = projectId ? getProject(projectId) : undefined
   const scoreId = scoreIdParam ?? searchParams.get('scoreId') ?? ''
@@ -2142,6 +2331,34 @@ export function ScoreMusicXmlPage() {
           [activePieceId]: { highlights: prev[activePieceId]?.highlights ?? [], status: 'error', error: message },
         }))
       })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, activePieceId])
+
+  useEffect(() => {
+    if (!projectId || !activePieceId) return
+    if (bowingSuggestionScanPiecesRef.current.has(activePieceId)) return
+    bowingSuggestionScanPiecesRef.current.add(activePieceId)
+
+    scoresApi.scanBowingSuggestions(projectId, activePieceId, { threshold: 0.78, maxHighlights: 30 })
+      .then((response) => {
+        if (!response.suggestions?.length) return
+        setPendingBowingSuggestionsByScoreId((prev) => {
+          const next = { ...prev }
+          response.suggestions.forEach((s) => {
+            const current = next[s.targetScoreId] ?? []
+            const isDuplicate = current.some(
+              (item) =>
+                item.bowingType === s.bowingType &&
+                editableNoteRefKey(item.targetRef) === editableNoteRefKey(s.targetRef as EditableNoteRef),
+            )
+            if (!isDuplicate) {
+              next[s.targetScoreId] = [...current, { ...s, targetRef: s.targetRef as EditableNoteRef }]
+            }
+          })
+          return next
+        })
+      })
+      .catch(() => { /* best-effort */ })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, activePieceId])
 
@@ -2828,6 +3045,27 @@ export function ScoreMusicXmlPage() {
     }
   }
 
+  function acceptBowingSuggestion(suggestion: PendingBowingSuggestion) {
+    applyXmlOperation(
+      language === 'zh' ? '已套用弓法建議' : 'Bowing suggestion accepted',
+      (xml) => applyAcceptedBowingSuggestion(xml, suggestion.targetRef, suggestion.bowingType),
+    )
+    setPendingBowingSuggestionsByScoreId((prev) => ({
+      ...prev,
+      [scoreId]: (prev[scoreId] ?? []).filter((s) => s.id !== suggestion.id),
+    }))
+  }
+
+  function acceptAllBowingSuggestions() {
+    const toApply = currentPendingBowingSuggestions
+    if (toApply.length === 0) return
+    applyXmlOperation(
+      language === 'zh' ? `已套用 ${toApply.length} 個弓法建議` : `Accepted ${toApply.length} bowing suggestion${toApply.length === 1 ? '' : 's'}`,
+      (xml) => toApply.reduce((acc, s) => applyAcceptedBowingSuggestion(acc, s.targetRef, s.bowingType), xml),
+    )
+    setPendingBowingSuggestionsByScoreId((prev) => ({ ...prev, [scoreId]: [] }))
+  }
+
   function applyBowing(mark: BowingMark) {
     if (!selectedNote) return
     const ref = selectedNote
@@ -2835,6 +3073,51 @@ export function ScoreMusicXmlPage() {
       void createPrivateBowingAnnotation(ref, mark)
       return
     }
+
+    // ── DEBUG A / B / D ───────────────────────────────────────────────────
+    const clickedKey = editableNoteRefKey(ref)
+    const nearSuggestions = currentPendingBowingSuggestions.filter(
+      (s) => Math.abs(s.targetRef.measureNumber - ref.measureNumber) <= 2,
+    )
+    console.group(`[BowingDebug:applyBowing]  mark=${mark}  m${ref.measureNumber}[idx=${ref.noteIndex}]`)
+    console.log('A. clicked ref:', JSON.stringify(ref))
+    console.log('A. clicked key:', clickedKey)
+    console.log('A. pending suggestions near ±2 measures:')
+    if (nearSuggestions.length === 0) {
+      console.log('   (none)')
+    } else {
+      nearSuggestions.forEach((s) => {
+        const sKey = editableNoteRefKey(s.targetRef)
+        const exactMatch = sKey === clickedKey
+        const diff: string[] = []
+        if (s.targetRef.measureArrayIndex !== ref.measureArrayIndex)
+          diff.push(`measureArrayIndex suggestion=${s.targetRef.measureArrayIndex} clicked=${ref.measureArrayIndex}`)
+        if (s.targetRef.measureNumber !== ref.measureNumber)
+          diff.push(`measureNumber suggestion=${s.targetRef.measureNumber} clicked=${ref.measureNumber}`)
+        if (s.targetRef.noteIndex !== ref.noteIndex)
+          diff.push(`noteIndex suggestion=${s.targetRef.noteIndex} clicked=${ref.noteIndex}`)
+        if ((s.targetRef.staff ?? '') !== (ref.staff ?? ''))
+          diff.push(`staff suggestion=${s.targetRef.staff ?? ''} clicked=${ref.staff ?? ''}`)
+        if ((s.targetRef.voice ?? '') !== (ref.voice ?? ''))
+          diff.push(`voice suggestion=${s.targetRef.voice ?? ''} clicked=${ref.voice ?? ''}`)
+        if (s.targetRef.partId !== ref.partId)
+          diff.push(`partId suggestion=${s.targetRef.partId} clicked=${ref.partId}`)
+        console.log(
+          `   ${s.bowingType} @m${s.targetRef.measureNumber}[idx=${s.targetRef.noteIndex}]`,
+          `exactKeyMatch=${exactMatch}`,
+          exactMatch ? '' : `  DIFF: [${diff.join(' | ')}]`,
+        )
+        console.log('   suggestion key :', sKey)
+        console.log('   clicked key    :', clickedKey)
+      })
+    }
+    // B: sync suggestion directions should never be in workingXml
+    const syncInWorking = workingXml?.includes('data-sync-suggestion') ?? false
+    console.log('B. data-sync-suggestion in workingXml:', syncInWorking ? 'YES ⚠️ (should not happen)' : 'no (correct)')
+    // D: pending suggestions survive bowing ops (state only cleared by manual dismiss / re-scan)
+    console.log('D. total pending suggestions for this score (before op):', currentPendingBowingSuggestions.length)
+    console.groupEnd()
+    // ── END DEBUG ─────────────────────────────────────────────────────────
 
     const applied = applyXmlOperation(
       mark === 'up-bow' ? t('scoreEditor.upBowApplied') : t('scoreEditor.downBowApplied'),
@@ -3492,16 +3775,46 @@ export function ScoreMusicXmlPage() {
                 </Badge>
               </div>
               {currentPendingBowingSuggestions.length > 0 ? (
-                <div className="mt-2 grid max-h-32 gap-1 overflow-y-auto pr-1">
-                  {currentPendingBowingSuggestions.map((suggestion) => (
-                    <div
-                      key={suggestion.id}
-                      className="truncate text-[11px] font-medium text-rose-800"
-                      title={`${suggestion.sourceSectionName} ${suggestion.sourceMeasureRange}`}
+                <div className="mt-2 space-y-1">
+                  {currentPendingBowingSuggestions.length > 1 && (
+                    <button
+                      type="button"
+                      disabled={!canSaveSharedScore}
+                      onClick={acceptAllBowingSuggestions}
+                      className="flex w-full items-center justify-center gap-1 rounded bg-rose-600 px-2 py-1 text-[11px] font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-40"
                     >
-                      {language === 'zh' ? '來自' : 'From'} {suggestion.sourceSectionName} {suggestion.sourceMeasureRange}
-                    </div>
-                  ))}
+                      <CheckCheck className="size-3" />
+                      {language === 'zh' ? `全部套用 (${currentPendingBowingSuggestions.length})` : `Accept all (${currentPendingBowingSuggestions.length})`}
+                    </button>
+                  )}
+                  <div className="max-h-44 space-y-1 overflow-y-auto pr-0.5">
+                    {currentPendingBowingSuggestions.map((suggestion) => (
+                      <div
+                        key={suggestion.id}
+                        className="flex items-center justify-between gap-1 rounded bg-white/60 px-1.5 py-1"
+                        title={`${suggestion.sourceSectionName} ${suggestion.sourceMeasureRange}`}
+                      >
+                        <div className="min-w-0">
+                          <div className="truncate text-[11px] font-medium text-rose-800">
+                            <span className="mr-0.5 font-bold">{suggestion.bowingType === 'down-bow' ? 'Π' : 'V'}</span>
+                            {' '}{language === 'zh' ? '來自' : 'From'} {suggestion.sourceSectionName} {suggestion.sourceMeasureRange}
+                          </div>
+                          <div className="text-[10px] text-rose-600/75">
+                            {Math.round(suggestion.similarity * 100)}% {language === 'zh' ? '相似度' : 'similarity'}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          disabled={!canSaveSharedScore}
+                          onClick={() => acceptBowingSuggestion(suggestion)}
+                          className="shrink-0 flex items-center gap-0.5 rounded bg-rose-600 px-1.5 py-0.5 text-[10px] font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          <Check className="size-2.5" />
+                          {language === 'zh' ? '套用' : 'Accept'}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ) : (
                 <div className="mt-2 text-[11px] text-rose-600/75">

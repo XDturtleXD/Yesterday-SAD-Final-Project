@@ -654,10 +654,259 @@ const scanPieceSimilarPassages = async (projectId, pieceId, membership, body = {
   return pruneGlobalScanHighlights(allHighlights).slice(0, maxHighlights);
 };
 
+// ---------------------------------------------------------------------------
+// Bowing suggestions scan
+// ---------------------------------------------------------------------------
+
+const extractNotesWithBowing = (xml, scoreId = null) => {
+  const doc = parseSimpleXml(xml);
+  const parts = doc.children.flatMap((node) =>
+    node.name === "score-partwise" || node.name === "score-timewise"
+      ? elementChildren(node, "part")
+      : [],
+  );
+  const notes = [];
+
+  parts.forEach((part) => {
+    const partId = part.attrs.id || "P1";
+    elementChildren(part, "measure").forEach((measure, measureArrayIndex) => {
+      const rawMN = Number.parseInt(measure.attrs.number, 10);
+      const measureNumber = Number.isFinite(rawMN) ? rawMN : measureArrayIndex + 1;
+      const contextCounters = new Map();
+
+      elementChildren(measure, "note").forEach((note) => {
+        if (firstElement(note, "rest")) return;
+        const pitch = firstElement(note, "pitch");
+        if (!pitch) return;
+
+        const staff = firstText(note, "staff") || "1";
+        const voice = firstText(note, "voice") || "1";
+        const contextKey = `${staff} ${voice}`;
+        const noteIndex = contextCounters.get(contextKey) || 0;
+        contextCounters.set(contextKey, noteIndex + 1);
+
+        const notations = firstElement(note, "notations");
+        const technical = notations ? firstElement(notations, "technical") : null;
+        let bowingType = null;
+        if (technical) {
+          const upBow = firstElement(technical, "up-bow");
+          const downBow = firstElement(technical, "down-bow");
+          if (upBow && upBow.attrs["data-user-bowing"] === "true" && upBow.attrs["data-bowing-layer"] === "shared") {
+            bowingType = "up-bow";
+          } else if (downBow && downBow.attrs["data-user-bowing"] === "true" && downBow.attrs["data-bowing-layer"] === "shared") {
+            bowingType = "down-bow";
+          }
+        }
+
+        notes.push({
+          scoreId,
+          partId,
+          measureNumber,
+          measureArrayIndex,
+          noteIndex,
+          staff,
+          voice,
+          bowingType,
+        });
+      });
+    });
+  });
+
+  return notes;
+};
+
+const extractNotesWithBowingInRange = (xml, scoreId, startRef, endRef, startMeasure, endMeasure) => {
+  const allNotes = extractNotesWithBowing(xml, scoreId);
+
+  const startIdx = allNotes.findIndex((n) => refMatchesNote(startRef, n));
+  const endIdx = allNotes.findIndex((n) => refMatchesNote(endRef, n));
+
+  if (startIdx >= 0 && endIdx >= 0) {
+    const from = Math.min(startIdx, endIdx);
+    const to = Math.max(startIdx, endIdx);
+    return allNotes.slice(from, to + 1);
+  }
+
+  const fromMeasure = Math.min(startMeasure, endMeasure);
+  const toMeasure = Math.max(startMeasure, endMeasure);
+  return allNotes.filter((n) => n.measureNumber >= fromMeasure && n.measureNumber <= toMeasure);
+};
+
+const mapBowingRangeIndex = (sourceIndex, sourceCount, targetCount) => {
+  if (sourceIndex < 0 || sourceCount <= 0 || targetCount <= 0) return -1;
+  if (sourceCount === 1 || targetCount === 1) return 0;
+  return Math.min(
+    targetCount - 1,
+    Math.max(0, Math.round((sourceIndex / (sourceCount - 1)) * (targetCount - 1))),
+  );
+};
+
+const listAllPieceScoresWithXml = async (projectId, pieceId, membership) => {
+  ensureSupabaseReady();
+
+  const { data, error } = await supabase
+    .from("scores")
+    .select(SCORE_COLUMNS_WITH_SECTION)
+    .eq("project_id", projectId)
+    .eq("piece_id", pieceId)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    throw new AppError("Failed to fetch piece scores", 500, error);
+  }
+
+  return (data || [])
+    .filter((score) => score.xml_content && scoreService.canViewScore(score, membership))
+    .map((score) => ({ ...score, section_name: score.sections?.name || null }));
+};
+
+const scanBowingSuggestions = async (projectId, pieceId, membership, body = {}) => {
+  const { threshold, windowSizes, limitPerWindow, maxHighlights } = normalizeScanOptions(body);
+  const scores = await listAllPieceScoresWithXml(projectId, pieceId, membership);
+
+  if (scores.length < 2) return { suggestions: [] };
+
+  const allHighlights = [];
+  for (let i = 0; i < scores.length - 1; i += 1) {
+    for (let j = i + 1; j < scores.length; j += 1) {
+      if (!scores[i].xml_content || !scores[j].xml_content) continue;
+      const pairHighlights = scanSourceScoreAgainstTargets(scores[i], [scores[j]], {
+        threshold,
+        windowSizes,
+        limitPerWindow,
+      });
+      for (const h of pairHighlights) {
+        allHighlights.push(toGlobalHighlight(h, scores[i], scores[j]));
+      }
+    }
+  }
+
+  const highlights = pruneGlobalScanHighlights(allHighlights).slice(0, maxHighlights);
+  const scoreMap = new Map(scores.map((s) => [s.id, s]));
+  const rawSuggestions = [];
+
+  const directions = [
+    (h) => ({
+      srcId: h.leftScoreId,
+      tgtId: h.rightScoreId,
+      srcStartRef: h.leftStartRef,
+      srcEndRef: h.leftEndRef,
+      srcStartMn: h.leftStartMeasureNumber,
+      srcEndMn: h.leftEndMeasureNumber,
+      tgtStartRef: h.rightStartRef,
+      tgtEndRef: h.rightEndRef,
+      tgtStartMn: h.rightStartMeasureNumber,
+      tgtEndMn: h.rightEndMeasureNumber,
+    }),
+    (h) => ({
+      srcId: h.rightScoreId,
+      tgtId: h.leftScoreId,
+      srcStartRef: h.rightStartRef,
+      srcEndRef: h.rightEndRef,
+      srcStartMn: h.rightStartMeasureNumber,
+      srcEndMn: h.rightEndMeasureNumber,
+      tgtStartRef: h.leftStartRef,
+      tgtEndRef: h.leftEndRef,
+      tgtStartMn: h.leftStartMeasureNumber,
+      tgtEndMn: h.leftEndMeasureNumber,
+    }),
+  ];
+
+  for (const highlight of highlights) {
+    for (const dirFn of directions) {
+      const {
+        srcId, tgtId,
+        srcStartRef, srcEndRef, srcStartMn, srcEndMn,
+        tgtStartRef, tgtEndRef, tgtStartMn, tgtEndMn,
+      } = dirFn(highlight);
+
+      const srcScore = scoreMap.get(srcId);
+      const tgtScore = scoreMap.get(tgtId);
+      if (!srcScore?.xml_content || !tgtScore?.xml_content) continue;
+
+      let srcNotes, tgtNotes;
+      try {
+        srcNotes = extractNotesWithBowingInRange(srcScore.xml_content, srcId, srcStartRef, srcEndRef, srcStartMn, srcEndMn);
+        tgtNotes = extractNotesWithBowingInRange(tgtScore.xml_content, tgtId, tgtStartRef, tgtEndRef, tgtStartMn, tgtEndMn);
+      } catch {
+        continue;
+      }
+
+      if (srcNotes.length === 0 || tgtNotes.length === 0) continue;
+
+      srcNotes.forEach((srcNote, srcIndex) => {
+        if (!srcNote.bowingType) return;
+
+        const tgtIndex = mapBowingRangeIndex(srcIndex, srcNotes.length, tgtNotes.length);
+        if (tgtIndex < 0) return;
+        const tgtNote = tgtNotes[tgtIndex];
+        if (!tgtNote) return;
+
+        const mnStart = Math.min(srcStartMn, srcEndMn);
+        const mnEnd = Math.max(srcStartMn, srcEndMn);
+        const measureRange = `m.${mnStart}${mnEnd !== mnStart ? `–${mnEnd}` : ""}`;
+
+        rawSuggestions.push({
+          id: `${srcId}:${tgtId}:${tgtNote.measureNumber}-${tgtNote.noteIndex}:${srcNote.bowingType}`,
+          sourceScoreId: srcId,
+          sourceSectionName: srcScore.section_name || srcId,
+          sourceMeasureRange: measureRange,
+          targetScoreId: tgtId,
+          targetSectionName: tgtScore.section_name || tgtId,
+          targetRef: {
+            scoreId: tgtId,
+            partId: tgtNote.partId,
+            measureNumber: tgtNote.measureNumber,
+            measureArrayIndex: tgtNote.measureArrayIndex,
+            noteIndex: tgtNote.noteIndex,
+            staff: tgtNote.staff,
+            voice: tgtNote.voice,
+          },
+          bowingType: srcNote.bowingType,
+          similarity: highlight.similarity,
+          status: "pending",
+          _srcNoteKey: `${srcId}:${srcNote.partId}:${srcNote.measureNumber}:${srcNote.noteIndex}`,
+        });
+      });
+    }
+  }
+
+  // Sort highest similarity first so dedup keeps the best match.
+  rawSuggestions.sort((a, b) => b.similarity - a.similarity);
+
+  // Pass 1: one suggestion per (targetScoreId, targetRef, bowingType) — regardless of source.
+  const targetSeen = new Set();
+  const pass1 = rawSuggestions.filter((s) => {
+    const k = `${s.targetScoreId}:${s.targetRef.partId}:${s.targetRef.measureNumber}:${s.targetRef.noteIndex}:${s.bowingType}`;
+    if (targetSeen.has(k)) return false;
+    targetSeen.add(k);
+    return true;
+  });
+
+  // Pass 2: one suggestion per (sourceNote, targetScoreId, bowingType) — prevents overlapping
+  // windows from the same source bowing producing multiple adjacent target suggestions.
+  const srcSeen = new Set();
+  const pass2 = pass1.filter((s) => {
+    const k = `${s._srcNoteKey}:${s.targetScoreId}:${s.bowingType}`;
+    if (srcSeen.has(k)) return false;
+    srcSeen.add(k);
+    return true;
+  });
+
+  const suggestions = pass2.map((s) => {
+    const result = Object.assign({}, s);
+    delete result._srcNoteKey;
+    return result;
+  });
+
+  return { suggestions };
+};
+
 module.exports = {
   findSimilarPassages,
   scanWholeScoreSimilarPassages,
   scanPieceSimilarPassages,
+  scanBowingSuggestions,
   _helpers: {
     extractPitchedNotes,
     extractRange,
@@ -673,5 +922,7 @@ module.exports = {
     globalRangeOverlapRatio,
     pruneGlobalScanHighlights,
     MIN_SCAN_SOURCE_NOTES,
+    extractNotesWithBowing,
+    mapBowingRangeIndex,
   },
 };
