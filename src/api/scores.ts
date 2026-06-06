@@ -5,6 +5,7 @@ import type { ApiScore } from './types'
 import type {
   BowingSuggestionsResponse,
   FindSimilarPassagesPayload,
+  FullScoreResponse,
   PieceScanSimilarPassagesResponse,
   ScanSimilarPassagesPayload,
   ScanSimilarPassagesResponse,
@@ -74,6 +75,13 @@ export function scanBowingSuggestions(
   return apiRequest<BowingSuggestionsResponse>(
     `/projects/${encodeURIComponent(projectId)}/pieces/${encodeURIComponent(pieceId)}/bowing-suggestions/scan`,
     { method: 'POST', body: JSON.stringify(payload) },
+  )
+}
+
+/** Build the conductor's combined multi-part full score for a piece (on the fly). */
+export function getPieceFullScore(projectId: string, pieceId: string) {
+  return apiRequest<FullScoreResponse>(
+    `/projects/${encodeURIComponent(projectId)}/pieces/${encodeURIComponent(pieceId)}/full-score`,
   )
 }
 

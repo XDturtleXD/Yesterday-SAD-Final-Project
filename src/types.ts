@@ -158,6 +158,24 @@ export type PieceScanSimilarPassagesResponse = {
   highlights: PieceSimilarityHighlight[]
 }
 
+export type FullScorePart = {
+  scoreId: string
+  sectionId: string
+  sectionName: string | null
+  sectionCode: string | null
+  partId: string
+  partIndex: number
+}
+
+export type FullScoreResponse = {
+  pieceId: string
+  pieceTitle: string
+  composer: string | null
+  xml: string
+  parts: FullScorePart[]
+  highlights: PieceSimilarityHighlight[]
+}
+
 export type ApiBowingSuggestion = {
   id: string
   sourceScoreId: string

@@ -1,5 +1,6 @@
 const scoreService = require("../services/scoreService");
 const melodySimilarityService = require("../services/melodySimilarityService");
+const fullScoreService = require("../services/fullScoreService");
 const conversionService = require("../services/conversionService");
 const AppError = require("../utils/appError");
 const { extractMusicXmlFromMxlBuffer } = require("../utils/mxlUtils");
@@ -193,6 +194,39 @@ const scanPieceSimilarPassages = async (req, res, next) => {
   }
 };
 
+const getPieceFullScore = async (req, res, next) => {
+  try {
+    const { projectId, pieceId } = req.params;
+    const fullScore = await fullScoreService.buildPieceFullScore(
+      projectId,
+      pieceId,
+      req.projectMembership,
+    );
+
+    // Cross-instrument similarity is a hint layer; never let a scan failure block
+    // the export itself.
+    let highlights = [];
+    try {
+      highlights = await melodySimilarityService.scanPieceSimilarPassages(
+        projectId,
+        pieceId,
+        req.projectMembership,
+        req.body || {},
+      );
+    } catch {
+      highlights = [];
+    }
+
+    return sendSuccess(
+      res,
+      { ...fullScore, highlights },
+      "Full score generated successfully",
+    );
+  } catch (error) {
+    return next(error);
+  }
+};
+
 const scanBowingSuggestions = async (req, res, next) => {
   try {
     const { projectId, pieceId } = req.params;
@@ -219,4 +253,5 @@ module.exports = {
   scanWholeScoreSimilarPassages,
   scanPieceSimilarPassages,
   scanBowingSuggestions,
+  getPieceFullScore,
 };

@@ -47,6 +47,11 @@ router.post(
   projectPermissionMiddleware("params"),
   scoreController.scanPieceSimilarPassages,
 );
+router.get(
+  "/:projectId/pieces/:pieceId/full-score",
+  projectPermissionMiddleware("params"),
+  scoreController.getPieceFullScore,
+);
 router.patch(
   "/:projectId/pieces/:pieceId",
   projectPermissionMiddleware("params"),
