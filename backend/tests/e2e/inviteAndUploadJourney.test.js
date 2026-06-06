@@ -132,12 +132,15 @@ test("E2E: invite flow + section-scoped principal upload permissions", async () 
   });
   assert.equal(cmList.body.data.length, 2);
 
-  // 10. Principal lists scores: only own section
+  // 10. Principal lists scores: sees all project sections
   const principalList = await harness.request(
     "GET",
     `/api/projects/${projectId}/scores`,
     { token: principalToken },
   );
-  assert.equal(principalList.body.data.length, 1);
-  assert.equal(principalList.body.data[0].section_id, SECTION_SECOND_VIOLIN);
+  assert.equal(principalList.body.data.length, 2);
+  assert.deepEqual(
+    principalList.body.data.map((score) => score.section_id).sort(),
+    [SECTION_FIRST_VIOLIN, SECTION_SECOND_VIOLIN].sort(),
+  );
 });
